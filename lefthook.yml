@@ -1,0 +1,15 @@
+colors: false
+pre-commit:
+  parallel: true
+  commands:
+    fmt:
+      glob: "*.go"
+      run: goimports -w {staged_files} && git add {staged_files}
+
+    vet:
+      glob: "*.go"
+      run: go vet ./...
+
+    test:
+      glob: "*.go"
+      run: go test -short ./...

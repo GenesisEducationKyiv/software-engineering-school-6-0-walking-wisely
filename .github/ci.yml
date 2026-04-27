@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+
+jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up buf (protobuf codegen)
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Generate protobuf
+        run: buf generate
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test -race -count=1 ./...
