@@ -1,3 +1,4 @@
+// Package middleware provides HTTP middleware for structured logging, Prometheus metrics, and panic recovery.
 package middleware
 
 import (
@@ -25,9 +26,9 @@ func Logging(h http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		h.ServeHTTP(rec, r)
-		slog.Info("http request",
-			"method", r.Method,
-			"path", r.URL.Path,
+		slog.Info("http request", // #nosec G706 -- values are sanitized to strip control characters.
+			"method", sanitizeLogValue(r.Method),
+			"path", sanitizeLogValue(r.URL.Path),
 			"status", rec.status,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)

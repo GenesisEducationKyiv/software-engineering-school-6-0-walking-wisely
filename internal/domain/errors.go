@@ -1,3 +1,4 @@
+// Package domain contains the core business types, error sentinels, and token generation utilities.
 package domain
 
 import (
@@ -32,5 +33,6 @@ func (e *RateLimitError) Error() string {
 // AsRateLimitError is a convenience wrapper around errors.As for RateLimitError.
 func AsRateLimitError(err error) (*RateLimitError, bool) {
 	var rle *RateLimitError
-	return rle, errors.As(err, &rle)
+	isRateLimit := errors.As(err, &rle)
+	return rle, isRateLimit
 }

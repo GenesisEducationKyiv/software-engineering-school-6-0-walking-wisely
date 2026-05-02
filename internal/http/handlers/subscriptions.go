@@ -26,7 +26,8 @@ func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetS
 
 	resp := make([]*pb.Subscription, 0, len(subs))
 
-	for _, s := range subs {
+	for i := range subs {
+		s := subs[i]
 		lastSeenTag := ""
 		if s.LastSeenTag != nil {
 			lastSeenTag = *s.LastSeenTag

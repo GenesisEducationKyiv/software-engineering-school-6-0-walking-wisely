@@ -13,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// RetryConfig controls the exponential-backoff retry behaviour for infrastructure connections.
 type RetryConfig struct {
 	MaxAttempts int
 	InitialWait time.Duration
@@ -43,18 +44,22 @@ func retryConfigFromEnv(prefix string, defaultMax int, defaultInitial, defaultMa
 	return cfg
 }
 
+// DBRetryConfigFromEnv reads DB_RETRY_* environment variables and returns a RetryConfig for Postgres.
 func DBRetryConfigFromEnv() RetryConfig {
 	return retryConfigFromEnv("DB_RETRY", 5, 500*time.Millisecond, 30*time.Second)
 }
 
+// RedisRetryConfigFromEnv reads REDIS_RETRY_* environment variables and returns a RetryConfig for Redis.
 func RedisRetryConfigFromEnv() RetryConfig {
 	return retryConfigFromEnv("REDIS_RETRY", 5, 500*time.Millisecond, 30*time.Second)
 }
 
+// InitDB opens a PostgreSQL connection pool using retry defaults read from the environment.
 func InitDB(databaseURL string) (*pgxpool.Pool, error) {
 	return InitDBWithRetry(databaseURL, DBRetryConfigFromEnv())
 }
 
+// InitDBWithRetry opens a PostgreSQL connection pool, retrying on transient failures according to retry.
 func InitDBWithRetry(databaseURL string, retry RetryConfig) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
@@ -93,10 +98,12 @@ func InitDBWithRetry(databaseURL string, retry RetryConfig) (*pgxpool.Pool, erro
 	return nil, fmt.Errorf("failed to connect to database after %d attempts: %w", retry.MaxAttempts, lastErr)
 }
 
+// InitRedis creates a Redis client and pings it, using retry defaults read from the environment.
 func InitRedis(redisURL string) (*redis.Client, error) {
 	return InitRedisWithRetry(redisURL, RedisRetryConfigFromEnv())
 }
 
+// InitRedisWithRetry creates a Redis client and pings it, retrying on transient failures according to retry.
 func InitRedisWithRetry(redisURL string, retry RetryConfig) (*redis.Client, error) {
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
@@ -131,6 +138,9 @@ func InitRedisWithRetry(redisURL string, retry RetryConfig) (*redis.Client, erro
 		time.Sleep(wait)
 	}
 
-	client.Close()
+	err = client.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Redis after %d attempts: %w; also failed to close client: %v", retry.MaxAttempts, lastErr, err)
+	}
 	return nil, fmt.Errorf("failed to connect to Redis after %d attempts: %w", retry.MaxAttempts, lastErr)
 }

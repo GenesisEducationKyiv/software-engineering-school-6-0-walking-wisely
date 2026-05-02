@@ -81,7 +81,6 @@ func StartSender(
 			// Use a fresh background context so the final HTTP calls are not
 			// cancelled immediately.
 			drainCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
 		drain:
 			for {
 				select {
@@ -95,6 +94,7 @@ func StartSender(
 				}
 			}
 			flushWith(drainCtx)
+			cancel()
 			slog.Info("sender stopped")
 			return
 		}

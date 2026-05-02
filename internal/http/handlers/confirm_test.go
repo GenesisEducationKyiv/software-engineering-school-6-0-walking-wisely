@@ -32,7 +32,7 @@ func TestConfirm_InvalidToken(t *testing.T) {
 	// Exhaustive token-format cases live in TestIsValidToken (helpers_test.go).
 	svc := newService(&fakeGithubClient{}, &fakeSubRepo{}, nil)
 
-	_, err := svc.ConfirmSubscription(context.Background(), &pb.ConfirmSubscriptionRequest{Token: "not-a-valid-token"})
+	_, err := svc.ConfirmSubscription(context.Background(), &pb.ConfirmSubscriptionRequest{Token: "not-a-valid-token"}) // #nosec G101 -- test-only invalid token.
 
 	if got := status.Code(err); got != codes.InvalidArgument {
 		t.Errorf("got %v, want InvalidArgument", got)

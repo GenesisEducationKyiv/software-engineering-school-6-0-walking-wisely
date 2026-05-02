@@ -1,3 +1,4 @@
+// Package repository provides PostgreSQL-backed storage for subscriptions and applies embedded SQL migrations.
 package repository
 
 import (
@@ -7,13 +8,14 @@ import (
 	"log/slog"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // registers the postgres driver with golang-migrate
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// RunMigrations applies all pending SQL migrations embedded in the migrations directory.
 func RunMigrations(databaseURL string) error {
 	sourceDriver, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {

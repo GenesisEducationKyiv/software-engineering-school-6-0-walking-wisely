@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 
@@ -17,7 +18,9 @@ func handleRateLimitError(ctx context.Context, rle *domain.RateLimitError) error
 	secs := int(math.Ceil(rle.RetryAfter.Seconds()))
 
 	header := metadata.Pairs("Retry-After", fmt.Sprintf("%d", secs))
-	grpc.SetHeader(ctx, header)
+	if err := grpc.SetHeader(ctx, header); err != nil {
+		slog.ErrorContext(ctx, "failed to set gRPC retry header", "error", err)
+	}
 
 	msg := fmt.Sprintf("service temporarily unavailable, retry after %ds", secs)
 
@@ -28,7 +31,7 @@ func handleRateLimitError(ctx context.Context, rle *domain.RateLimitError) error
 // sufficient to reject obvious garbage before hitting the database.
 func isValidEmail(email string) bool {
 	parts := strings.Split(email, "@")
-	return len(parts) == 2 && len(parts[0]) > 0 && strings.Contains(parts[1], ".")
+	return len(parts) == 2 && parts[0] != "" && strings.Contains(parts[1], ".")
 }
 
 // isValidToken checks that the string is a 64-character lowercase hex string,
@@ -38,6 +41,7 @@ func isValidToken(token string) bool {
 		return false
 	}
 	for _, c := range token {
+		//nolint:staticcheck // De Morgan's law makes this less readable here
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
 			return false
 		}

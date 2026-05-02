@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Confirm handles GET /api/confirm/{token}.
+// ConfirmSubscription handles GET /api/confirm/{token}.
 // The token embedded in the confirmation email is the sole auth credential -
 // it is HMAC-SHA256 signed and cannot be guessed without the secret key.
 func (s *SubscriptionService) ConfirmSubscription(ctx context.Context, req *pb.ConfirmSubscriptionRequest) (*pb.ConfirmSubscriptionResponse, error) {

@@ -16,11 +16,6 @@ import (
 
 var repoPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`)
 
-type subscribeRequest struct {
-	Email string `json:"email"`
-	Repo  string `json:"repo"`
-}
-
 // Subscribe handles POST /api/subscribe.
 // It validates the request, confirms the repo exists on GitHub, persists the
 // subscription (guarded by SELECT FOR UPDATE), and queues a confirmation email.
@@ -69,8 +64,8 @@ func (s *SubscriptionService) Subscribe(
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	confirmURL := fmt.Sprintf("%s/api/confirm/%s", s.deps.BaseUrl, confirmToken)
-	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", s.deps.BaseUrl, unsubToken)
+	confirmURL := fmt.Sprintf("%s/api/confirm/%s", s.deps.BaseURL, confirmToken)
+	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", s.deps.BaseURL, unsubToken)
 
 	select {
 	case s.deps.EmailChan <- buildConfirmEmail(req.Email, req.Repo, confirmURL, unsubURL):

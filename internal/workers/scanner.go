@@ -1,3 +1,4 @@
+// Package workers contains the background goroutines that scan GitHub for new releases and dispatch notification emails.
 package workers
 
 import (
@@ -78,7 +79,8 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	}
 
 	var notified int
-	for _, sub := range subscribers {
+	for i := range subscribers {
+		sub := &subscribers[i]
 		if sub.LastSeenTag != nil && *sub.LastSeenTag == release.TagName {
 			continue // already notified about this release
 		}
@@ -103,7 +105,7 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	}
 }
 
-func buildReleaseEmail(sub domain.Subscription, release *clients.Release, baseURL string) domain.EmailMessage {
+func buildReleaseEmail(sub *domain.Subscription, release *clients.Release, baseURL string) domain.EmailMessage {
 	releaseName := release.TagName
 	if release.Name != "" {
 		releaseName = release.Name

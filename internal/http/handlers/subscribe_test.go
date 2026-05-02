@@ -25,7 +25,7 @@ func newService(gh handlers.GithubClient, repo handlers.SubRepo, ch chan domain.
 		Github:         gh,
 		EmailChan:      ch,
 		EmailSecretKey: "test-secret",
-		BaseUrl:        "http://localhost",
+		BaseURL:        "http://localhost",
 	})
 }
 

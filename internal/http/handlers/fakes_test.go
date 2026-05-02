@@ -62,5 +62,5 @@ func (s *fakeServerStream) SetHeader(md metadata.MD) error {
 	s.headers = md
 	return nil
 }
-func (s *fakeServerStream) SendHeader(md metadata.MD) error { return nil }
-func (s *fakeServerStream) SetTrailer(_ metadata.MD) error  { return nil }
+func (s *fakeServerStream) SendHeader(_ metadata.MD) error { return nil }
+func (s *fakeServerStream) SetTrailer(_ metadata.MD) error { return nil }

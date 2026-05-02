@@ -4,16 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// SubscriptionRepo wraps a pgxpool.Pool and implements all subscription persistence operations.
 type SubscriptionRepo struct {
 	db *pgxpool.Pool
 }
 
+// NewSubscriptionRepo returns a SubscriptionRepo backed by the given connection pool.
 func NewSubscriptionRepo(db *pgxpool.Pool) *SubscriptionRepo {
 	return &SubscriptionRepo{db: db}
 }
@@ -30,7 +33,15 @@ func (r *SubscriptionRepo) Subscribe(
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+
+	defer func() {
+		if err != nil {
+			rollbackErr := tx.Rollback(ctx)
+			if rollbackErr != nil {
+				log.Printf("subscribe: failed to rollback transaction: %v", rollbackErr)
+			}
+		}
+	}()
 
 	var id string
 	var confirmed bool
@@ -76,7 +87,14 @@ func (r *SubscriptionRepo) ConfirmByToken(ctx context.Context, token string) (id
 	if err != nil {
 		return "", fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() {
+		if err != nil {
+			rollbackErr := tx.Rollback(ctx)
+			if rollbackErr != nil {
+				log.Printf("confirm: failed to rollback transaction: %v", rollbackErr)
+			}
+		}
+	}()
 
 	err = tx.QueryRow(ctx,
 		`SELECT id FROM subscriptions WHERE confirm_token=$1 FOR UPDATE`,
@@ -106,7 +124,14 @@ func (r *SubscriptionRepo) UnsubscribeByToken(ctx context.Context, token string)
 	if err != nil {
 		return "", fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() {
+		if err != nil {
+			rollbackErr := tx.Rollback(ctx)
+			if rollbackErr != nil {
+				log.Printf("unsubscribe: failed to rollback transaction: %v", rollbackErr)
+			}
+		}
+	}()
 
 	err = tx.QueryRow(ctx,
 		`SELECT id FROM subscriptions WHERE unsubscribe_token=$1 FOR UPDATE`,

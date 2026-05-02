@@ -1,3 +1,4 @@
+// Package clients provides HTTP clients for the GitHub REST API and the Resend email API.
 package clients
 
 import (
@@ -31,6 +32,8 @@ type GitHubClient struct {
 	token string // optional Bearer token for higher rate limits
 }
 
+// NewGitHubClient returns a GitHubClient backed by redisClient for caching. githubToken is optional
+// but raises the GitHub API rate limit from 60 to 5 000 requests per hour when provided.
 func NewGitHubClient(redisClient *redis.Client, githubToken string) *GitHubClient {
 	return &GitHubClient{
 		http:  &http.Client{Timeout: 10 * time.Second},
@@ -88,7 +91,7 @@ func (c *GitHubClient) ValidateRepo(ctx context.Context, repo string) error {
 
 // doRequest executes a GET against url and maps GitHub's status codes to domain errors.
 func (c *GitHubClient) doRequest(ctx context.Context, url, repo string) (*Release, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("build github request: %w", err)
 	}
@@ -102,7 +105,14 @@ func (c *GitHubClient) doRequest(ctx context.Context, url, repo string) (*Releas
 	if err != nil {
 		return nil, fmt.Errorf("github request: %w", err)
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		closeErr := resp.Body.Close()
+		if err != nil {
+			slog.Warn("close github response body", "err", closeErr)
+			err = closeErr
+		}
+	}()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
