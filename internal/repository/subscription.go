@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/domain"
 )
 
 type SubscriptionRepo struct {

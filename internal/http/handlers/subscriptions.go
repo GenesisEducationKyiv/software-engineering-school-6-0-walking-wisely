@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
-	pb "github.com/walking-wisely/genesis2026-github-release-api/gen/subscription/v1"
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

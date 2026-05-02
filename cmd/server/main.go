@@ -12,23 +12,23 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/clients"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/handlers"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/repository"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/workers"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/clients"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/config"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/domain"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/http/handlers"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/http/middleware"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/repository"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/workers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	pb "github.com/walking-wisely/genesis2026-github-release-api/gen/subscription/v1"
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
 
 //go:embed web/index.html

@@ -6,7 +6,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

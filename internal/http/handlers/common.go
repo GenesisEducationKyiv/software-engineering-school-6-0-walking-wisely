@@ -3,8 +3,8 @@ package handlers
 import (
 	"context"
 
-	pb "github.com/walking-wisely/genesis2026-github-release-api/gen/subscription/v1"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/domain"
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 )
 
 type SubRepo interface {

@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/clients"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/clients"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 )
 
 // StartSender reads email messages from emailChan and delivers them in batches

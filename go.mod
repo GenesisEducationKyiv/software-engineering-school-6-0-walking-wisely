@@ -1,4 +1,4 @@
-module github.com/walking-wisely/genesis2026-github-release-api
+module github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely
 
 go 1.25.5
 

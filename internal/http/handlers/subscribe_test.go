@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/walking-wisely/genesis2026-github-release-api/gen/subscription/v1"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/domain"
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/http/handlers"
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/handlers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

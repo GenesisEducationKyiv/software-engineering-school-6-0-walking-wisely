@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/walking-wisely/genesis2026-github-release-api/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 )
 
 const (
