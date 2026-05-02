@@ -6,11 +6,11 @@ setup:
 	go install golang.org/x/tools/cmd/goimports@latest
 
 	@echo "Installing and configuring Lefthook..."
-	go install github.com/evilmartians/lefthook@latest
+	go install github.com/evilmartians/lefthook@v1.13.6
 	lefthook install
 
 	@echo "Installing buf..."
-	go install github.com/bufbuild/buf/cmd/buf@v1.67.0
+	go install github.com/bufbuild/buf/cmd/buf@v1.65.0
 
 	@echo "Updating buf dependencies and generating code..."
 	buf dep update
