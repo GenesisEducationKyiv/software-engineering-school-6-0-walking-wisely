@@ -64,7 +64,7 @@ func StartSender(
 		case msg, ok := <-emailChan:
 			if !ok {
 				// Channel closed - flush and exit.
-				flushWith(context.Background())
+				flushWith(ctx)
 				slog.Info("sender stopped (channel closed)")
 				return
 			}
@@ -80,7 +80,7 @@ func StartSender(
 			// Drain any messages already in the channel before shutting down.
 			// Use a fresh background context so the final HTTP calls are not
 			// cancelled immediately.
-			drainCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 		drain:
 			for {
 				select {

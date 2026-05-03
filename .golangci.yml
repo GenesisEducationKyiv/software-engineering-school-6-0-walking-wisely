@@ -29,7 +29,17 @@ linters:
     - unused
     - gocritic
     - misspell
-    - revive
+
+    - sqlclosecheck
+    - rowserrcheck
+    - contextcheck
+    - errorlint
+    - nilerr
+    - durationcheck
+    - forcetypeassert
+    - makezero
+    - nosprintfhostport
+    - errchkjson
 
   exclusions:
     paths:
