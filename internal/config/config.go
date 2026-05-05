@@ -138,8 +138,7 @@ func InitRedisWithRetry(redisURL string, retry RetryConfig) (*redis.Client, erro
 		time.Sleep(wait)
 	}
 
-	err = client.Close()
-	if err != nil {
+	if err = client.Close(); err != nil {
 		return nil, fmt.Errorf("failed to connect to Redis after %d attempts: %w; also failed to close client: %w", retry.MaxAttempts, lastErr, err)
 	}
 	return nil, fmt.Errorf("failed to connect to Redis after %d attempts: %w", retry.MaxAttempts, lastErr)

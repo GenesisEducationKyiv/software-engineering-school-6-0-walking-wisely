@@ -1,6 +1,6 @@
 version: "2"
 run:
-  # The default timeout is 1m, which can fail in CI if your project gets big or dependencies are slow to download.
+  # The default timeout is 1m, which can fail in CI if project gets big or dependencies are slow to download.
   timeout: 5m
 
 linters:
