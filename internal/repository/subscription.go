@@ -117,38 +117,20 @@ func (r *SubscriptionRepo) ConfirmByToken(ctx context.Context, token string) (id
 }
 
 // UnsubscribeByToken deletes a subscription using the token embedded in every
-// notification email. Uses SELECT FOR UPDATE to prevent double-deletes.
-// Returns the subscription ID on success for logging.
-func (r *SubscriptionRepo) UnsubscribeByToken(ctx context.Context, token string) (id string, err error) {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return "", fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			rollbackErr := tx.Rollback(ctx)
-			if rollbackErr != nil {
-				log.Printf("unsubscribe: failed to rollback transaction: %v", rollbackErr)
-			}
-		}
-	}()
-
-	err = tx.QueryRow(ctx,
-		`SELECT id FROM subscriptions WHERE unsubscribe_token=$1 FOR UPDATE`,
+// notification email. Returns the subscription ID on success for logging.
+func (r *SubscriptionRepo) UnsubscribeByToken(ctx context.Context, token string) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx,
+		`DELETE FROM subscriptions WHERE unsubscribe_token=$1 RETURNING id`,
 		token,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", domain.ErrTokenNotFound
 	}
 	if err != nil {
-		return "", fmt.Errorf("lock unsubscribe token row: %w", err)
-	}
-
-	if _, err = tx.Exec(ctx, `DELETE FROM subscriptions WHERE id=$1`, id); err != nil {
 		return "", fmt.Errorf("delete subscription: %w", err)
 	}
-
-	return id, tx.Commit(ctx)
+	return id, nil
 }
 
 // ListByEmail returns all subscriptions (confirmed and unconfirmed) for an email.
