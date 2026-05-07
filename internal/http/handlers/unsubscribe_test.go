@@ -7,10 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 )
 
 // validToken is a well-formed 64-character lowercase hex string that passes
@@ -27,7 +28,6 @@ func TestUnsubscribe_Success(t *testing.T) {
 	svc := newService(&fakeGithubClient{}, repo, nil)
 
 	resp, err := svc.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{Token: validToken})
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 )
 
 const githubReleaseCacheTTL = 10 * time.Minute

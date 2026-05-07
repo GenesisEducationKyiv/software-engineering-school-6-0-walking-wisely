@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"testing"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 )
 
 // validToken is shared with unsubscribe_test.go (same package).
@@ -18,7 +19,6 @@ func TestConfirm_HappyPath(t *testing.T) {
 	svc := newService(&fakeGithubClient{}, &fakeSubRepo{confirmByTokenID: "sub-123"}, nil)
 
 	resp, err := svc.ConfirmSubscription(context.Background(), &pb.ConfirmSubscriptionRequest{Token: validToken})
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

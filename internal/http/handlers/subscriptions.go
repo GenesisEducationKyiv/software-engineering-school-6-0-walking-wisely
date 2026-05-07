@@ -5,9 +5,10 @@ import (
 	"log/slog"
 	"strings"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
 
 // GetSubscriptions handles GET /api/subscriptions?email=...

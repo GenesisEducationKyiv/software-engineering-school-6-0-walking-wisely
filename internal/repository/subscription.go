@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 )
 
 // SubscriptionRepo wraps a pgxpool.Pool and implements all subscription persistence operations.
@@ -45,7 +46,8 @@ func (r *SubscriptionRepo) Subscribe(
 
 	var id string
 	var confirmed bool
-	err = tx.QueryRow(ctx,
+	err = tx.QueryRow(
+		ctx,
 		`SELECT id, confirmed FROM subscriptions WHERE email=$1 AND repo=$2 FOR UPDATE`,
 		email, repo,
 	).Scan(&id, &confirmed)
@@ -56,7 +58,8 @@ func (r *SubscriptionRepo) Subscribe(
 
 	case err == nil && !confirmed:
 		// Unconfirmed - refresh the confirm token so the new email works.
-		if _, err = tx.Exec(ctx,
+		if _, err = tx.Exec(
+			ctx,
 			`UPDATE subscriptions SET confirm_token=$1, updated_at=NOW() WHERE id=$2`,
 			confirmToken, id,
 		); err != nil {
@@ -64,7 +67,8 @@ func (r *SubscriptionRepo) Subscribe(
 		}
 
 	case errors.Is(err, pgx.ErrNoRows):
-		if _, err = tx.Exec(ctx,
+		if _, err = tx.Exec(
+			ctx,
 			`INSERT INTO subscriptions (email, repo, confirm_token, unsubscribe_token)
 			 VALUES ($1, $2, $3, $4)`,
 			email, repo, confirmToken, unsubToken,
@@ -96,7 +100,8 @@ func (r *SubscriptionRepo) ConfirmByToken(ctx context.Context, token string) (id
 		}
 	}()
 
-	err = tx.QueryRow(ctx,
+	err = tx.QueryRow(
+		ctx,
 		`SELECT id FROM subscriptions WHERE confirm_token=$1 FOR UPDATE`,
 		token,
 	).Scan(&id)
@@ -107,7 +112,8 @@ func (r *SubscriptionRepo) ConfirmByToken(ctx context.Context, token string) (id
 		return "", fmt.Errorf("lock confirm token row: %w", err)
 	}
 
-	if _, err = tx.Exec(ctx,
+	if _, err = tx.Exec(
+		ctx,
 		`UPDATE subscriptions SET confirmed=TRUE, updated_at=NOW() WHERE id=$1`, id,
 	); err != nil {
 		return "", fmt.Errorf("confirm subscription: %w", err)
@@ -120,7 +126,8 @@ func (r *SubscriptionRepo) ConfirmByToken(ctx context.Context, token string) (id
 // notification email. Returns the subscription ID on success for logging.
 func (r *SubscriptionRepo) UnsubscribeByToken(ctx context.Context, token string) (string, error) {
 	var id string
-	err := r.db.QueryRow(ctx,
+	err := r.db.QueryRow(
+		ctx,
 		`DELETE FROM subscriptions WHERE unsubscribe_token=$1 RETURNING id`,
 		token,
 	).Scan(&id)
@@ -135,7 +142,8 @@ func (r *SubscriptionRepo) UnsubscribeByToken(ctx context.Context, token string)
 
 // ListByEmail returns all subscriptions (confirmed and unconfirmed) for an email.
 func (r *SubscriptionRepo) ListByEmail(ctx context.Context, email string) ([]domain.Subscription, error) {
-	rows, err := r.db.Query(ctx,
+	rows, err := r.db.Query(
+		ctx,
 		`SELECT id, email, repo, confirmed, last_seen_tag, created_at, updated_at
 		 FROM subscriptions WHERE email=$1 ORDER BY created_at DESC`,
 		email,
@@ -161,7 +169,8 @@ func (r *SubscriptionRepo) ListByEmail(ctx context.Context, email string) ([]dom
 // ListDistinctConfirmedRepos returns the unique set of repos that have at least
 // one confirmed subscriber. Used by the scanner to know what to check.
 func (r *SubscriptionRepo) ListDistinctConfirmedRepos(ctx context.Context) ([]string, error) {
-	rows, err := r.db.Query(ctx,
+	rows, err := r.db.Query(
+		ctx,
 		`SELECT DISTINCT repo FROM subscriptions WHERE confirmed=TRUE`,
 	)
 	if err != nil {
@@ -183,7 +192,8 @@ func (r *SubscriptionRepo) ListDistinctConfirmedRepos(ctx context.Context) ([]st
 // ListConfirmedSubscribersForRepo returns all confirmed subscribers for a repo,
 // including the unsubscribe token needed to build the email footer link.
 func (r *SubscriptionRepo) ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]domain.Subscription, error) {
-	rows, err := r.db.Query(ctx,
+	rows, err := r.db.Query(
+		ctx,
 		`SELECT id, email, repo, last_seen_tag, unsubscribe_token
 		 FROM subscriptions WHERE repo=$1 AND confirmed=TRUE`,
 		repo,
@@ -207,7 +217,8 @@ func (r *SubscriptionRepo) ListConfirmedSubscribersForRepo(ctx context.Context, 
 // UpdateLastSeenTag records the latest release tag for all confirmed subscribers
 // of a repo so that already-notified releases are not sent again.
 func (r *SubscriptionRepo) UpdateLastSeenTag(ctx context.Context, repo, tag string) error {
-	if _, err := r.db.Exec(ctx,
+	if _, err := r.db.Exec(
+		ctx,
 		`UPDATE subscriptions SET last_seen_tag=$2, updated_at=NOW()
 		 WHERE repo=$1 AND confirmed=TRUE`,
 		repo, tag,
