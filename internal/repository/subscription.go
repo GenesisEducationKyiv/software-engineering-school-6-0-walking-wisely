@@ -29,7 +29,7 @@ func NewSubscriptionRepo(db *pgxpool.Pool) *SubscriptionRepo {
 func (r *SubscriptionRepo) Subscribe(
 	ctx context.Context,
 	email, repo, confirmToken, unsubToken string,
-) error {
+) (err error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

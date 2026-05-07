@@ -91,7 +91,7 @@ func (c *GitHubClient) ValidateRepo(ctx context.Context, repo string) error {
 }
 
 // doRequest executes a GET against url and maps GitHub's status codes to domain errors.
-func (c *GitHubClient) doRequest(ctx context.Context, url, repo string) (*Release, error) {
+func (c *GitHubClient) doRequest(ctx context.Context, url, repo string) (release *Release, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("build github request: %w", err)
