@@ -46,10 +46,16 @@ linters:
       - vendor
 
 formatters:
+  enable:
+    - goimports
+    - gofumpt
   settings:
     goimports:
       local-prefixes:
         - github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely
+    gofumpt:
+      module-path: github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely
+      extra-rules: true
 
 issues:
   # By default, golangci-lint stops showing issues after it finds 50 of the same type.

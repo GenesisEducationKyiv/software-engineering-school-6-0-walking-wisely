@@ -5,6 +5,9 @@ setup:
 	@echo "Installing goimports..."
 	go install golang.org/x/tools/cmd/goimports@latest
 
+	@echo "Installing gofumpt..."
+	go install mvdan.cc/gofumpt@latest
+
 # Ensuring same version of golangci-lint is used locally if dev uses it and in CI
 	@echo "Installing golangci-lint..."
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
