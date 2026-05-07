@@ -2,6 +2,7 @@ package workers
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -48,7 +49,8 @@ func StartSender(
 			}
 			chunk := toSend[i:end]
 			if err := resend.SendBatch(flushCtx, chunk); err != nil {
-				if rle, ok := domain.AsRateLimitError(err); ok {
+				var rle *domain.RateLimitError
+				if ok := errors.As(err, &rle); ok {
 					slog.Warn("sender: resend rate limited, dropping batch",
 						"batch_size", len(chunk), "retry_after", rle.RetryAfter)
 				} else {

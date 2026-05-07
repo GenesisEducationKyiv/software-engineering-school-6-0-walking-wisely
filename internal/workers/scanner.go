@@ -3,6 +3,7 @@ package workers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -63,7 +64,8 @@ func runScan(ctx context.Context, deps ScannerDeps) {
 func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	release, err := deps.GitHub.GetLatestRelease(ctx, repo)
 	if err != nil {
-		if rle, ok := domain.AsRateLimitError(err); ok {
+		var rle *domain.RateLimitError
+		if ok := errors.As(err, &rle); ok {
 			slog.Warn("scanner: github rate limited, skipping repo",
 				"repo", repo, "retry_after", rle.RetryAfter)
 		} else {

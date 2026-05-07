@@ -39,7 +39,8 @@ func (s *SubscriptionService) Subscribe(
 		if errors.Is(err, domain.ErrRepoNotFound) {
 			return nil, status.Error(codes.NotFound, "repository not found on GitHub")
 		}
-		if rle, ok := domain.AsRateLimitError(err); ok {
+		var rle *domain.RateLimitError
+		if errors.As(err, &rle) {
 			return nil, handleRateLimitError(ctx, rle)
 		}
 		slog.Error("subscribe: validate repo", "repo", req.Repo, "err", err)
