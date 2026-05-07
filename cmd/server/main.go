@@ -145,20 +145,26 @@ func run() error {
 		}),
 	)
 
-	MustHandlePath(gwMux, "GET", "/swagger.json", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
+	if err := gwMux.HandlePath("GET", "/swagger.json", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
 		http.ServeFile(w, r, "gen/subscription/v1/subscription.swagger.json")
-	})
+	}); err != nil {
+		return fmt.Errorf("register route GET /swagger.json: %w", err)
+	}
 
-	MustHandlePath(gwMux, "GET", "/health", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	if err := gwMux.HandlePath("GET", "/health", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	}); err != nil {
+		return fmt.Errorf("register route GET /health: %w", err)
+	}
 
-	MustHandlePath(gwMux, "GET", "/", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	if err := gwMux.HandlePath("GET", "/", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(indexHTML)
-	})
+	}); err != nil {
+		return fmt.Errorf("register route GET /: %w", err)
+	}
 
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	err = pb.RegisterSubscribeServiceHandlerFromEndpoint(ctx, gwMux, "localhost:"+grpcPort, opts)
