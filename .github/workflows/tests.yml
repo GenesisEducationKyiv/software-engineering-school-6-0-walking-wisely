@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up buf (protobuf codegen)
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: v1.65.0
+
+      - name: Generate protobuf
+        run: buf generate
+
+      - name: Run tests
+        run: go test -race -count=1 ./...
