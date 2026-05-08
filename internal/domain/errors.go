@@ -1,3 +1,4 @@
+// Package domain contains the core business types, error sentinels, and token generation utilities.
 package domain
 
 import (
@@ -27,10 +28,4 @@ type RateLimitError struct {
 
 func (e *RateLimitError) Error() string {
 	return fmt.Sprintf("%s rate limited, retry after %s", e.Service, e.RetryAfter.Round(time.Second))
-}
-
-// AsRateLimitError is a convenience wrapper around errors.As for RateLimitError.
-func AsRateLimitError(err error) (*RateLimitError, bool) {
-	var rle *RateLimitError
-	return rle, errors.As(err, &rle)
 }

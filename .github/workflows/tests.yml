@@ -1,13 +1,14 @@
-name: ci
+name: Tests
 
 on:
-  push:
-    branches: [main, staging]
   pull_request:
+    branches: [main]
+  push:
+    branches: [main]
 
 jobs:
   test:
-    name: Test & Lint
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
@@ -21,12 +22,11 @@ jobs:
 
       - name: Set up buf (protobuf codegen)
         uses: bufbuild/buf-setup-action@v1
+        with:
+          version: v1.65.0
 
       - name: Generate protobuf
         run: buf generate
-
-      - name: go vet
-        run: go vet ./...
 
       - name: Run tests
         run: go test -race -count=1 ./...

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,13 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/clients"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/handlers"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/repository"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/workers"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -28,6 +22,14 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/clients"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/handlers"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/repository"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/workers"
+
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
 
@@ -35,6 +37,13 @@ import (
 var indexHTML []byte
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("application startup failed", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// JSON structured logging to stdout from the very first line.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -42,28 +51,29 @@ func main() {
 
 	cfg, err := config.LoadAppConfig()
 	if err != nil {
-		slog.Error("load config", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	if err := repository.RunMigrations(cfg.DatabaseURL); err != nil {
-		slog.Error("run migrations", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("run database migrations: %w", err)
 	}
 
 	db, err := config.InitDB(cfg.DatabaseURL)
 	if err != nil {
-		slog.Error("init database", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("init database: %w", err)
 	}
 	defer db.Close()
 
 	redisClient, err := config.InitRedis(cfg.RedisURL)
 	if err != nil {
-		slog.Error("init redis", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("init redis: %w", err)
 	}
-	defer redisClient.Close()
+
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			slog.Error("close redis", "err", err)
+		}
+	}()
 
 	subRepo := repository.NewSubscriptionRepo(db)
 	githubClient := clients.NewGitHubClient(redisClient, cfg.GithubToken)
@@ -103,7 +113,7 @@ func main() {
 		Github:         githubClient,
 		EmailChan:      emailChan,
 		EmailSecretKey: cfg.EmailSecretKey,
-		BaseUrl:        cfg.BaseURL,
+		BaseURL:        cfg.BaseURL,
 	})
 
 	grpcServer := grpc.NewServer()
@@ -113,8 +123,7 @@ func main() {
 	grpcPort := cfg.GrpcPort
 	lis, err := net.Listen("tcp", ":"+grpcPort)
 	if err != nil {
-		slog.Error("grpc server listen", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("listen on gRPC port: %w", err)
 	}
 
 	wg.Add(1)
@@ -137,26 +146,31 @@ func main() {
 		}),
 	)
 
-	gwMux.HandlePath("GET", "/swagger.json", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
+	if err := gwMux.HandlePath("GET", "/swagger.json", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
 		http.ServeFile(w, r, "gen/subscription/v1/subscription.swagger.json")
-	})
+	}); err != nil {
+		return fmt.Errorf("register route GET /swagger.json: %w", err)
+	}
 
-	gwMux.HandlePath("GET", "/health", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
+	if err := gwMux.HandlePath("GET", "/health", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	}); err != nil {
+		return fmt.Errorf("register route GET /health: %w", err)
+	}
 
-	gwMux.HandlePath("GET", "/", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
+	if err := gwMux.HandlePath("GET", "/", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(indexHTML)
-	})
+	}); err != nil {
+		return fmt.Errorf("register route GET /: %w", err)
+	}
 
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	err = pb.RegisterSubscribeServiceHandlerFromEndpoint(ctx, gwMux, "localhost:"+grpcPort, opts)
 	if err != nil {
-		slog.Error("failed to register gRPC-Gateway", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("register gRPC-Gateway: %w", err)
 	}
 
 	mux := http.NewServeMux()
@@ -199,4 +213,5 @@ func main() {
 
 	wg.Wait()
 	slog.Info("shutdown complete")
+	return nil
 }

@@ -1,3 +1,4 @@
+// Package config handles environment variable loading and infrastructure client initialisation with retry.
 package config
 
 import (
@@ -23,6 +24,7 @@ type AppConfig struct {
 	EmailChannelSize int
 }
 
+// LoadAppConfig reads all configuration from environment variables and returns a validated AppConfig.
 func LoadAppConfig() (*AppConfig, error) {
 	cfg := &AppConfig{
 		RestPort:         envOrDefault("REST_PORT", "8080"),

@@ -8,18 +8,14 @@ import (
 	"regexp"
 	"strings"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 )
 
 var repoPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`)
-
-type subscribeRequest struct {
-	Email string `json:"email"`
-	Repo  string `json:"repo"`
-}
 
 // Subscribe handles POST /api/subscribe.
 // It validates the request, confirms the repo exists on GitHub, persists the
@@ -43,7 +39,8 @@ func (s *SubscriptionService) Subscribe(
 		if errors.Is(err, domain.ErrRepoNotFound) {
 			return nil, status.Error(codes.NotFound, "repository not found on GitHub")
 		}
-		if rle, ok := domain.AsRateLimitError(err); ok {
+		var rle *domain.RateLimitError
+		if errors.As(err, &rle) {
 			return nil, handleRateLimitError(ctx, rle)
 		}
 		slog.Error("subscribe: validate repo", "repo", req.Repo, "err", err)
@@ -69,8 +66,8 @@ func (s *SubscriptionService) Subscribe(
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	confirmURL := fmt.Sprintf("%s/api/confirm/%s", s.deps.BaseUrl, confirmToken)
-	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", s.deps.BaseUrl, unsubToken)
+	confirmURL := fmt.Sprintf("%s/api/confirm/%s", s.deps.BaseURL, confirmToken)
+	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", s.deps.BaseURL, unsubToken)
 
 	select {
 	case s.deps.EmailChan <- buildConfirmEmail(req.Email, req.Repo, confirmURL, unsubURL):

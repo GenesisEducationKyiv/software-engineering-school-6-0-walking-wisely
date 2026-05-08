@@ -5,13 +5,14 @@ import (
 	"errors"
 	"log/slog"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
 )
 
-// Confirm handles GET /api/confirm/{token}.
+// ConfirmSubscription handles GET /api/confirm/{token}.
 // The token embedded in the confirmation email is the sole auth credential -
 // it is HMAC-SHA256 signed and cannot be guessed without the secret key.
 func (s *SubscriptionService) ConfirmSubscription(ctx context.Context, req *pb.ConfirmSubscriptionRequest) (*pb.ConfirmSubscriptionResponse, error) {

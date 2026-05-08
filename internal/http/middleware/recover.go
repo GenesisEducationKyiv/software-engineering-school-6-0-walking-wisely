@@ -11,10 +11,10 @@ func Recover(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				slog.Error("panic recovered",
+				slog.Error("panic recovered", // #nosec G706 -- values are sanitized to strip control characters.
 					"panic", rec,
-					"method", r.Method,
-					"path", r.URL.Path,
+					"method", sanitizeLogValue(r.Method),
+					"path", sanitizeLogValue(r.URL.Path),
 				)
 				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 			}

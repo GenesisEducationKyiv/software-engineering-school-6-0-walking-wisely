@@ -2,6 +2,7 @@ package workers
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -48,7 +49,8 @@ func StartSender(
 			}
 			chunk := toSend[i:end]
 			if err := resend.SendBatch(flushCtx, chunk); err != nil {
-				if rle, ok := domain.AsRateLimitError(err); ok {
+				var rle *domain.RateLimitError
+				if ok := errors.As(err, &rle); ok {
 					slog.Warn("sender: resend rate limited, dropping batch",
 						"batch_size", len(chunk), "retry_after", rle.RetryAfter)
 				} else {
@@ -64,7 +66,7 @@ func StartSender(
 		case msg, ok := <-emailChan:
 			if !ok {
 				// Channel closed - flush and exit.
-				flushWith(context.Background())
+				flushWith(ctx)
 				slog.Info("sender stopped (channel closed)")
 				return
 			}
@@ -80,8 +82,7 @@ func StartSender(
 			// Drain any messages already in the channel before shutting down.
 			// Use a fresh background context so the final HTTP calls are not
 			// cancelled immediately.
-			drainCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
+			drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 		drain:
 			for {
 				select {
@@ -95,6 +96,7 @@ func StartSender(
 				}
 			}
 			flushWith(drainCtx)
+			cancel()
 			slog.Info("sender stopped")
 			return
 		}

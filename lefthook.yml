@@ -4,7 +4,7 @@ pre-commit:
   commands:
     fmt:
       glob: "*.go"
-      run: goimports -w {staged_files} && git add {staged_files}
+      run: goimports -w {staged_files} && gofumpt -w {staged_files} && git add {staged_files}
 
     vet:
       glob: "*.go"

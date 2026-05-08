@@ -35,6 +35,7 @@ type ResendClient struct {
 	fromEmail string
 }
 
+// NewResendClient returns a ResendClient that delivers email via the Resend batch API.
 func NewResendClient(apiKey, fromEmail string) *ResendClient {
 	return &ResendClient{
 		http:      &http.Client{Timeout: 15 * time.Second},
@@ -76,7 +77,13 @@ func (c *ResendClient) SendBatch(ctx context.Context, messages []domain.EmailMes
 	if err != nil {
 		return fmt.Errorf("resend request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		closeErr := resp.Body.Close()
+		if err != nil {
+			slog.Warn("close resend response body", "err", closeErr)
+			err = closeErr
+		}
+	}()
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated:

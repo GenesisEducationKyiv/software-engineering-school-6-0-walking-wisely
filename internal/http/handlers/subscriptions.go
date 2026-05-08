@@ -5,9 +5,10 @@ import (
 	"log/slog"
 	"strings"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
 
 // GetSubscriptions handles GET /api/subscriptions?email=...
@@ -26,7 +27,8 @@ func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetS
 
 	resp := make([]*pb.Subscription, 0, len(subs))
 
-	for _, s := range subs {
+	for i := range subs {
+		s := subs[i]
 		lastSeenTag := ""
 		if s.LastSeenTag != nil {
 			lastSeenTag = *s.LastSeenTag

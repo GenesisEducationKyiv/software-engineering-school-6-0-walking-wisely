@@ -1,7 +1,9 @@
+// Package workers contains the background goroutines that scan GitHub for new releases and dispatch notification emails.
 package workers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -62,7 +64,8 @@ func runScan(ctx context.Context, deps ScannerDeps) {
 func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	release, err := deps.GitHub.GetLatestRelease(ctx, repo)
 	if err != nil {
-		if rle, ok := domain.AsRateLimitError(err); ok {
+		var rle *domain.RateLimitError
+		if ok := errors.As(err, &rle); ok {
 			slog.Warn("scanner: github rate limited, skipping repo",
 				"repo", repo, "retry_after", rle.RetryAfter)
 		} else {
@@ -78,7 +81,8 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	}
 
 	var notified int
-	for _, sub := range subscribers {
+	for i := range subscribers {
+		sub := &subscribers[i]
 		if sub.LastSeenTag != nil && *sub.LastSeenTag == release.TagName {
 			continue // already notified about this release
 		}
@@ -103,7 +107,7 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	}
 }
 
-func buildReleaseEmail(sub domain.Subscription, release *clients.Release, baseURL string) domain.EmailMessage {
+func buildReleaseEmail(sub *domain.Subscription, release *clients.Release, baseURL string) domain.EmailMessage {
 	releaseName := release.TagName
 	if release.Name != "" {
 		releaseName = release.Name
