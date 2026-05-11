@@ -41,8 +41,9 @@ Confirmation та unsubscribe flow мають працювати як link-based
 
 ### Затримка сповіщень
 
-- Від появи релізу на GitHub до виявлення системою і початку delivery pipeline — **не більше одного polling interval, тобто близько 10 хвилин** за нормальних умов.
-- Фактичне отримання email користувачем додатково залежить від Sender-а та email-провайдера; у normal path воно очікується одразу після виявлення, але не є строго гарантованим 10-хвилинним bound-ом у current-state архітектурі.
+- Підписники мають отримувати сповіщення про релізи reliably та достатньо вчасно для практичного використання системи.
+- Система має прагнути надсилати сповіщення якомога ближче до моменту появи релізу, з урахуванням частоти релізів, GitHub API rate limits, поточного backlog delivery pipeline та доступності email-провайдера.
+- Фактичне отримання email користувачем залежить від виявлення релізу, Sender-а та email-провайдера; у normal path воно очікується невдовзі після виявлення релізу.
 
 ### Масштабованість
 
@@ -71,8 +72,8 @@ Confirmation та unsubscribe flow мають працювати як link-based
 - Активних підписок: 10K; середнє 2–3 підписки на користувача → ~4K користувачів
 - Унікальних репозиторіїв під спостереженням: ~500–700 (при середньому 14–20 підписок/репо)
 - API запити (підписка / підтвердження / відписка): ~20 RPS у пік
-- Опитування GitHub Releases API (інтервал 10 хв): ~0.8–1.2 RPS → ~3K–4.2K req/год
-- Ліміт authenticated GitHub API: 5K req/год на один token; повний scan кожні 10 хвилин теоретично дозволяє до ~833 repo, але цільові 500–700 repo залишають operational margin для валідації репозиторіїв, retry та secondary rate limits.
+- Опитування GitHub Releases API: обсяг залежить від кількості унікальних репозиторіїв, частоти перевірок і частоти релізів; перевірки мають плануватися в межах доступного GitHub API budget.
+- Ліміт authenticated GitHub API: 5K req/год на один token; Scanner має залишати operational margin для subscribe-time validation, ручних операцій, retry та secondary rate limits.
 - Email-сповіщень: залежить від частоти релізів — важко передбачити
 
 ### Дані
@@ -85,10 +86,10 @@ Confirmation та unsubscribe flow мають працювати як link-based
 ### Bandwidth
 
 - Incoming: < 0.1 Mbps (текстові API-запити)
-- Outgoing до GitHub API: ~5KB × 1.2 RPS ≈ 0.05 Mbps
+- Outgoing до GitHub API: залежить від частоти перевірок репозиторіїв; для текстових API-відповідей bandwidth не є основним обмеженням
 - Outgoing emails: через SMTP-провайдера — не наш bottleneck
 
-**Висновок:** система не є storage- чи bandwidth-інтенсивною. Основне архітектурне обмеження — ліміт GitHub API (5K req/год на один токен). При ~500–700 унікальних репозиторіях і 10-хвилинному інтервалі polling система потребує ~3K–4.2K req/год, що вкладається в стандартний authenticated limit із помірним запасом. Для цього Scanner має виконувати polling per repository, а не per subscription, і бути rate-budget aware, як описано в ADR-001.
+**Висновок:** система не є storage- чи bandwidth-інтенсивною. Основне архітектурне обмеження — ліміт GitHub API (5K req/год на один токен). Повний частий scan для ~500-700 унікальних репозиторіїв може швидко вичерпати доступний rate budget і залишити замалий запас для росту. Тому Scanner має виконувати polling per repository, а не per subscription, використовувати conditional requests і бути rate-budget aware.
 
 # 3. C4 Component Diagram
 
