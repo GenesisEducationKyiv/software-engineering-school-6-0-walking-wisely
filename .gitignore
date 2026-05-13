@@ -37,3 +37,6 @@ gen/
 
 # Temporary files
 tmp/
+
+# Local planning notes for future architecture
+docs/target-state.todo.md

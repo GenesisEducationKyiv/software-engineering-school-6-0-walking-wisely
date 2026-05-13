@@ -1,95 +1,97 @@
 # 1. Вимоги системи
 
-## Current vs Target scope
-
-Цей документ описує цільову production-архітектуру системи. Поточна реалізація є навчальним/ітераційним зрізом, у якому частина production-гарантій свідомо відкладена через обмеження часу.
-
-Найважливіша різниця:
-
-- **Current:** Scanner передає release notification email-повідомлення Sender-у через in-memory channel. Confirmation email надсилається API Server-ом напряму через Email Provider Integration. Обидва шляхи є best-effort і можуть втратити повідомлення при падінні процесу або довгому outage email-провайдера.
-- **Target:** delivery pipeline для release notification emails має використовувати persistent email outbox або transactional outbox у PostgreSQL. Це потрібно для at-least-once delivery, durable retry, backoff і dead-letter статусів. Confirmation emails можуть пізніше перейти на той самий outbox, але це не є обов'язковою умовою першого production-oriented кроку.
-
-C4 component diagram відображає **target-state** архітектуру з PostgreSQL email outbox для release notification emails. Детальна outbox-специфікація описана окремо в [email-outbox-spec.md](email-outbox-spec.md).
-
 ## Функціональні вимоги
 
 1. Користувач може підписатися на сповіщення про нові релізи GitHub-репозиторію, вказавши email та репозиторій у форматі `owner/repo`.
-2. Підписка активується лише після підтвердження email через одноразове посилання (double opt-in).
-3. Користувач може відписатися від конкретного репозиторію через посилання в кожному сповіщенні — без логіну.
-4. Користувач може переглянути перелік своїх активних підписок за email.
-5. При появі нового релізу на GitHub усі підписники цього репозиторію отримують email-сповіщення.
+2. Підписка активується після підтвердження email через одноразове посилання.
+3. Користувач може відписатися від конкретного репозиторію через посилання без логіну.
+4. Користувач може переглянути перелік своїх підписок за email.
+5. При появі нового релізу на GitHub Scanner створює email-сповіщення для підтверджених підписників цього репозиторію.
 
 ## Бізнес-вимоги до API contract
 
-Система має дотримуватися зовнішньо заданої структури публічних HTTP endpoint-ів:
+Публічні HTTP endpoint-и:
 
-- `POST /api/subscribe` — створення підписки.
-- `GET /api/confirm/{token}` — підтвердження підписки через одноразове посилання з email.
-- `GET /api/unsubscribe/{token}` — відписка через одноразове посилання з email.
-- `GET /api/subscriptions?email={email}` — перегляд підписок за email.
+```text
+POST /api/subscribe
+GET  /api/confirm/{token}
+GET  /api/unsubscribe/{token}
+GET  /api/subscriptions?email={email}
+GET  / - вебсторінка з формою підписки
+```
 
-Confirmation та unsubscribe flow мають працювати як link-based сценарії без логіну, пароля або додаткової взаємодії з боку користувача. Тому confirmation endpoint заданий саме як `GET /api/confirm/{token}`.
+Confirmation та unsubscribe flow працюють як link-based сценарії без логіну, пароля або додаткової взаємодії з боку користувача.
 
 ## Нефункціональні вимоги
 
 ### Надійність доставки
 
-- Кожне сповіщення про реліз має бути доставлене at-least-once. Дублікат допустимий, втрата — ні.
-- Тимчасова недоступність email-провайдера не повинна призводити до втрати сповіщень.
-
-Це **target requirement**. Поточна in-memory реалізація не виконує цю вимогу повністю; вона прийнята як тимчасовий компроміс через обмеження часу та простоту реалізації.
+- Email delivery виконується за best-effort моделлю.
+- Система має ізолювати API Server і Scanner від прямої залежності на latency email-провайдера через асинхронний delivery pipeline.
+- Система має логувати помилки постановки або доставки email-повідомлень без запису email-адрес у logs.
+- Durable at-least-once delivery не є вимогою цього дизайну; втрата email допускається при падінні процесу, перевантаженні delivery pipeline або помилці email-провайдера.
 
 ### Затримка сповіщень
 
-- Підписники мають отримувати сповіщення про релізи reliably та достатньо вчасно для практичного використання системи.
-- Система має прагнути надсилати сповіщення якомога ближче до моменту появи релізу, з урахуванням частоти релізів, GitHub API rate limits, поточного backlog delivery pipeline та доступності email-провайдера.
-- Фактичне отримання email користувачем залежить від виявлення релізу, Sender-а та email-провайдера; у normal path воно очікується невдовзі після виявлення релізу.
+- Система має періодично перевіряти GitHub repositories, на які є підтверджені підписки.
+- Затримка виявлення release визначається інтервалом scanner-а і короткочасним кешуванням GitHub latest release.
+- Після виявлення release система має передати notification email у delivery pipeline без синхронного очікування відповіді email-провайдера.
+- Фактичне отримання email користувачем залежить від scanner-а, Sender-а та доступності email-провайдера.
 
 ### Масштабованість
 
-- Система має підтримувати >=10 000 активних підписок без деградації продуктивності.
+- Система має підтримувати до 10 000 активних підписок у межах навчального навантаження.
+- GitHub polling має масштабуватися за кількістю унікальних repositories, а не за кількістю підписок.
+- Fixed-interval polling має працювати в межах доступного GitHub API rate limit; при рості кількості унікальних repositories саме GitHub API budget є основним обмеженням.
 
 ### Доступність
 
-- HTTP API: **99.9% uptime**.
-- Недоступність GitHub або email-провайдера не повинна впливати на API підписок/відписок — система деградує gracefully.
+- HTTP API має залишатися доступним для read/delete операцій підписок незалежно від стану GitHub polling.
+- Створення нової підписки може залежати від доступності GitHub, бо система перевіряє існування repository перед збереженням subscription.
+- Недоступність GitHub не має зупиняти весь scanner; помилка одного repository не блокує перевірку інших repositories.
+- Недоступність email-провайдера не має блокувати HTTP API після передачі повідомлення в delivery pipeline.
 
 ### Ідемпотентність
 
-- Повторний запит на підписку з тим самим email і репозиторієм не створює дублікат.
-- Повторне підтвердження через той самий токен є безпечною операцією.
+- Повторний запит на підписку з тим самим email і repository не має створювати дубльовану confirmed subscription.
+- Повторний subscribe для unconfirmed subscription має оновлювати confirmation token.
+- Повторне підтвердження через той самий token має бути безпечним і не створювати додаткових записів.
 
 ### Безпека
 
-- Токени підтвердження та відписки мають бути криптографічно стійкими та не передбачуваними.
-- Перегляд підписок виконується через поточний бізнес-флоу `GET /api/subscriptions?email={email}` без логіну.
-- Публічні endpoints мають бути захищені від зловживань.
+- Confirmation та unsubscribe tokens мають бути непередбачуваними і підписаними.
+- Confirmation та unsubscribe flows мають працювати без логіну через одноразові link tokens.
+- Перегляд підписок виконується через `GET /api/subscriptions?email={email}` відповідно до заданого API contract.
+- Logs не мають містити email-адреси в критичних місцях; для діагностики потрібно використовувати repository або subscription id.
 
 # 2. Оцінка навантаження
 
 ### Користувачі та трафік
 
-- Активних підписок: 10K; середнє 2–3 підписки на користувача → ~4K користувачів
-- Унікальних репозиторіїв під спостереженням: ~500–700 (при середньому 14–20 підписок/репо)
-- API запити (підписка / підтвердження / відписка): ~20 RPS у пік
-- Опитування GitHub Releases API: обсяг залежить від кількості унікальних репозиторіїв, частоти перевірок і частоти релізів; перевірки мають плануватися в межах доступного GitHub API budget.
-- Ліміт authenticated GitHub API: 5K req/год на один token; Scanner має залишати operational margin для subscribe-time validation, ручних операцій, retry та secondary rate limits.
-- Email-сповіщень: залежить від частоти релізів — важко передбачити
+- Активних підписок: орієнтир до 10K.
+- Унікальних репозиторіїв під спостереженням: приблизно 500-700 за умови, що багато користувачів підписані на однакові repo.
+- API запити підписки, підтвердження, відписки та перегляду: очікувано невеликі порівняно з GitHub polling.
+- GitHub API: основне обмеження для обраного polling-дизайну.
 
 ### Дані
 
-- Запис користувача: ~200 bytes (email + timestamps)
-- Запис підписки: ~400 bytes (email + repo + 2 токени × 32 bytes + timestamps)
-- Стан репозиторію (last seen release): ~100 bytes
-- Загальний обсяг при 10K підписок: ~5MB — тривіально
+Поточна storage-модель складається з таблиці `subscriptions`, яка містить:
 
-### Bandwidth
+- `email`;
+- `repo`;
+- `confirmed`;
+- `confirm_token`;
+- `unsubscribe_token`;
+- `last_seen_tag`;
+- timestamps.
 
-- Incoming: < 0.1 Mbps (текстові API-запити)
-- Outgoing до GitHub API: залежить від частоти перевірок репозиторіїв; для текстових API-відповідей bandwidth не є основним обмеженням
-- Outgoing emails: через SMTP-провайдера — не наш bottleneck
+Індекси підтримують унікальність `(email, repo)`, lookup за tokens, scanner queries по confirmed repo та lookup за email.
 
-**Висновок:** система не є storage- чи bandwidth-інтенсивною. Основне архітектурне обмеження — ліміт GitHub API (5K req/год на один токен). Повний частий scan для ~500-700 унікальних репозиторіїв може швидко вичерпати доступний rate budget і залишити замалий запас для росту. Тому Scanner має виконувати polling per repository, а не per subscription, використовувати conditional requests і бути rate-budget aware.
+### GitHub API budget
+
+Поточний Scanner робить один latest-release запит на унікальний confirmed repo за scan cycle, якщо відповідь не знайдена в Redis cache.
+
+Для 500-700 унікальних repo і 10-хвилинного scan interval це може створити до 3000-4200 перевірок на годину без урахування cache hits. Це близько до authenticated GitHub API limit у 5000 запитів на годину, тому fixed-interval polling має обмежений запас для росту.
 
 # 3. C4 Component Diagram
 
@@ -97,101 +99,94 @@ Confirmation та unsubscribe flow мають працювати як link-based
 
 # 4. Детальний дизайн компонентів
 
-## 4.1 API Server (Go / HTTP + gRPC)
+## 4.1 API Server
 
 **Відповідальність:**
 
-- Обробка REST API запитів через gRPC-Gateway.
-- Обробка gRPC запитів сервісу підписок.
-- Валідація email, GitHub repository path та токенів.
+- Обробка REST/gRPC endpoint-ів підписок.
+- Валідація email, GitHub repository path та token format.
+- GitHub repository validation при створенні підписки.
 - Створення, підтвердження, перегляд і скасування підписок.
-- Відправлення confirmation email після створення підписки.
+- Постановка confirmation email в in-memory channel.
 
 **Endpoints:**
-
-Публічні endpoint-и мають відповідати бізнес-вимозі до API contract:
 
 ```text
 POST /api/subscribe
 GET  /api/confirm/{token}
 GET  /api/unsubscribe/{token}
 GET  /api/subscriptions?email={email}
-GET  / - вебсторінка з формою підписки (опціонально)
+GET  /
 ```
-
-**Масштабування:** горизонтальне масштабування HTTP/gRPC інстансів можливе за умови спільної PostgreSQL бази та стабільного `EMAIL_SECRET_KEY`. Якщо додається кеш для валідації репозиторіїв, він має бути спільним між інстансами або мати короткий TTL, але Scanner не має покладатися на stale response cache для release detection.
 
 ## 4.2 Scanner Worker
 
 **Відповідальність:**
 
-- Виявлення нових релізів у репозиторіях, на які є підтверджені підписки.
-- Ізоляція інтеграції з GitHub від API Server.
-- Durable створення подій про нові релізи в email outbox перед оновленням стану репозиторію.
-- Підтримка стану перевірки репозиторіїв, щоб не надсилати повторні сповіщення про вже оброблені релізи.
+- Періодично перевіряти GitHub repositories, на які є підтверджені підписки.
+- Отримувати інформацію про latest release через GitHub API Client.
+- Визначати підписників, яким потрібно надіслати notification email.
+- Передавати release notification emails у delivery pipeline.
+- Оновлювати стан обробленого release, щоб не надсилати повторні сповіщення про той самий release.
 
-**Взаємодії:**
+**Обмеження:**
 
-- Читає перелік активних репозиторіїв з PostgreSQL.
-- Отримує інформацію про релізи через GitHub API Client.
-- Створює notification events в email outbox перед оновленням стану останнього обробленого релізу.
-- Оновлює стан останнього обробленого релізу в PostgreSQL.
-
-**Масштабування:** за горизонтального масштабування scanner-компонента потрібна координація обробки репозиторіїв, щоб один репозиторій не перевірявся кількома інстансами одночасно.
+- Немає окремої таблиці release state.
+- Немає durable створення notification events.
+- Немає координації кількох scanner instances.
+- При перевантаженні delivery pipeline notification може бути втрачений.
 
 ## 4.3 Sender Worker
 
 **Відповідальність:**
 
-- Доставка email-сповіщень, сформованих після виявлення нового GitHub release.
-- Ізоляція email-провайдера від Scanner Worker.
-- Контроль пропускної здатності доставки, щоб не перевищувати ліміти провайдера.
-- Експорт операційних метрик для моніторингу delivery pipeline.
+- Читати email messages з delivery pipeline.
+- Групувати повідомлення для ефективної відправки.
+- Надсилати batch через Email Provider Integration.
+- Логувати помилки доставки.
 
-**Взаємодії:**
+**Обмеження:**
 
-- Отримує pending notification events з email outbox.
-- Надсилає email через Email Provider Integration.
-- Публікує метрики стану черги та доставки.
-
-**Надійність:** у target-state Sender отримує події з persistent queue або transactional outbox, щоб release notification events не втрачалися при рестарті процесу. Цільова outbox-специфікація описана в [email-outbox-spec.md](email-outbox-spec.md).
+- Немає durable retry.
+- Failed messages не повертаються в персистентну queue.
+- Graceful shutdown може зменшити ризик втрати buffered messages, але не є durable гарантією.
 
 ## 4.4 GitHub API Client
 
 **Відповідальність:**
 
 - Валідація існування репозиторію при підписці.
-- Отримання latest release для scanner worker.
-- Обробка GitHub `404`, `403` та `429` відповідей.
-- Повернення `Retry-After` при rate-limit сценаріях.
+- Отримання latest release для Scanner-а.
+- Короткочасне кешування latest release.
+- Обробка GitHub помилок, зокрема repository not found і rate-limit сценаріїв.
+- Передача інформації про retry timing, якщо GitHub її надає.
 
-**Caching strategy:**
-
-- **Release polling:** Scanner має використовувати conditional requests через `ETag` / `If-Modified-Since`, а cache metadata зберігати разом зі станом репозиторію в PostgreSQL.
-- **Repository validation:** для subscribe flow може використовуватися короткий in-process або Redis cache за ключем `owner/repo`, але він не має підміняти release polling.
-- **Fallback:** якщо cache metadata відсутня, виконується звичайний запит до GitHub API.
-
-**Rate limiting:**
+**Rate limits:**
 
 ```text
 unauthenticated: 60 requests/hour
-authenticated:   5 000 requests/hour per token
+authenticated:   5000 requests/hour per token
 ```
 
 ## 4.5 Email Provider Integration
 
 **Відповідальність:**
 
-- Відправлення confirmation email після створення підписки.
-- Відправлення release notification emails батчами.
-- Формування unsubscribe link у кожному notification email.
+- Формування provider request для email delivery.
+- Відправлення email через зовнішній email provider.
+- Нормалізація provider errors для Sender-а.
+- Логування успішних batch sends.
 
-**Delivery constraints:**
+Confirmation emails і release notification emails використовують спільний Sender та Email Provider Integration.
 
-- Компонент має враховувати rate limits та batch limits email-провайдера.
-- Confirmation emails і release notification emails мають різні бізнес-сценарії, але використовують спільну Email Provider Integration для формування листів, rate-limit handling і виклику провайдера.
-- У target-state release notification emails проходять через Scanner -> PostgreSQL email outbox -> Sender -> Email Provider Integration.
-- Confirmation email надсилається API Server-ом напряму через Email Provider Integration. Confirmation emails можуть бути додані до outbox окремим рішенням, якщо потрібні такі самі durable retry гарантії.
-- Кожен release notification email має містити unsubscribe link.
+# 5. Заплановані покращення
 
-**Fallback:** при тимчасовій недоступності email-провайдера потрібен retry mechanism на рівні delivery pipeline; без persistent queue гарантія at-least-once не виконується повністю.
+Ці покращення не входять до цього дизайну, але є наступними кроками для посилення його нефункціональних вимог.
+
+- **Надійність доставки:** перейти від best-effort email delivery до at-least-once delivery для release notifications. Це посилить гарантію, що тимчасовий збій процесу або email-провайдера не призводить до безповоротної втрати notification.
+- **Надійність доставки:** додати контрольовану поведінку для повторних спроб і фінальних помилок доставки. Система має розрізняти тимчасові та невідновні проблеми й давати операційний спосіб побачити, які повідомлення не були доставлені.
+- **Затримка сповіщень:** зробити release detection більш передбачуваним при різній активності repositories. Система має чіткіше визначати очікувану затримку між появою release на GitHub і створенням notification.
+- **Масштабованість:** зменшити залежність GitHub polling від fixed interval для всіх repositories. Система має краще витримувати ріст кількості унікальних repositories без непропорційного росту GitHub API usage.
+- **Доступність:** покращити деградацію при тимчасових збоях GitHub. Недоступність GitHub або rate limit не мають створювати неконтрольований backlog, retry storm або блокування unrelated repositories.
+- **Спостережуваність:** додати кращу видимість стану background processing. Оператори мають бачити затримку scanner-а, стан delivery pipeline, кількість помилок, retry і найстаріші pending work items.
+- **Масштабованість інтеграції з GitHub:** розглянути альтернативні способи отримання release events або збільшення GitHub API budget для repositories, де це можливо. Конкретний механізм має бути визначений окремим ADR.
