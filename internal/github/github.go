@@ -5,18 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
-
-const githubReleaseCacheTTL = 10 * time.Minute
 
 // Release holds the fields we care about from a GitHub release object.
 type Release struct {
@@ -25,73 +22,67 @@ type Release struct {
 	Name    string `json:"name"`
 }
 
-// GitHubClient wraps the GitHub REST API with Redis-backed caching and
-// transparent rate-limit error propagation.
-type GitHubClient struct {
+// Client wraps the GitHub REST API and maps responses to domain errors.
+type Client struct {
 	http  *http.Client
-	redis *redis.Client
 	token string // optional Bearer token for higher rate limits
 }
 
-// NewGitHubClient returns a GitHubClient backed by redisClient for caching. githubToken is optional
-// but raises the GitHub API rate limit from 60 to 5 000 requests per hour when provided.
-func NewGitHubClient(redisClient *redis.Client, githubToken string) *GitHubClient {
-	return &GitHubClient{
+// NewClient returns a GitHub API client. githubToken is optional but raises the
+// GitHub API rate limit from 60 to 5 000 requests per hour when provided.
+func NewClient(githubToken string) *Client {
+	return &Client{
 		http:  &http.Client{Timeout: 10 * time.Second},
-		redis: redisClient,
 		token: githubToken,
 	}
 }
 
 // GetLatestRelease returns the latest release for a repo in "owner/repo" format.
-// Results are cached in Redis for githubReleaseCacheTTL (10 minutes).
 // Returns subscriptions.ErrRepoNotFound on 404, or *subscriptions.RateLimitError on 429/403.
-func (c *GitHubClient) GetLatestRelease(ctx context.Context, repo string) (*Release, error) {
-	cacheKey := "github:release:" + repo
-
-	if cached, err := c.redis.Get(ctx, cacheKey).Bytes(); err == nil {
-		var r Release
-		if err := json.Unmarshal(cached, &r); err == nil {
-			slog.Debug("github release cache hit", "repo", repo)
-			return &r, nil
-		}
-	}
-
+func (c *Client) GetLatestRelease(ctx context.Context, repo string) (*Release, error) {
 	owner, name, err := splitRepo(repo)
 	if err != nil {
 		return nil, err
 	}
 
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, name)
-	release, err := c.doRequest(ctx, url, repo)
+	resp, err := c.get(ctx, url)
 	if err != nil {
 		return nil, err
 	}
+	defer closeBody(resp.Body)
 
-	if data, err := json.Marshal(release); err == nil {
-		if err := c.redis.Set(ctx, cacheKey, data, githubReleaseCacheTTL).Err(); err != nil {
-			slog.Warn("failed to cache github release", "repo", repo, "err", err)
-		}
+	if err := checkStatus(resp, repo); err != nil {
+		return nil, err
+	}
+
+	var release Release
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, fmt.Errorf("decode github release response: %w", err)
 	}
 
 	slog.Debug("github release fetched", "repo", repo, "tag", release.TagName)
-	return release, nil
+	return &release, nil
 }
 
 // ValidateRepo confirms that the repository exists on GitHub. Used during
 // subscription to give the user an immediate 404 rather than a silent failure.
-func (c *GitHubClient) ValidateRepo(ctx context.Context, repo string) error {
+func (c *Client) ValidateRepo(ctx context.Context, repo string) error {
 	owner, name, err := splitRepo(repo)
 	if err != nil {
 		return err
 	}
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, name)
-	_, err = c.doRequest(ctx, url, repo)
-	return err
+	resp, err := c.get(ctx, url)
+	if err != nil {
+		return err
+	}
+	defer closeBody(resp.Body)
+
+	return checkStatus(resp, repo)
 }
 
-// doRequest executes a GET against url and maps GitHub's status codes to domain errors.
-func (c *GitHubClient) doRequest(ctx context.Context, url, repo string) (release *Release, err error) {
+func (c *Client) get(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("build github request: %w", err)
@@ -107,34 +98,32 @@ func (c *GitHubClient) doRequest(ctx context.Context, url, repo string) (release
 		return nil, fmt.Errorf("github request: %w", err)
 	}
 
-	defer func() {
-		closeErr := resp.Body.Close()
-		if err != nil {
-			slog.Warn("close github response body", "err", closeErr)
-			err = closeErr
-		}
-	}()
+	return resp, nil
+}
 
+func checkStatus(resp *http.Response, repo string) error {
 	switch resp.StatusCode {
 	case http.StatusOK:
-		var r Release
-		if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-			return nil, fmt.Errorf("decode github response: %w", err)
-		}
-		return &r, nil
+		return nil
 
 	case http.StatusNotFound:
-		return nil, subscriptions.ErrRepoNotFound
+		return subscriptions.ErrRepoNotFound
 
 	case http.StatusTooManyRequests, http.StatusForbidden:
 		// GitHub uses 403 + X-RateLimit-* for primary rate limits and
 		// 429 + Retry-After for secondary rate limits.
 		retryAfter := parseRetryAfter(resp)
 		slog.Warn("github rate limited", "repo", repo, "retry_after", retryAfter)
-		return nil, &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
+		return &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
 
 	default:
-		return nil, fmt.Errorf("github API unexpected status %d for %s", resp.StatusCode, repo)
+		return fmt.Errorf("github API unexpected status %d for %s", resp.StatusCode, repo)
+	}
+}
+
+func closeBody(body io.Closer) {
+	if err := body.Close(); err != nil {
+		slog.Warn("close github response body", "err", err)
 	}
 }
 

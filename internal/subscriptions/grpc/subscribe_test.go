@@ -21,7 +21,7 @@ const (
 )
 
 func newService(
-	gh subscriptiongrpc.GithubClient,
+	gh subscriptiongrpc.GithubRepoValidator,
 	tokenRepo subscriptiongrpc.SubscriptionTokenWorkflowRepo,
 	readRepo subscriptiongrpc.SubscriptionReadRepo,
 	ch chan subscriptions.EmailMessage,

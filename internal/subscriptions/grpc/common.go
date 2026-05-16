@@ -20,8 +20,8 @@ type SubscriptionReadRepo interface {
 	ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error)
 }
 
-// GithubClient is the GitHub API interface used to validate repositories during subscription.
-type GithubClient interface {
+// GithubRepoValidator validates that a requested repository exists.
+type GithubRepoValidator interface {
 	ValidateRepo(ctx context.Context, repo string) error
 }
 
@@ -29,7 +29,7 @@ type GithubClient interface {
 type ServiceDeps struct {
 	TokenRepo      SubscriptionTokenWorkflowRepo
 	ReadRepo       SubscriptionReadRepo
-	Github         GithubClient
+	Github         GithubRepoValidator
 	EmailChan      chan<- subscriptions.EmailMessage
 	EmailSecretKey string
 	BaseURL        string

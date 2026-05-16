@@ -37,7 +37,7 @@ func (f *fakeSubscriptionRepo) ListByEmail(_ context.Context, _ string) ([]subsc
 	return f.listByEmailResult, f.listByEmailErr
 }
 
-// fakeGithubClient implements GithubClient with a configurable error.
+// fakeGithubClient implements RepositoryValidator with a configurable error.
 type fakeGithubClient struct {
 	validateRepoErr error
 }

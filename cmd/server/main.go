@@ -24,6 +24,7 @@ import (
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
+	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github/redis"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
@@ -77,7 +78,9 @@ func run() error {
 	}()
 
 	subRepo := postgres.NewSubscriptionRepo(db)
-	githubClient := github.NewGitHubClient(redisClient, cfg.GithubToken)
+	githubClient := github.NewClient(cfg.GithubToken)
+	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
+	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL)
 	resendClient := resend.NewResendClient(cfg.ResendAPIKey, cfg.FromEmail)
 
 	emailChan := make(chan subscriptions.EmailMessage, cfg.EmailChannelSize)
@@ -97,7 +100,7 @@ func run() error {
 		defer wg.Done()
 		worker.StartScanner(ctx, worker.ScannerDeps{
 			Repo:      subRepo,
-			GitHub:    githubClient,
+			GitHub:    cachedGithubClient,
 			EmailChan: emailChan,
 			BaseURL:   cfg.BaseURL,
 		}, cfg.ScannerInterval)
