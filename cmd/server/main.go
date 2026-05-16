@@ -114,7 +114,7 @@ func run() error {
 		worker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait)
 	}()
 
-	subService := subscriptiongrpc.NewSubscriptionService(subscriptiongrpc.ServiceDeps{
+	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      subRepo,
 		ReadRepo:       subRepo,
 		Github:         githubClient,

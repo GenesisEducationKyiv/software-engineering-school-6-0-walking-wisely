@@ -15,8 +15,8 @@ import (
 )
 
 // validToken is a well-formed 64-character lowercase hex string that passes
-// isValidToken. The specific value is arbitrary; token-format edge cases are
-// covered exhaustively in TestIsValidToken (helpers_test.go).
+// token validation. The specific value is arbitrary; token-format edge cases are
+// covered exhaustively in the app package validation tests.
 const validToken = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
 
 // ---------------------------------------------------------------------------
@@ -41,8 +41,8 @@ func TestUnsubscribe_Success(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUnsubscribe_InvalidToken(t *testing.T) {
-	// One representative bad token to exercise the isValidToken branch.
-	// Exhaustive token-format cases live in TestIsValidToken (helpers_test.go).
+	// One representative bad token to exercise gRPC status mapping.
+	// Exhaustive token-format cases live in the app package validation tests.
 	repo := &fakeSubscriptionRepo{}
 	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 

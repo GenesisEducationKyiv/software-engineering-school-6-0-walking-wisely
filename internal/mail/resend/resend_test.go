@@ -2,6 +2,7 @@ package resend
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -83,8 +84,8 @@ func TestResendClientSendBatchMapsRateLimit(t *testing.T) {
 		{To: "user@example.com", Subject: "Hello", HTML: "<p>Body</p>"},
 	})
 
-	rle, ok := err.(*subscriptions.RateLimitError)
-	if !ok {
+	var rle *subscriptions.RateLimitError
+	if !errors.As(err, &rle) {
 		t.Fatalf("error = %T, want *subscriptions.RateLimitError", err)
 	}
 	if rle.Service != "Resend" {

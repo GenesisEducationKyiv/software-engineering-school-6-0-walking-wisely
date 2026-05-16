@@ -29,8 +29,8 @@ func TestConfirm_HappyPath(t *testing.T) {
 }
 
 func TestConfirm_InvalidToken(t *testing.T) {
-	// One representative bad token to exercise the isValidToken branch.
-	// Exhaustive token-format cases live in TestIsValidToken (helpers_test.go).
+	// One representative bad token to exercise gRPC status mapping.
+	// Exhaustive token-format cases live in the app package validation tests.
 	repo := &fakeSubscriptionRepo{}
 	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 

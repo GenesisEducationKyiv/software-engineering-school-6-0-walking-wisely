@@ -2,29 +2,23 @@
 package subscriptiongrpc
 
 import (
-	"context"
-
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
-// SubscriptionTokenWorkflowRepo stores token-mediated subscription lifecycle changes.
+// SubscriptionTokenWorkflowRepo provides the token-mediated operations needed by subscription use cases.
 type SubscriptionTokenWorkflowRepo interface {
-	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) error
-	ConfirmByToken(ctx context.Context, token string) (id string, err error)
-	UnsubscribeByToken(ctx context.Context, token string) (id string, err error)
+	subscriptionapp.SubscriptionWriter
+	subscriptionapp.ConfirmationRepo
+	subscriptionapp.UnsubscribeRepo
 }
 
 // SubscriptionReadRepo reads subscription state for the gRPC API.
-type SubscriptionReadRepo interface {
-	ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error)
-}
+type SubscriptionReadRepo = subscriptionapp.SubscriptionReader
 
 // GithubRepoValidator validates that a requested repository exists.
-type GithubRepoValidator interface {
-	ValidateRepo(ctx context.Context, repo string) error
-}
+type GithubRepoValidator = subscriptionapp.GithubRepoValidator
 
 // ServiceDeps bundles the external dependencies injected into SubscriptionService.
 type ServiceDeps struct {
@@ -39,10 +33,24 @@ type ServiceDeps struct {
 // SubscriptionService implements the gRPC SubscribeServiceServer interface.
 type SubscriptionService struct {
 	pb.UnimplementedSubscribeServiceServer
-	deps ServiceDeps
+	subscribeUseCase   *subscriptionapp.SubscribeService
+	confirmUseCase     *subscriptionapp.ConfirmService
+	unsubscribeUseCase *subscriptionapp.UnsubscribeService
+	listUseCase        *subscriptionapp.ListService
 }
 
 // NewSubscriptionService constructs a SubscriptionService with the provided dependencies.
-func NewSubscriptionService(deps ServiceDeps) *SubscriptionService {
-	return &SubscriptionService{deps: deps}
+func NewSubscriptionService(deps *ServiceDeps) *SubscriptionService {
+	return &SubscriptionService{
+		subscribeUseCase: subscriptionapp.NewSubscribeService(subscriptionapp.SubscribeDeps{
+			Repo:           deps.TokenRepo,
+			Github:         deps.Github,
+			EmailChan:      deps.EmailChan,
+			EmailSecretKey: deps.EmailSecretKey,
+			BaseURL:        deps.BaseURL,
+		}),
+		confirmUseCase:     subscriptionapp.NewConfirmService(deps.TokenRepo),
+		unsubscribeUseCase: subscriptionapp.NewUnsubscribeService(deps.TokenRepo),
+		listUseCase:        subscriptionapp.NewListService(deps.ReadRepo),
+	}
 }

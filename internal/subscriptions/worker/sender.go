@@ -38,7 +38,7 @@ func StartSender(
 		case msg, ok := <-emailChan:
 			if !ok {
 				// Channel closed - flush and exit.
-				buf = flushBuffer(ctx, sender, buf, batchSize)
+				flushBuffer(ctx, sender, buf, batchSize)
 				slog.Info("sender stopped (channel closed)")
 				return
 			}

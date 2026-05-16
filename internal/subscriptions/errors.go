@@ -16,6 +16,15 @@ var (
 
 	// ErrRepoNotFound is returned when GitHub reports the repository does not exist.
 	ErrRepoNotFound = errors.New("repository not found on GitHub")
+
+	// ErrInvalidEmail is returned when an email address fails subscription validation.
+	ErrInvalidEmail = errors.New("invalid email format")
+
+	// ErrInvalidRepo is returned when a repository name fails subscription validation.
+	ErrInvalidRepo = errors.New("invalid repo format, expected owner/repo")
+
+	// ErrInvalidToken is returned when a token fails subscription validation.
+	ErrInvalidToken = errors.New("invalid token format")
 )
 
 // RateLimitError is returned by external clients (GitHub, Resend) when the API

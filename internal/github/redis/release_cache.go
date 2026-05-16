@@ -4,6 +4,7 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -26,7 +27,7 @@ func NewGitHubReleaseCache(client *goredis.Client) *GitHubReleaseCache {
 // when no usable cached value exists.
 func (c *GitHubReleaseCache) GetRelease(ctx context.Context, repo string) (*github.Release, bool, error) {
 	data, err := c.client.Get(ctx, releaseKey(repo)).Bytes()
-	if err == goredis.Nil {
+	if errors.Is(err, goredis.Nil) {
 		return nil, false, nil
 	}
 	if err != nil {

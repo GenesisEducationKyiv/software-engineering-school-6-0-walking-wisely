@@ -2,25 +2,24 @@ package subscriptiongrpc
 
 import (
 	"context"
+	"errors"
 	"log/slog"
-	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // GetSubscriptions handles GET /api/subscriptions?email=...
 // Tokens are never included in the response.
 func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetSubscriptionsRequest) (*pb.GetSubscriptionsResponse, error) {
-	email := strings.TrimSpace(strings.ToLower(req.Email))
-	if !isValidEmail(email) {
-		return nil, status.Error(codes.InvalidArgument, "invalid email format")
-	}
-
-	subs, err := s.deps.ReadRepo.ListByEmail(ctx, email)
+	subs, err := s.listUseCase.ListByEmail(ctx, req.Email)
 	if err != nil {
+		if errors.Is(err, subscriptions.ErrInvalidEmail) {
+			return nil, status.Error(codes.InvalidArgument, "invalid email format")
+		}
 		slog.Error("subscriptions: list failed", "err", err)
 		return nil, status.Error(codes.Internal, "internal error")
 	}

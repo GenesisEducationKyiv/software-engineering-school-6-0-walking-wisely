@@ -15,7 +15,7 @@ import (
 func strPtr(s string) *string { return &s }
 
 // ---------------------------------------------------------------------------
-// Email validation wiring — two cases only; exhaustive logic lives in helpers_test.go.
+// Email validation wiring — two cases only; exhaustive logic lives in app validation tests.
 // ---------------------------------------------------------------------------
 
 func TestGetSubscriptions_EmailValidation(t *testing.T) {
