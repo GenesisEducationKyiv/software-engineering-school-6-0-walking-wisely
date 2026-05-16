@@ -27,6 +27,8 @@ import (
 	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github/redis"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
+	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
@@ -60,13 +62,13 @@ func run() error {
 		return fmt.Errorf("run database migrations: %w", err)
 	}
 
-	db, err := config.InitDB(cfg.DatabaseURL)
+	db, err := platformpostgres.InitDB(cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("init database: %w", err)
 	}
 	defer db.Close()
 
-	redisClient, err := config.InitRedis(cfg.RedisURL)
+	redisClient, err := platformredis.InitRedis(cfg.RedisURL)
 	if err != nil {
 		return fmt.Errorf("init redis: %w", err)
 	}
