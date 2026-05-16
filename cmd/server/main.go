@@ -22,13 +22,17 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/clients"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/handlers"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
+	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github/redis"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/repository"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/workers"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
+	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
+	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/worker"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
@@ -54,17 +58,17 @@ func run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	if err := repository.RunMigrations(cfg.DatabaseURL); err != nil {
+	if err := postgres.RunMigrations(cfg.DatabaseURL); err != nil {
 		return fmt.Errorf("run database migrations: %w", err)
 	}
 
-	db, err := config.InitDB(cfg.DatabaseURL)
+	db, err := platformpostgres.InitDB(cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("init database: %w", err)
 	}
 	defer db.Close()
 
-	redisClient, err := config.InitRedis(cfg.RedisURL)
+	redisClient, err := platformredis.InitRedis(cfg.RedisURL)
 	if err != nil {
 		return fmt.Errorf("init redis: %w", err)
 	}
@@ -75,11 +79,13 @@ func run() error {
 		}
 	}()
 
-	subRepo := repository.NewSubscriptionRepo(db)
-	githubClient := clients.NewGitHubClient(redisClient, cfg.GithubToken)
-	resendClient := clients.NewResendClient(cfg.ResendAPIKey, cfg.FromEmail)
+	subRepo := postgres.NewSubscriptionRepo(db)
+	githubClient := github.NewClient(cfg.GithubToken)
+	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
+	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL)
+	resendClient := resend.NewResendClient(cfg.ResendAPIKey, cfg.FromEmail)
 
-	emailChan := make(chan domain.EmailMessage, cfg.EmailChannelSize)
+	emailChan := make(chan mail.Message, cfg.EmailChannelSize)
 
 	promauto.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "email_channel_depth",
@@ -94,9 +100,9 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		workers.StartScanner(ctx, workers.ScannerDeps{
+		worker.StartScanner(ctx, worker.ScannerDeps{
 			Repo:      subRepo,
-			GitHub:    githubClient,
+			GitHub:    cachedGithubClient,
 			EmailChan: emailChan,
 			BaseURL:   cfg.BaseURL,
 		}, cfg.ScannerInterval)
@@ -105,11 +111,12 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		workers.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait)
+		worker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait)
 	}()
 
-	subService := handlers.NewSubscriptionService(handlers.ServiceDeps{
-		SubRepo:        subRepo,
+	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
+		TokenRepo:      subRepo,
+		ReadRepo:       subRepo,
 		Github:         githubClient,
 		EmailChan:      emailChan,
 		EmailSecretKey: cfg.EmailSecretKey,
