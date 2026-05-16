@@ -26,10 +26,10 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
 	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github/redis"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/worker"
@@ -85,7 +85,7 @@ func run() error {
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL)
 	resendClient := resend.NewResendClient(cfg.ResendAPIKey, cfg.FromEmail)
 
-	emailChan := make(chan subscriptions.EmailMessage, cfg.EmailChannelSize)
+	emailChan := make(chan mail.Message, cfg.EmailChannelSize)
 
 	promauto.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "email_channel_depth",

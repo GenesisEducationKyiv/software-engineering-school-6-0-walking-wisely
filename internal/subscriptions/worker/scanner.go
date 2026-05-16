@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -28,7 +29,7 @@ type ReleaseClient interface {
 type ScannerDeps struct {
 	Repo      ReleaseScanRepo
 	GitHub    ReleaseClient
-	EmailChan chan<- subscriptions.EmailMessage
+	EmailChan chan<- mail.Message
 	BaseURL   string
 }
 
@@ -118,12 +119,12 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	}
 }
 
-func buildReleaseEmail(sub *subscriptions.Subscription, release *github.Release, baseURL string) subscriptions.EmailMessage {
+func buildReleaseEmail(sub *subscriptions.Subscription, release *github.Release, baseURL string) mail.Message {
 	releaseName := release.TagName
 	if release.Name != "" {
 		releaseName = release.Name
 	}
-	return subscriptions.EmailMessage{
+	return mail.Message{
 		To:      sub.Email,
 		Subject: fmt.Sprintf("[%s] New release: %s", sub.Repo, release.TagName),
 		HTML: fmt.Sprintf(`<p>A new release of <strong>%s</strong> is available.</p>

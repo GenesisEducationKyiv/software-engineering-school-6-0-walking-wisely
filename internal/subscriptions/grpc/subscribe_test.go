@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 )
@@ -24,7 +25,7 @@ func newService(
 	gh subscriptiongrpc.GithubRepoValidator,
 	tokenRepo subscriptiongrpc.SubscriptionTokenWorkflowRepo,
 	readRepo subscriptiongrpc.SubscriptionReadRepo,
-	ch chan subscriptions.EmailMessage,
+	ch chan mail.Message,
 ) *subscriptiongrpc.SubscriptionService {
 	return subscriptiongrpc.NewSubscriptionService(subscriptiongrpc.ServiceDeps{
 		TokenRepo:      tokenRepo,
@@ -55,7 +56,7 @@ func TestSubscribe_EmailValidation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan subscriptions.EmailMessage, 1)
+			ch := make(chan mail.Message, 1)
 			repo := &fakeSubscriptionRepo{}
 			svc := newService(&fakeGithubClient{}, repo, repo, ch)
 
@@ -90,7 +91,7 @@ func TestSubscribe_RepoValidation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan subscriptions.EmailMessage, 1)
+			ch := make(chan mail.Message, 1)
 			repo := &fakeSubscriptionRepo{}
 			svc := newService(&fakeGithubClient{}, repo, repo, ch)
 
@@ -118,7 +119,7 @@ func TestSubscribe_GitHubErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan subscriptions.EmailMessage, 1)
+			ch := make(chan mail.Message, 1)
 			repo := &fakeSubscriptionRepo{}
 			svc := newService(&fakeGithubClient{validateRepoErr: tc.githubErr}, repo, repo, ch)
 
@@ -135,7 +136,7 @@ func TestSubscribe_GitHubErrors(t *testing.T) {
 }
 
 func TestSubscribe_RateLimit(t *testing.T) {
-	ch := make(chan subscriptions.EmailMessage, 1)
+	ch := make(chan mail.Message, 1)
 	repo := &fakeSubscriptionRepo{}
 	svc := newService(
 		&fakeGithubClient{validateRepoErr: &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: 30 * time.Second}},
@@ -174,7 +175,7 @@ func TestSubscribe_TokenRepoErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan subscriptions.EmailMessage, 1)
+			ch := make(chan mail.Message, 1)
 			repo := &fakeSubscriptionRepo{subscribeErr: tc.tokenRepoErr}
 			svc := newService(&fakeGithubClient{}, repo, repo, ch)
 
@@ -202,7 +203,7 @@ func TestSubscribe_EmailChannel(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan subscriptions.EmailMessage, tc.chanCap)
+			ch := make(chan mail.Message, tc.chanCap)
 			repo := &fakeSubscriptionRepo{}
 			svc := newService(&fakeGithubClient{}, repo, repo, ch)
 

@@ -5,6 +5,7 @@ import (
 	"context"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -30,7 +31,7 @@ type ServiceDeps struct {
 	TokenRepo      SubscriptionTokenWorkflowRepo
 	ReadRepo       SubscriptionReadRepo
 	Github         GithubRepoValidator
-	EmailChan      chan<- subscriptions.EmailMessage
+	EmailChan      chan<- mail.Message
 	EmailSecretKey string
 	BaseURL        string
 }

@@ -6,13 +6,13 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // StartSender reads email messages from emailChan and delivers them in batches
-// via the Resend API. Batches are flushed every maxWait (default 200 ms) or
-// when they reach resend.ResendBatchMax (100), whichever comes first.
+// via the configured mail sender. Batches are flushed every maxWait or when
+// they reach the sender's MaxBatchSize, whichever comes first.
 //
 // Backpressure is achieved by letting the upstream channel fill up: callers
 // that send to a full channel either block or drop (scanner uses non-blocking
@@ -22,83 +22,125 @@ import (
 // and attempts a final flush before returning.
 func StartSender(
 	ctx context.Context,
-	resendClient *resend.ResendClient,
-	emailChan <-chan subscriptions.EmailMessage,
+	sender mail.Sender,
+	emailChan <-chan mail.Message,
 	maxWait time.Duration,
 ) {
 	slog.Info("sender started", "max_wait", maxWait)
 	ticker := time.NewTicker(maxWait)
 	defer ticker.Stop()
 
-	buf := make([]subscriptions.EmailMessage, 0, resend.ResendBatchMax)
-
-	// flushWith sends everything currently in buf using the supplied context,
-	// then resets buf. Rate-limit errors are logged and the batch is dropped
-	// (notifications are best-effort; we do not re-queue to avoid storms).
-	flushWith := func(flushCtx context.Context) {
-		if len(buf) == 0 {
-			return
-		}
-		toSend := buf
-		buf = make([]subscriptions.EmailMessage, 0, resend.ResendBatchMax)
-
-		for i := 0; i < len(toSend); i += resend.ResendBatchMax {
-			end := i + resend.ResendBatchMax
-			if end > len(toSend) {
-				end = len(toSend)
-			}
-			chunk := toSend[i:end]
-			if err := resendClient.SendBatch(flushCtx, chunk); err != nil {
-				var rle *subscriptions.RateLimitError
-				if ok := errors.As(err, &rle); ok {
-					slog.Warn("sender: resend rate limited, dropping batch",
-						"batch_size", len(chunk), "retry_after", rle.RetryAfter)
-				} else {
-					slog.Error("sender: send batch failed",
-						"batch_size", len(chunk), "err", err)
-				}
-			}
-		}
-	}
+	batchSize := senderBatchSize(sender)
+	buf := make([]mail.Message, 0, batchSize)
 
 	for {
 		select {
 		case msg, ok := <-emailChan:
 			if !ok {
 				// Channel closed - flush and exit.
-				flushWith(ctx)
+				buf = flushBuffer(ctx, sender, buf, batchSize)
 				slog.Info("sender stopped (channel closed)")
 				return
 			}
 			buf = append(buf, msg)
-			if len(buf) >= resend.ResendBatchMax {
-				flushWith(ctx)
+			if len(buf) >= batchSize {
+				buf = flushBuffer(ctx, sender, buf, batchSize)
 			}
 
 		case <-ticker.C:
-			flushWith(ctx)
+			buf = flushBuffer(ctx, sender, buf, batchSize)
 
 		case <-ctx.Done():
 			// Drain any messages already in the channel before shutting down.
 			// Use a fresh background context so the final HTTP calls are not
 			// cancelled immediately.
 			drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-		drain:
-			for {
-				select {
-				case msg := <-emailChan:
-					buf = append(buf, msg)
-					if len(buf) >= resend.ResendBatchMax {
-						flushWith(drainCtx)
-					}
-				default:
-					break drain
-				}
-			}
-			flushWith(drainCtx)
+			buf = drainEmailChannel(drainCtx, sender, emailChan, buf, batchSize)
+			flushBuffer(drainCtx, sender, buf, batchSize)
 			cancel()
 			slog.Info("sender stopped")
 			return
 		}
 	}
+}
+
+func senderBatchSize(sender mail.Sender) int {
+	batchSize := sender.MaxBatchSize()
+	if batchSize < 1 {
+		return 1
+	}
+	return batchSize
+}
+
+// flushBuffer sends everything currently in buf using flushCtx, then returns a
+// fresh buffer. Delivery is best-effort: errors are logged and messages are not
+// re-queued.
+func flushBuffer(
+	flushCtx context.Context,
+	sender mail.Sender,
+	buf []mail.Message,
+	batchSize int,
+) []mail.Message {
+	if len(buf) == 0 {
+		return buf
+	}
+
+	for _, chunk := range chunkMessages(buf, batchSize) {
+		if err := sender.SendBatch(flushCtx, chunk); err != nil {
+			logSendError(err, len(chunk))
+		}
+	}
+
+	return make([]mail.Message, 0, batchSize)
+}
+
+func drainEmailChannel(
+	ctx context.Context,
+	sender mail.Sender,
+	emailChan <-chan mail.Message,
+	buf []mail.Message,
+	batchSize int,
+) []mail.Message {
+	for {
+		select {
+		case msg, ok := <-emailChan:
+			if !ok {
+				return buf
+			}
+			buf = append(buf, msg)
+			if len(buf) >= batchSize {
+				buf = flushBuffer(ctx, sender, buf, batchSize)
+			}
+		default:
+			return buf
+		}
+	}
+}
+
+func chunkMessages(messages []mail.Message, batchSize int) [][]mail.Message {
+	if batchSize < 1 {
+		batchSize = 1
+	}
+
+	chunks := make([][]mail.Message, 0, (len(messages)+batchSize-1)/batchSize)
+	for i := 0; i < len(messages); i += batchSize {
+		end := i + batchSize
+		if end > len(messages) {
+			end = len(messages)
+		}
+		chunks = append(chunks, messages[i:end])
+	}
+	return chunks
+}
+
+func logSendError(err error, batchSize int) {
+	var rle *subscriptions.RateLimitError
+	if ok := errors.As(err, &rle); ok {
+		slog.Warn("sender: email provider rate limited, dropping batch",
+			"batch_size", batchSize, "retry_after", rle.RetryAfter)
+		return
+	}
+
+	slog.Error("sender: send batch failed",
+		"batch_size", batchSize, "err", err)
 }

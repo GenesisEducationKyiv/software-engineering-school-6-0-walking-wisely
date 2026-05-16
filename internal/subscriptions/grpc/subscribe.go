@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -80,8 +81,8 @@ func (s *SubscriptionService) Subscribe(
 	return &pb.SubscribeResponse{}, nil
 }
 
-func buildConfirmEmail(email, repo, confirmURL, unsubURL string) subscriptions.EmailMessage {
-	return subscriptions.EmailMessage{
+func buildConfirmEmail(email, repo, confirmURL, unsubURL string) mail.Message {
+	return mail.Message{
 		To:      email,
 		Subject: fmt.Sprintf("Confirm your subscription to %s releases", repo),
 		HTML: fmt.Sprintf(`<p>You requested release notifications for <strong>%s</strong>.</p>

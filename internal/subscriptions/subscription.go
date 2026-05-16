@@ -22,13 +22,6 @@ type Subscription struct {
 	UpdatedAt        time.Time
 }
 
-// EmailMessage is a unit of work queued to the sender worker.
-type EmailMessage struct {
-	To      string
-	Subject string
-	HTML    string
-}
-
 // GenerateToken creates a cryptographically secure token suitable for use as a
 // confirmation or unsubscribe token. It generates a random 16-byte nonce and
 // returns hex(HMAC-SHA256(secret, nonce)). The HMAC ties the token to the

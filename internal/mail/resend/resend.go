@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -46,7 +47,7 @@ func NewResendClient(apiKey, fromEmail string) *ResendClient {
 
 // SendBatch delivers up to ResendBatchMax emails in a single API call.
 // Callers are responsible for splitting larger slices into chunks.
-func (c *ResendClient) SendBatch(ctx context.Context, messages []subscriptions.EmailMessage) error {
+func (c *ResendClient) SendBatch(ctx context.Context, messages []mail.Message) error {
 	if len(messages) == 0 {
 		return nil
 	}
@@ -98,6 +99,11 @@ func (c *ResendClient) SendBatch(ctx context.Context, messages []subscriptions.E
 	default:
 		return fmt.Errorf("resend API unexpected status %d", resp.StatusCode)
 	}
+}
+
+// MaxBatchSize returns the largest batch accepted by the Resend batch API.
+func (c *ResendClient) MaxBatchSize() int {
+	return ResendBatchMax
 }
 
 func parseResendRetryAfter(resp *http.Response) time.Duration {
