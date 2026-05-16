@@ -16,7 +16,8 @@ import (
 // validToken is shared with unsubscribe_test.go (same package).
 
 func TestConfirm_HappyPath(t *testing.T) {
-	svc := newService(&fakeGithubClient{}, &fakeSubRepo{confirmByTokenID: "sub-123"}, nil)
+	repo := &fakeSubscriptionRepo{confirmByTokenID: "sub-123"}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	resp, err := svc.ConfirmSubscription(context.Background(), &pb.ConfirmSubscriptionRequest{Token: validToken})
 	if err != nil {
@@ -30,7 +31,8 @@ func TestConfirm_HappyPath(t *testing.T) {
 func TestConfirm_InvalidToken(t *testing.T) {
 	// One representative bad token to exercise the isValidToken branch.
 	// Exhaustive token-format cases live in TestIsValidToken (helpers_test.go).
-	svc := newService(&fakeGithubClient{}, &fakeSubRepo{}, nil)
+	repo := &fakeSubscriptionRepo{}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	_, err := svc.ConfirmSubscription(context.Background(), &pb.ConfirmSubscriptionRequest{Token: "not-a-valid-token"}) // #nosec G101 -- test-only invalid token.
 
@@ -52,7 +54,8 @@ func TestConfirm_RepoErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := newService(&fakeGithubClient{}, &fakeSubRepo{confirmByTokenErr: tc.repoErr}, nil)
+			repo := &fakeSubscriptionRepo{confirmByTokenErr: tc.repoErr}
+			svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 			_, err := svc.ConfirmSubscription(context.Background(), &pb.ConfirmSubscriptionRequest{Token: validToken})
 

@@ -19,7 +19,8 @@ func strPtr(s string) *string { return &s }
 // ---------------------------------------------------------------------------
 
 func TestGetSubscriptions_EmailValidation(t *testing.T) {
-	svc := newService(&fakeGithubClient{}, &fakeSubRepo{}, nil)
+	repo := &fakeSubscriptionRepo{}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	t.Run("invalid email rejected", func(t *testing.T) {
 		_, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
@@ -45,9 +46,10 @@ func TestGetSubscriptions_EmailValidation(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGetSubscriptions_RepoError(t *testing.T) {
-	svc := newService(&fakeGithubClient{}, &fakeSubRepo{
+	repo := &fakeSubscriptionRepo{
 		listByEmailErr: errors.New("connection reset by peer"),
-	}, nil)
+	}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	_, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
 		Email: validEmail,
@@ -62,7 +64,8 @@ func TestGetSubscriptions_RepoError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGetSubscriptions_NoSubscriptions(t *testing.T) {
-	svc := newService(&fakeGithubClient{}, &fakeSubRepo{}, nil)
+	repo := &fakeSubscriptionRepo{}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	resp, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
 		Email: validEmail,
@@ -84,7 +87,8 @@ func TestGetSubscriptions_ResponseMapping(t *testing.T) {
 		{Email: validEmail, Repo: "owner/alpha", Confirmed: true, LastSeenTag: strPtr("v1.2.3")},
 		{Email: validEmail, Repo: "owner/beta", Confirmed: false, LastSeenTag: strPtr("v0.1.0")},
 	}
-	svc := newService(&fakeGithubClient{}, &fakeSubRepo{listByEmailResult: subs}, nil)
+	repo := &fakeSubscriptionRepo{listByEmailResult: subs}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	resp, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
 		Email: validEmail,
@@ -120,7 +124,8 @@ func TestGetSubscriptions_NilLastSeenTag(t *testing.T) {
 	subs := []subscriptions.Subscription{
 		{Email: validEmail, Repo: validRepo, Confirmed: false, LastSeenTag: nil},
 	}
-	svc := newService(&fakeGithubClient{}, &fakeSubRepo{listByEmailResult: subs}, nil)
+	repo := &fakeSubscriptionRepo{listByEmailResult: subs}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	resp, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
 		Email: validEmail,

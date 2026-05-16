@@ -21,7 +21,7 @@ func (s *SubscriptionService) ConfirmSubscription(ctx context.Context, req *pb.C
 		return nil, status.Error(codes.InvalidArgument, "invalid token format")
 	}
 
-	id, err := s.deps.SubRepo.ConfirmByToken(ctx, token)
+	id, err := s.deps.TokenRepo.ConfirmByToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, subscriptions.ErrTokenNotFound) {
 			return nil, status.Error(codes.NotFound, "token not found")

@@ -110,7 +110,8 @@ func run() error {
 	}()
 
 	subService := subscriptiongrpc.NewSubscriptionService(subscriptiongrpc.ServiceDeps{
-		SubRepo:        subRepo,
+		TokenRepo:      subRepo,
+		ReadRepo:       subRepo,
 		Github:         githubClient,
 		EmailChan:      emailChan,
 		EmailSecretKey: cfg.EmailSecretKey,

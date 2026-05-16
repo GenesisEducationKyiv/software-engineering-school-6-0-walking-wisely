@@ -24,8 +24,8 @@ const validToken = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6
 // ---------------------------------------------------------------------------
 
 func TestUnsubscribe_Success(t *testing.T) {
-	repo := &fakeSubRepo{unsubscribeByTokenID: "sub-42"}
-	svc := newService(&fakeGithubClient{}, repo, nil)
+	repo := &fakeSubscriptionRepo{unsubscribeByTokenID: "sub-42"}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	resp, err := svc.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{Token: validToken})
 	if err != nil {
@@ -43,7 +43,8 @@ func TestUnsubscribe_Success(t *testing.T) {
 func TestUnsubscribe_InvalidToken(t *testing.T) {
 	// One representative bad token to exercise the isValidToken branch.
 	// Exhaustive token-format cases live in TestIsValidToken (helpers_test.go).
-	svc := newService(&fakeGithubClient{}, &fakeSubRepo{}, nil)
+	repo := &fakeSubscriptionRepo{}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	_, err := svc.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{Token: ""})
 
@@ -68,8 +69,8 @@ func TestUnsubscribe_RepoErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &fakeSubRepo{unsubscribeByTokenErr: tc.repoErr}
-			svc := newService(&fakeGithubClient{}, repo, nil)
+			repo := &fakeSubscriptionRepo{unsubscribeByTokenErr: tc.repoErr}
+			svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 			_, err := svc.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{Token: validToken})
 
@@ -82,8 +83,8 @@ func TestUnsubscribe_RepoErrors(t *testing.T) {
 
 func TestUnsubscribe_InternalErrorDoesNotLeakDetail(t *testing.T) {
 	const internalMsg = "pq: deadlock detected on table subscriptions"
-	repo := &fakeSubRepo{unsubscribeByTokenErr: errors.New(internalMsg)}
-	svc := newService(&fakeGithubClient{}, repo, nil)
+	repo := &fakeSubscriptionRepo{unsubscribeByTokenErr: errors.New(internalMsg)}
+	svc := newService(&fakeGithubClient{}, repo, repo, nil)
 
 	_, err := svc.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{Token: validToken})
 

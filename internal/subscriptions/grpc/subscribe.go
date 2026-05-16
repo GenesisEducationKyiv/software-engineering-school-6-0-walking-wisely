@@ -58,7 +58,7 @@ func (s *SubscriptionService) Subscribe(
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	if err := s.deps.SubRepo.Subscribe(ctx, req.Email, req.Repo, confirmToken, unsubToken); err != nil {
+	if err := s.deps.TokenRepo.Subscribe(ctx, req.Email, req.Repo, confirmToken, unsubToken); err != nil {
 		if errors.Is(err, subscriptions.ErrAlreadySubscribed) {
 			return nil, status.Error(codes.AlreadyExists, "email already subscribed to this repository")
 		}

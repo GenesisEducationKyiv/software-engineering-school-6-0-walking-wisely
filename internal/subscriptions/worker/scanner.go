@@ -10,13 +10,24 @@ import (
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 )
+
+// ReleaseScanRepo provides the subscription data needed by the release scanner.
+type ReleaseScanRepo interface {
+	ListDistinctConfirmedRepos(ctx context.Context) ([]string, error)
+	ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]subscriptions.Subscription, error)
+	UpdateLastSeenTag(ctx context.Context, repo, tag string) error
+}
+
+// ReleaseClient fetches release information for a repository.
+type ReleaseClient interface {
+	GetLatestRelease(ctx context.Context, repo string) (*github.Release, error)
+}
 
 // ScannerDeps bundles the scanner's external dependencies.
 type ScannerDeps struct {
-	Repo      *postgres.SubscriptionRepo
-	GitHub    *github.GitHubClient
+	Repo      ReleaseScanRepo
+	GitHub    ReleaseClient
 	EmailChan chan<- subscriptions.EmailMessage
 	BaseURL   string
 }

@@ -8,15 +8,16 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
-// SubRepo is the database interface required by the subscription gRPC service.
-type SubRepo interface {
+// SubscriptionTokenWorkflowRepo stores token-mediated subscription lifecycle changes.
+type SubscriptionTokenWorkflowRepo interface {
 	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) error
 	ConfirmByToken(ctx context.Context, token string) (id string, err error)
 	UnsubscribeByToken(ctx context.Context, token string) (id string, err error)
+}
+
+// SubscriptionReadRepo reads subscription state for the gRPC API.
+type SubscriptionReadRepo interface {
 	ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error)
-	ListDistinctConfirmedRepos(ctx context.Context) ([]string, error)
-	ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]subscriptions.Subscription, error)
-	UpdateLastSeenTag(ctx context.Context, repo, tag string) error
 }
 
 // GithubClient is the GitHub API interface used to validate repositories during subscription.
@@ -26,7 +27,8 @@ type GithubClient interface {
 
 // ServiceDeps bundles the external dependencies injected into SubscriptionService.
 type ServiceDeps struct {
-	SubRepo        SubRepo
+	TokenRepo      SubscriptionTokenWorkflowRepo
+	ReadRepo       SubscriptionReadRepo
 	Github         GithubClient
 	EmailChan      chan<- subscriptions.EmailMessage
 	EmailSecretKey string

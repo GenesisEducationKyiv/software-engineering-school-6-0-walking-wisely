@@ -21,7 +21,7 @@ func (s *SubscriptionService) Unsubscribe(ctx context.Context, req *pb.Unsubscri
 		return nil, status.Error(codes.InvalidArgument, "invalid token format")
 	}
 
-	id, err := s.deps.SubRepo.UnsubscribeByToken(ctx, token)
+	id, err := s.deps.TokenRepo.UnsubscribeByToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, subscriptions.ErrTokenNotFound) {
 			return nil, status.Error(codes.NotFound, "token not found")

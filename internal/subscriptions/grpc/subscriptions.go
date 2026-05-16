@@ -19,7 +19,7 @@ func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetS
 		return nil, status.Error(codes.InvalidArgument, "invalid email format")
 	}
 
-	subs, err := s.deps.SubRepo.ListByEmail(ctx, email)
+	subs, err := s.deps.ReadRepo.ListByEmail(ctx, email)
 	if err != nil {
 		slog.Error("subscriptions: list failed", "err", err)
 		return nil, status.Error(codes.Internal, "internal error")

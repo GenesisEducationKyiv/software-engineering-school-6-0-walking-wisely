@@ -9,8 +9,9 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
-// fakeSubRepo implements SubRepo with configurable return values per method.
-type fakeSubRepo struct {
+// fakeSubscriptionRepo implements the gRPC-facing subscription repository interfaces
+// with configurable return values per method.
+type fakeSubscriptionRepo struct {
 	subscribeErr          error
 	confirmByTokenID      string
 	confirmByTokenErr     error
@@ -20,30 +21,21 @@ type fakeSubRepo struct {
 	listByEmailErr        error
 }
 
-func (f *fakeSubRepo) Subscribe(_ context.Context, _, _, _, _ string) error {
+func (f *fakeSubscriptionRepo) Subscribe(_ context.Context, _, _, _, _ string) error {
 	return f.subscribeErr
 }
 
-func (f *fakeSubRepo) ConfirmByToken(_ context.Context, _ string) (string, error) {
+func (f *fakeSubscriptionRepo) ConfirmByToken(_ context.Context, _ string) (string, error) {
 	return f.confirmByTokenID, f.confirmByTokenErr
 }
 
-func (f *fakeSubRepo) UnsubscribeByToken(_ context.Context, _ string) (string, error) {
+func (f *fakeSubscriptionRepo) UnsubscribeByToken(_ context.Context, _ string) (string, error) {
 	return f.unsubscribeByTokenID, f.unsubscribeByTokenErr
 }
 
-func (f *fakeSubRepo) ListByEmail(_ context.Context, _ string) ([]subscriptions.Subscription, error) {
+func (f *fakeSubscriptionRepo) ListByEmail(_ context.Context, _ string) ([]subscriptions.Subscription, error) {
 	return f.listByEmailResult, f.listByEmailErr
 }
-
-func (f *fakeSubRepo) ListDistinctConfirmedRepos(_ context.Context) ([]string, error) {
-	return nil, nil
-}
-
-func (f *fakeSubRepo) ListConfirmedSubscribersForRepo(_ context.Context, _ string) ([]subscriptions.Subscription, error) {
-	return nil, nil
-}
-func (f *fakeSubRepo) UpdateLastSeenTag(_ context.Context, _, _ string) error { return nil }
 
 // fakeGithubClient implements GithubClient with a configurable error.
 type fakeGithubClient struct {
