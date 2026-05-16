@@ -1,5 +1,5 @@
-// Package clients provides HTTP clients for the GitHub REST API and the Resend email API.
-package clients
+// Package github provides access to the GitHub REST API.
+package github
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 const githubReleaseCacheTTL = 10 * time.Minute
@@ -45,7 +45,7 @@ func NewGitHubClient(redisClient *redis.Client, githubToken string) *GitHubClien
 
 // GetLatestRelease returns the latest release for a repo in "owner/repo" format.
 // Results are cached in Redis for githubReleaseCacheTTL (10 minutes).
-// Returns domain.ErrRepoNotFound on 404, or *domain.RateLimitError on 429/403.
+// Returns subscriptions.ErrRepoNotFound on 404, or *subscriptions.RateLimitError on 429/403.
 func (c *GitHubClient) GetLatestRelease(ctx context.Context, repo string) (*Release, error) {
 	cacheKey := "github:release:" + repo
 
@@ -124,14 +124,14 @@ func (c *GitHubClient) doRequest(ctx context.Context, url, repo string) (release
 		return &r, nil
 
 	case http.StatusNotFound:
-		return nil, domain.ErrRepoNotFound
+		return nil, subscriptions.ErrRepoNotFound
 
 	case http.StatusTooManyRequests, http.StatusForbidden:
 		// GitHub uses 403 + X-RateLimit-* for primary rate limits and
 		// 429 + Retry-After for secondary rate limits.
 		retryAfter := parseRetryAfter(resp)
 		slog.Warn("github rate limited", "repo", repo, "retry_after", retryAfter)
-		return nil, &domain.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
+		return nil, &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
 
 	default:
 		return nil, fmt.Errorf("github API unexpected status %d for %s", resp.StatusCode, repo)

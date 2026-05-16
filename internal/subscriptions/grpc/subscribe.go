@@ -1,4 +1,4 @@
-package handlers
+package subscriptiongrpc
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 var repoPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`)
@@ -36,10 +36,10 @@ func (s *SubscriptionService) Subscribe(
 	}
 
 	if err := s.deps.Github.ValidateRepo(ctx, req.Repo); err != nil {
-		if errors.Is(err, domain.ErrRepoNotFound) {
+		if errors.Is(err, subscriptions.ErrRepoNotFound) {
 			return nil, status.Error(codes.NotFound, "repository not found on GitHub")
 		}
-		var rle *domain.RateLimitError
+		var rle *subscriptions.RateLimitError
 		if errors.As(err, &rle) {
 			return nil, handleRateLimitError(ctx, rle)
 		}
@@ -47,19 +47,19 @@ func (s *SubscriptionService) Subscribe(
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	confirmToken, err := domain.GenerateToken(s.deps.EmailSecretKey)
+	confirmToken, err := subscriptions.GenerateToken(s.deps.EmailSecretKey)
 	if err != nil {
 		slog.Error("subscribe: generate confirm token", "err", err)
 		return nil, status.Error(codes.Internal, "internal error")
 	}
-	unsubToken, err := domain.GenerateToken(s.deps.EmailSecretKey)
+	unsubToken, err := subscriptions.GenerateToken(s.deps.EmailSecretKey)
 	if err != nil {
 		slog.Error("subscribe: generate unsub token", "err", err)
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
 	if err := s.deps.SubRepo.Subscribe(ctx, req.Email, req.Repo, confirmToken, unsubToken); err != nil {
-		if errors.Is(err, domain.ErrAlreadySubscribed) {
+		if errors.Is(err, subscriptions.ErrAlreadySubscribed) {
 			return nil, status.Error(codes.AlreadyExists, "email already subscribed to this repository")
 		}
 		slog.Error("subscribe: db error", "repo", req.Repo, "err", err)
@@ -80,8 +80,8 @@ func (s *SubscriptionService) Subscribe(
 	return &pb.SubscribeResponse{}, nil
 }
 
-func buildConfirmEmail(email, repo, confirmURL, unsubURL string) domain.EmailMessage {
-	return domain.EmailMessage{
+func buildConfirmEmail(email, repo, confirmURL, unsubURL string) subscriptions.EmailMessage {
+	return subscriptions.EmailMessage{
 		To:      email,
 		Subject: fmt.Sprintf("Confirm your subscription to %s releases", repo),
 		HTML: fmt.Sprintf(`<p>You requested release notifications for <strong>%s</strong>.</p>

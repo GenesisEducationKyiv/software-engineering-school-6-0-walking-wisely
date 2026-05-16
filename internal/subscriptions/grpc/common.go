@@ -1,21 +1,21 @@
-// Package handlers implements the gRPC SubscribeService and wires it to HTTP via grpc-gateway.
-package handlers
+// Package subscriptiongrpc adapts subscription use cases to the generated gRPC API.
+package subscriptiongrpc
 
 import (
 	"context"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
-// SubRepo is the database interface required by the subscription handlers.
+// SubRepo is the database interface required by the subscription gRPC service.
 type SubRepo interface {
 	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) error
 	ConfirmByToken(ctx context.Context, token string) (id string, err error)
 	UnsubscribeByToken(ctx context.Context, token string) (id string, err error)
-	ListByEmail(ctx context.Context, email string) ([]domain.Subscription, error)
+	ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error)
 	ListDistinctConfirmedRepos(ctx context.Context) ([]string, error)
-	ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]domain.Subscription, error)
+	ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]subscriptions.Subscription, error)
 	UpdateLastSeenTag(ctx context.Context, repo, tag string) error
 }
 
@@ -28,7 +28,7 @@ type GithubClient interface {
 type ServiceDeps struct {
 	SubRepo        SubRepo
 	Github         GithubClient
-	EmailChan      chan<- domain.EmailMessage
+	EmailChan      chan<- subscriptions.EmailMessage
 	EmailSecretKey string
 	BaseURL        string
 }

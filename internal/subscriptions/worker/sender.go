@@ -1,4 +1,4 @@
-package workers
+package worker
 
 import (
 	"context"
@@ -6,13 +6,13 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/clients"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // StartSender reads email messages from emailChan and delivers them in batches
 // via the Resend API. Batches are flushed every maxWait (default 200 ms) or
-// when they reach clients.ResendBatchMax (100), whichever comes first.
+// when they reach resend.ResendBatchMax (100), whichever comes first.
 //
 // Backpressure is achieved by letting the upstream channel fill up: callers
 // that send to a full channel either block or drop (scanner uses non-blocking
@@ -22,15 +22,15 @@ import (
 // and attempts a final flush before returning.
 func StartSender(
 	ctx context.Context,
-	resend *clients.ResendClient,
-	emailChan <-chan domain.EmailMessage,
+	resendClient *resend.ResendClient,
+	emailChan <-chan subscriptions.EmailMessage,
 	maxWait time.Duration,
 ) {
 	slog.Info("sender started", "max_wait", maxWait)
 	ticker := time.NewTicker(maxWait)
 	defer ticker.Stop()
 
-	buf := make([]domain.EmailMessage, 0, clients.ResendBatchMax)
+	buf := make([]subscriptions.EmailMessage, 0, resend.ResendBatchMax)
 
 	// flushWith sends everything currently in buf using the supplied context,
 	// then resets buf. Rate-limit errors are logged and the batch is dropped
@@ -40,16 +40,16 @@ func StartSender(
 			return
 		}
 		toSend := buf
-		buf = make([]domain.EmailMessage, 0, clients.ResendBatchMax)
+		buf = make([]subscriptions.EmailMessage, 0, resend.ResendBatchMax)
 
-		for i := 0; i < len(toSend); i += clients.ResendBatchMax {
-			end := i + clients.ResendBatchMax
+		for i := 0; i < len(toSend); i += resend.ResendBatchMax {
+			end := i + resend.ResendBatchMax
 			if end > len(toSend) {
 				end = len(toSend)
 			}
 			chunk := toSend[i:end]
-			if err := resend.SendBatch(flushCtx, chunk); err != nil {
-				var rle *domain.RateLimitError
+			if err := resendClient.SendBatch(flushCtx, chunk); err != nil {
+				var rle *subscriptions.RateLimitError
 				if ok := errors.As(err, &rle); ok {
 					slog.Warn("sender: resend rate limited, dropping batch",
 						"batch_size", len(chunk), "retry_after", rle.RetryAfter)
@@ -71,7 +71,7 @@ func StartSender(
 				return
 			}
 			buf = append(buf, msg)
-			if len(buf) >= clients.ResendBatchMax {
+			if len(buf) >= resend.ResendBatchMax {
 				flushWith(ctx)
 			}
 
@@ -88,7 +88,7 @@ func StartSender(
 				select {
 				case msg := <-emailChan:
 					buf = append(buf, msg)
-					if len(buf) >= clients.ResendBatchMax {
+					if len(buf) >= resend.ResendBatchMax {
 						flushWith(drainCtx)
 					}
 				default:

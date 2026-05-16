@@ -1,4 +1,4 @@
-package handlers
+package subscriptiongrpc
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // ConfirmSubscription handles GET /api/confirm/{token}.
@@ -23,7 +23,7 @@ func (s *SubscriptionService) ConfirmSubscription(ctx context.Context, req *pb.C
 
 	id, err := s.deps.SubRepo.ConfirmByToken(ctx, token)
 	if err != nil {
-		if errors.Is(err, domain.ErrTokenNotFound) {
+		if errors.Is(err, subscriptions.ErrTokenNotFound) {
 			return nil, status.Error(codes.NotFound, "token not found")
 		}
 		slog.Error("confirm: db error", "err", err)

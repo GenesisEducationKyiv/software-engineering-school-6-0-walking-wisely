@@ -1,5 +1,5 @@
-// Package repository provides PostgreSQL-backed storage for subscriptions and applies embedded SQL migrations.
-package repository
+// Package postgres provides PostgreSQL-backed storage for subscriptions and applies embedded SQL migrations.
+package postgres
 
 import (
 	"embed"

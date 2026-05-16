@@ -1,4 +1,4 @@
-package handlers
+package subscriptiongrpc
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // helperStream captures headers set via grpc.SetHeader.
-// Kept in this file (package handlers) so it can coexist with
+// Kept in this file (package subscriptiongrpc) so it can coexist with
 // the external-package fake in fakes_test.go without a name collision.
 type helperStream struct {
 	mu      sync.Mutex
@@ -45,7 +45,7 @@ func TestIsValidEmail(t *testing.T) {
 		{"empty string", "", false},
 		{"no at-sign", "notanemail", false},
 		{"multiple at-signs", "a@b@c.com", false},
-		{"empty local part", "@domain.com", false},
+		{"empty local part", "@subscriptions.com", false},
 		{"domain without dot", "user@domain", false},
 		{"empty domain", "user@", false},
 		{"valid", "user@example.com", true},
@@ -121,7 +121,7 @@ func TestHandleRateLimitError(t *testing.T) {
 			stream := &helperStream{}
 			ctx := grpc.NewContextWithServerTransportStream(context.Background(), stream)
 
-			err := handleRateLimitError(ctx, &domain.RateLimitError{
+			err := handleRateLimitError(ctx, &subscriptions.RateLimitError{
 				Service:    "GitHub",
 				RetryAfter: tc.retryAfter,
 			})

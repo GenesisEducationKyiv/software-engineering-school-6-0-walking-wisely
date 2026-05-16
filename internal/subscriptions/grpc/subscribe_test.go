@@ -1,4 +1,4 @@
-package handlers_test
+package subscriptiongrpc_test
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/handlers"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 )
 
 const (
@@ -20,8 +20,8 @@ const (
 	validRepo  = "owner/repo"
 )
 
-func newService(gh handlers.GithubClient, repo handlers.SubRepo, ch chan domain.EmailMessage) *handlers.SubscriptionService {
-	return handlers.NewSubscriptionService(handlers.ServiceDeps{
+func newService(gh subscriptiongrpc.GithubClient, repo subscriptiongrpc.SubRepo, ch chan subscriptions.EmailMessage) *subscriptiongrpc.SubscriptionService {
+	return subscriptiongrpc.NewSubscriptionService(subscriptiongrpc.ServiceDeps{
 		SubRepo:        repo,
 		Github:         gh,
 		EmailChan:      ch,
@@ -39,7 +39,7 @@ func TestSubscribe_EmailValidation(t *testing.T) {
 		{"empty string", "", codes.InvalidArgument},
 		{"no at-sign", "notanemail", codes.InvalidArgument},
 		{"multiple at-signs", "a@b@c.com", codes.InvalidArgument},
-		{"empty local part", "@domain.com", codes.InvalidArgument},
+		{"empty local part", "@subscriptions.com", codes.InvalidArgument},
 		{"domain without dot", "user@domain", codes.InvalidArgument},
 		{"empty domain", "user@", codes.InvalidArgument},
 		{"valid", validEmail, codes.OK},
@@ -49,7 +49,7 @@ func TestSubscribe_EmailValidation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan domain.EmailMessage, 1)
+			ch := make(chan subscriptions.EmailMessage, 1)
 			svc := newService(&fakeGithubClient{}, &fakeSubRepo{}, ch)
 
 			_, err := svc.Subscribe(context.Background(), &pb.SubscribeRequest{
@@ -83,7 +83,7 @@ func TestSubscribe_RepoValidation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan domain.EmailMessage, 1)
+			ch := make(chan subscriptions.EmailMessage, 1)
 			svc := newService(&fakeGithubClient{}, &fakeSubRepo{}, ch)
 
 			_, err := svc.Subscribe(context.Background(), &pb.SubscribeRequest{
@@ -104,13 +104,13 @@ func TestSubscribe_GitHubErrors(t *testing.T) {
 		githubErr error
 		wantCode  codes.Code
 	}{
-		{"repo not found", domain.ErrRepoNotFound, codes.NotFound},
+		{"repo not found", subscriptions.ErrRepoNotFound, codes.NotFound},
 		{"unexpected error", errors.New("connection timeout"), codes.Internal},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan domain.EmailMessage, 1)
+			ch := make(chan subscriptions.EmailMessage, 1)
 			svc := newService(&fakeGithubClient{validateRepoErr: tc.githubErr}, &fakeSubRepo{}, ch)
 
 			_, err := svc.Subscribe(context.Background(), &pb.SubscribeRequest{
@@ -126,9 +126,9 @@ func TestSubscribe_GitHubErrors(t *testing.T) {
 }
 
 func TestSubscribe_RateLimit(t *testing.T) {
-	ch := make(chan domain.EmailMessage, 1)
+	ch := make(chan subscriptions.EmailMessage, 1)
 	svc := newService(
-		&fakeGithubClient{validateRepoErr: &domain.RateLimitError{Service: "GitHub", RetryAfter: 30 * time.Second}},
+		&fakeGithubClient{validateRepoErr: &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: 30 * time.Second}},
 		&fakeSubRepo{},
 		ch,
 	)
@@ -157,13 +157,13 @@ func TestSubscribe_SubRepoErrors(t *testing.T) {
 		subRepoErr error
 		wantCode   codes.Code
 	}{
-		{"already subscribed", domain.ErrAlreadySubscribed, codes.AlreadyExists},
+		{"already subscribed", subscriptions.ErrAlreadySubscribed, codes.AlreadyExists},
 		{"unexpected db error", errors.New("connection reset by peer"), codes.Internal},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan domain.EmailMessage, 1)
+			ch := make(chan subscriptions.EmailMessage, 1)
 			svc := newService(&fakeGithubClient{}, &fakeSubRepo{subscribeErr: tc.subRepoErr}, ch)
 
 			_, err := svc.Subscribe(context.Background(), &pb.SubscribeRequest{
@@ -190,7 +190,7 @@ func TestSubscribe_EmailChannel(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan domain.EmailMessage, tc.chanCap)
+			ch := make(chan subscriptions.EmailMessage, tc.chanCap)
 			svc := newService(&fakeGithubClient{}, &fakeSubRepo{}, ch)
 
 			_, err := svc.Subscribe(context.Background(), &pb.SubscribeRequest{

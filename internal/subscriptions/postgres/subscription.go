@@ -1,4 +1,4 @@
-package repository
+package postgres
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // SubscriptionRepo wraps a pgxpool.Pool and implements all subscription persistence operations.
@@ -54,7 +54,7 @@ func (r *SubscriptionRepo) Subscribe(
 
 	switch {
 	case err == nil && confirmed:
-		return domain.ErrAlreadySubscribed
+		return subscriptions.ErrAlreadySubscribed
 
 	case err == nil && !confirmed:
 		// Unconfirmed - refresh the confirm token so the new email works.
@@ -106,7 +106,7 @@ func (r *SubscriptionRepo) ConfirmByToken(ctx context.Context, token string) (id
 		token,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", domain.ErrTokenNotFound
+		return "", subscriptions.ErrTokenNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("lock confirm token row: %w", err)
@@ -132,7 +132,7 @@ func (r *SubscriptionRepo) UnsubscribeByToken(ctx context.Context, token string)
 		token,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", domain.ErrTokenNotFound
+		return "", subscriptions.ErrTokenNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("delete subscription: %w", err)
@@ -141,7 +141,7 @@ func (r *SubscriptionRepo) UnsubscribeByToken(ctx context.Context, token string)
 }
 
 // ListByEmail returns all subscriptions (confirmed and unconfirmed) for an email.
-func (r *SubscriptionRepo) ListByEmail(ctx context.Context, email string) ([]domain.Subscription, error) {
+func (r *SubscriptionRepo) ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error) {
 	rows, err := r.db.Query(
 		ctx,
 		`SELECT id, email, repo, confirmed, last_seen_tag, created_at, updated_at
@@ -153,9 +153,9 @@ func (r *SubscriptionRepo) ListByEmail(ctx context.Context, email string) ([]dom
 	}
 	defer rows.Close()
 
-	var subs []domain.Subscription
+	var subs []subscriptions.Subscription
 	for rows.Next() {
-		var s domain.Subscription
+		var s subscriptions.Subscription
 		if err := rows.Scan(
 			&s.ID, &s.Email, &s.Repo, &s.Confirmed, &s.LastSeenTag, &s.CreatedAt, &s.UpdatedAt,
 		); err != nil {
@@ -191,7 +191,7 @@ func (r *SubscriptionRepo) ListDistinctConfirmedRepos(ctx context.Context) ([]st
 
 // ListConfirmedSubscribersForRepo returns all confirmed subscribers for a repo,
 // including the unsubscribe token needed to build the email footer link.
-func (r *SubscriptionRepo) ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]domain.Subscription, error) {
+func (r *SubscriptionRepo) ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]subscriptions.Subscription, error) {
 	rows, err := r.db.Query(
 		ctx,
 		`SELECT id, email, repo, last_seen_tag, unsubscribe_token
@@ -203,9 +203,9 @@ func (r *SubscriptionRepo) ListConfirmedSubscribersForRepo(ctx context.Context, 
 	}
 	defer rows.Close()
 
-	var subs []domain.Subscription
+	var subs []subscriptions.Subscription
 	for rows.Next() {
-		var s domain.Subscription
+		var s subscriptions.Subscription
 		if err := rows.Scan(&s.ID, &s.Email, &s.Repo, &s.LastSeenTag, &s.UnsubscribeToken); err != nil {
 			return nil, fmt.Errorf("scan subscriber: %w", err)
 		}

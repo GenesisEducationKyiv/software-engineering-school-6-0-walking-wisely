@@ -22,13 +22,14 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/clients"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/handlers"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/repository"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/workers"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/worker"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
@@ -54,7 +55,7 @@ func run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	if err := repository.RunMigrations(cfg.DatabaseURL); err != nil {
+	if err := postgres.RunMigrations(cfg.DatabaseURL); err != nil {
 		return fmt.Errorf("run database migrations: %w", err)
 	}
 
@@ -75,11 +76,11 @@ func run() error {
 		}
 	}()
 
-	subRepo := repository.NewSubscriptionRepo(db)
-	githubClient := clients.NewGitHubClient(redisClient, cfg.GithubToken)
-	resendClient := clients.NewResendClient(cfg.ResendAPIKey, cfg.FromEmail)
+	subRepo := postgres.NewSubscriptionRepo(db)
+	githubClient := github.NewGitHubClient(redisClient, cfg.GithubToken)
+	resendClient := resend.NewResendClient(cfg.ResendAPIKey, cfg.FromEmail)
 
-	emailChan := make(chan domain.EmailMessage, cfg.EmailChannelSize)
+	emailChan := make(chan subscriptions.EmailMessage, cfg.EmailChannelSize)
 
 	promauto.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "email_channel_depth",
@@ -94,7 +95,7 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		workers.StartScanner(ctx, workers.ScannerDeps{
+		worker.StartScanner(ctx, worker.ScannerDeps{
 			Repo:      subRepo,
 			GitHub:    githubClient,
 			EmailChan: emailChan,
@@ -105,10 +106,10 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		workers.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait)
+		worker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait)
 	}()
 
-	subService := handlers.NewSubscriptionService(handlers.ServiceDeps{
+	subService := subscriptiongrpc.NewSubscriptionService(subscriptiongrpc.ServiceDeps{
 		SubRepo:        subRepo,
 		Github:         githubClient,
 		EmailChan:      emailChan,

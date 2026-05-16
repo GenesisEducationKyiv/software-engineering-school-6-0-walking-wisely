@@ -1,4 +1,4 @@
-package handlers_test
+package subscriptiongrpc_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 func strPtr(s string) *string { return &s }
@@ -80,7 +80,7 @@ func TestGetSubscriptions_NoSubscriptions(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGetSubscriptions_ResponseMapping(t *testing.T) {
-	subs := []domain.Subscription{
+	subs := []subscriptions.Subscription{
 		{Email: validEmail, Repo: "owner/alpha", Confirmed: true, LastSeenTag: strPtr("v1.2.3")},
 		{Email: validEmail, Repo: "owner/beta", Confirmed: false, LastSeenTag: strPtr("v0.1.0")},
 	}
@@ -117,7 +117,7 @@ func TestGetSubscriptions_NilLastSeenTag(t *testing.T) {
 		}
 	}()
 
-	subs := []domain.Subscription{
+	subs := []subscriptions.Subscription{
 		{Email: validEmail, Repo: validRepo, Confirmed: false, LastSeenTag: nil},
 	}
 	svc := newService(&fakeGithubClient{}, &fakeSubRepo{listByEmailResult: subs}, nil)

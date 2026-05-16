@@ -1,5 +1,5 @@
-// Package workers contains the background goroutines that scan GitHub for new releases and dispatch notification emails.
-package workers
+// Package worker contains background subscription jobs.
+package worker
 
 import (
 	"context"
@@ -8,16 +8,16 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/clients"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/repository"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 )
 
 // ScannerDeps bundles the scanner's external dependencies.
 type ScannerDeps struct {
-	Repo      *repository.SubscriptionRepo
-	GitHub    *clients.GitHubClient
-	EmailChan chan<- domain.EmailMessage
+	Repo      *postgres.SubscriptionRepo
+	GitHub    *github.GitHubClient
+	EmailChan chan<- subscriptions.EmailMessage
 	BaseURL   string
 }
 
@@ -64,7 +64,7 @@ func runScan(ctx context.Context, deps ScannerDeps) {
 func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	release, err := deps.GitHub.GetLatestRelease(ctx, repo)
 	if err != nil {
-		var rle *domain.RateLimitError
+		var rle *subscriptions.RateLimitError
 		if ok := errors.As(err, &rle); ok {
 			slog.Warn("scanner: github rate limited, skipping repo",
 				"repo", repo, "retry_after", rle.RetryAfter)
@@ -107,12 +107,12 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	}
 }
 
-func buildReleaseEmail(sub *domain.Subscription, release *clients.Release, baseURL string) domain.EmailMessage {
+func buildReleaseEmail(sub *subscriptions.Subscription, release *github.Release, baseURL string) subscriptions.EmailMessage {
 	releaseName := release.TagName
 	if release.Name != "" {
 		releaseName = release.Name
 	}
-	return domain.EmailMessage{
+	return subscriptions.EmailMessage{
 		To:      sub.Email,
 		Subject: fmt.Sprintf("[%s] New release: %s", sub.Repo, release.TagName),
 		HTML: fmt.Sprintf(`<p>A new release of <strong>%s</strong> is available.</p>

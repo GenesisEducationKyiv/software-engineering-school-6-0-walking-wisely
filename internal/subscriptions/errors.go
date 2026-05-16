@@ -1,5 +1,5 @@
 // Package domain contains the core business types, error sentinels, and token generation utilities.
-package domain
+package subscriptions
 
 import (
 	"errors"

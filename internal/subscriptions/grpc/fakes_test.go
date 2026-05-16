@@ -1,4 +1,4 @@
-package handlers_test
+package subscriptiongrpc_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // fakeSubRepo implements SubRepo with configurable return values per method.
@@ -16,7 +16,7 @@ type fakeSubRepo struct {
 	confirmByTokenErr     error
 	unsubscribeByTokenID  string
 	unsubscribeByTokenErr error
-	listByEmailResult     []domain.Subscription
+	listByEmailResult     []subscriptions.Subscription
 	listByEmailErr        error
 }
 
@@ -32,7 +32,7 @@ func (f *fakeSubRepo) UnsubscribeByToken(_ context.Context, _ string) (string, e
 	return f.unsubscribeByTokenID, f.unsubscribeByTokenErr
 }
 
-func (f *fakeSubRepo) ListByEmail(_ context.Context, _ string) ([]domain.Subscription, error) {
+func (f *fakeSubRepo) ListByEmail(_ context.Context, _ string) ([]subscriptions.Subscription, error) {
 	return f.listByEmailResult, f.listByEmailErr
 }
 
@@ -40,7 +40,7 @@ func (f *fakeSubRepo) ListDistinctConfirmedRepos(_ context.Context) ([]string, e
 	return nil, nil
 }
 
-func (f *fakeSubRepo) ListConfirmedSubscribersForRepo(_ context.Context, _ string) ([]domain.Subscription, error) {
+func (f *fakeSubRepo) ListConfirmedSubscribersForRepo(_ context.Context, _ string) ([]subscriptions.Subscription, error) {
 	return nil, nil
 }
 func (f *fakeSubRepo) UpdateLastSeenTag(_ context.Context, _, _ string) error { return nil }

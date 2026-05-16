@@ -1,4 +1,4 @@
-package handlers
+package subscriptiongrpc
 
 import (
 	"context"
@@ -12,10 +12,10 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
-func handleRateLimitError(ctx context.Context, rle *domain.RateLimitError) error {
+func handleRateLimitError(ctx context.Context, rle *subscriptions.RateLimitError) error {
 	secs := int(math.Ceil(rle.RetryAfter.Seconds()))
 
 	header := metadata.Pairs("Retry-After", fmt.Sprintf("%d", secs))
