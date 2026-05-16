@@ -12,15 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/releases"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // Release holds the fields we care about from a GitHub release object.
-type Release struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
-	Name    string `json:"name"`
-}
+type Release = releases.Release
 
 // Client wraps the GitHub REST API and maps responses to domain errors.
 type Client struct {

@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/releases"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -22,7 +22,7 @@ type ReleaseScanRepo interface {
 
 // ReleaseClient fetches release information for a repository.
 type ReleaseClient interface {
-	GetLatestRelease(ctx context.Context, repo string) (*github.Release, error)
+	GetLatestRelease(ctx context.Context, repo string) (*releases.Release, error)
 }
 
 // ScannerDeps bundles the scanner's external dependencies.
@@ -85,6 +85,10 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 		}
 		return
 	}
+	if release == nil {
+		slog.Error("scanner: release client returned nil release", "repo", repo)
+		return
+	}
 
 	subscribers, err := deps.Repo.ListConfirmedSubscribersForRepo(ctx, repo)
 	if err != nil {
@@ -119,7 +123,7 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 	}
 }
 
-func buildReleaseEmail(sub *subscriptions.Subscription, release *github.Release, baseURL string) mail.Message {
+func buildReleaseEmail(sub *subscriptions.Subscription, release *releases.Release, baseURL string) mail.Message {
 	releaseName := release.TagName
 	if release.Name != "" {
 		releaseName = release.Name
