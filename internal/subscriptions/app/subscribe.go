@@ -7,6 +7,7 @@ import (
 	"regexp"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -43,6 +44,7 @@ type SubscribeDeps struct {
 	EmailChan      chan<- mail.Message
 	EmailSecretKey string
 	BaseURL        string
+	Log            logger.Logger
 }
 
 // NewSubscribeService returns an application service for the subscribe workflow.
@@ -50,7 +52,7 @@ func NewSubscribeService(deps SubscribeDeps) *SubscribeService {
 	return &SubscribeService{
 		repo:           deps.Repo,
 		github:         deps.Github,
-		notifier:       NewMailConfirmationNotifier(mail.NewChannelQueue(deps.EmailChan), deps.BaseURL),
+		notifier:       NewMailConfirmationNotifier(mail.NewChannelQueue(deps.EmailChan), deps.BaseURL, deps.Log),
 		emailSecretKey: deps.EmailSecretKey,
 	}
 }

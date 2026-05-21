@@ -2,9 +2,9 @@ package subscriptionapp
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 // Confirmation is the data needed to notify a user about a pending subscription.
@@ -24,11 +24,15 @@ type ConfirmationNotifier interface {
 type MailConfirmationNotifier struct {
 	queue   mail.Queue
 	baseURL string
+	log     logger.Logger
 }
 
 // NewMailConfirmationNotifier returns a mail-backed confirmation notifier.
-func NewMailConfirmationNotifier(queue mail.Queue, baseURL string) *MailConfirmationNotifier {
-	return &MailConfirmationNotifier{queue: queue, baseURL: baseURL}
+func NewMailConfirmationNotifier(queue mail.Queue, baseURL string, log logger.Logger) *MailConfirmationNotifier {
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
+	return &MailConfirmationNotifier{queue: queue, baseURL: baseURL, log: log}
 }
 
 // NotifyConfirmation queues a confirmation email. A full queue preserves the
@@ -39,7 +43,7 @@ func (n *MailConfirmationNotifier) NotifyConfirmation(c Confirmation) {
 
 	if ok := n.queue.Enqueue(buildConfirmEmail(c.Email, c.Repo, confirmURL, unsubURL)); !ok {
 		// Channel full - log with repo only, not email (PII).
-		slog.Warn("subscribe: email channel full, confirmation email dropped", "repo", c.Repo)
+		n.log.Warn("subscribe: email channel full, confirmation email dropped", "repo", c.Repo)
 	}
 }
 

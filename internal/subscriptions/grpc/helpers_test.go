@@ -53,8 +53,9 @@ func TestHandleRateLimitError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			stream := &helperStream{}
 			ctx := grpc.NewContextWithServerTransportStream(context.Background(), stream)
+			svc := NewSubscriptionService(&ServiceDeps{})
 
-			err := handleRateLimitError(ctx, &subscriptions.RateLimitError{
+			err := svc.handleRateLimitError(ctx, &subscriptions.RateLimitError{
 				Service:    "GitHub",
 				RetryAfter: tc.retryAfter,
 			})

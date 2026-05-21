@@ -2,8 +2,9 @@ package github
 
 import (
 	"context"
-	"log/slog"
 	"time"
+
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 // ReleaseCacheTTL is the default duration for cached GitHub release responses.
@@ -25,21 +26,25 @@ type CachedReleaseClient struct {
 	next  ReleaseClient
 	cache ReleaseCache
 	ttl   time.Duration
+	log   logger.Logger
 }
 
 // NewCachedReleaseClient returns a ReleaseClient that reads from cache before
 // falling back to next. Cache write failures are logged and do not fail the call.
-func NewCachedReleaseClient(next ReleaseClient, cache ReleaseCache, ttl time.Duration) *CachedReleaseClient {
-	return &CachedReleaseClient{next: next, cache: cache, ttl: ttl}
+func NewCachedReleaseClient(next ReleaseClient, cache ReleaseCache, ttl time.Duration, log logger.Logger) *CachedReleaseClient {
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
+	return &CachedReleaseClient{next: next, cache: cache, ttl: ttl, log: log}
 }
 
 // GetLatestRelease returns the latest release, preferring a cached value when available.
 func (c *CachedReleaseClient) GetLatestRelease(ctx context.Context, repo string) (*Release, error) {
 	if release, ok, err := c.cache.GetRelease(ctx, repo); err == nil && ok {
-		slog.Debug("github release cache hit", "repo", repo)
+		c.log.Debug("github release cache hit", "repo", repo)
 		return release, nil
 	} else if err != nil {
-		slog.Warn("github release cache read failed", "repo", repo, "err", err)
+		c.log.Warn("github release cache read failed", "repo", repo, "err", err)
 	}
 
 	release, err := c.next.GetLatestRelease(ctx, repo)
@@ -48,7 +53,7 @@ func (c *CachedReleaseClient) GetLatestRelease(ctx context.Context, repo string)
 	}
 
 	if err := c.cache.SetRelease(ctx, repo, release, c.ttl); err != nil {
-		slog.Warn("failed to cache github release", "repo", repo, "err", err)
+		c.log.Warn("failed to cache github release", "repo", repo, "err", err)
 	}
 	return release, nil
 }

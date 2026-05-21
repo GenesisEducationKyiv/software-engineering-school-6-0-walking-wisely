@@ -61,7 +61,7 @@ func runSender(
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		StartSender(ctx, sender, ch, maxWait)
+		StartSender(ctx, sender, ch, maxWait, nil)
 	}()
 	return done
 }
@@ -130,7 +130,7 @@ func TestFlushBufferDropsProviderErrors(t *testing.T) {
 		{To: "two@example.com"},
 	}
 
-	got := flushBuffer(context.Background(), sender, buf, 2)
+	got := flushBuffer(context.Background(), sender, buf, 2, nil)
 	if len(got) != 0 {
 		t.Fatalf("remaining buffer size = %d, want 0", len(got))
 	}

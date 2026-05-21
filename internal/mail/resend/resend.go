@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -34,14 +34,19 @@ type Client struct {
 	http      *http.Client
 	apiKey    string
 	fromEmail string
+	log       logger.Logger
 }
 
-// NewResendClient returns a ResendClient that delivers email via the Resend batch API.
-func NewResendClient(apiKey, fromEmail string) *Client {
+// NewClient returns a ResendClient that delivers email via the Resend batch API.
+func NewClient(apiKey, fromEmail string, log logger.Logger) *Client {
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
 	return &Client{
 		http:      &http.Client{Timeout: 15 * time.Second},
 		apiKey:    apiKey,
 		fromEmail: fromEmail,
+		log:       log,
 	}
 }
 
@@ -81,19 +86,19 @@ func (c *Client) SendBatch(ctx context.Context, messages []mail.Message) error {
 	defer func() {
 		closeErr := resp.Body.Close()
 		if err != nil {
-			slog.Warn("close resend response body", "err", closeErr)
+			c.log.Warn("close resend response body", "err", closeErr)
 			err = closeErr
 		}
 	}()
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated:
-		slog.Info("email batch sent", "count", len(messages))
+		c.log.Info("email batch sent", "count", len(messages))
 		return nil
 
 	case http.StatusTooManyRequests:
 		retryAfter := parseResendRetryAfter(resp)
-		slog.Warn("resend rate limited", "retry_after", retryAfter, "batch_size", len(messages))
+		c.log.Warn("resend rate limited", "retry_after", retryAfter, "batch_size", len(messages))
 		return &subscriptions.RateLimitError{Service: "Resend", RetryAfter: retryAfter}
 
 	default:

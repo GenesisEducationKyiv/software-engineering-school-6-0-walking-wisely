@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/releases"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
@@ -23,14 +23,19 @@ type Release = releases.Release
 type Client struct {
 	http  *http.Client
 	token string // optional Bearer token for higher rate limits
+	log   logger.Logger
 }
 
 // NewClient returns a GitHub API client. githubToken is optional but raises the
 // GitHub API rate limit from 60 to 5 000 requests per hour when provided.
-func NewClient(githubToken string) *Client {
+func NewClient(githubToken string, log logger.Logger) *Client {
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
 	return &Client{
 		http:  &http.Client{Timeout: 10 * time.Second},
 		token: githubToken,
+		log:   log,
 	}
 }
 
@@ -47,9 +52,9 @@ func (c *Client) GetLatestRelease(ctx context.Context, repo string) (*Release, e
 	if err != nil {
 		return nil, err
 	}
-	defer closeBody(resp.Body)
+	defer c.closeBody(resp.Body)
 
-	if err := checkStatus(resp, repo); err != nil {
+	if err := c.checkStatus(resp, repo); err != nil {
 		return nil, err
 	}
 
@@ -58,7 +63,7 @@ func (c *Client) GetLatestRelease(ctx context.Context, repo string) (*Release, e
 		return nil, fmt.Errorf("decode github release response: %w", err)
 	}
 
-	slog.Debug("github release fetched", "repo", repo, "tag", release.TagName)
+	c.log.Debug("github release fetched", "repo", repo, "tag", release.TagName)
 	return &release, nil
 }
 
@@ -74,9 +79,9 @@ func (c *Client) ValidateRepo(ctx context.Context, repo string) error {
 	if err != nil {
 		return err
 	}
-	defer closeBody(resp.Body)
+	defer c.closeBody(resp.Body)
 
-	return checkStatus(resp, repo)
+	return c.checkStatus(resp, repo)
 }
 
 func (c *Client) get(ctx context.Context, url string) (*http.Response, error) {
@@ -98,7 +103,7 @@ func (c *Client) get(ctx context.Context, url string) (*http.Response, error) {
 	return resp, nil
 }
 
-func checkStatus(resp *http.Response, repo string) error {
+func (c *Client) checkStatus(resp *http.Response, repo string) error {
 	switch resp.StatusCode {
 	case http.StatusOK:
 		return nil
@@ -110,7 +115,7 @@ func checkStatus(resp *http.Response, repo string) error {
 		// GitHub uses 403 + X-RateLimit-* for primary rate limits and
 		// 429 + Retry-After for secondary rate limits.
 		retryAfter := parseRetryAfter(resp)
-		slog.Warn("github rate limited", "repo", repo, "retry_after", retryAfter)
+		c.log.Warn("github rate limited", "repo", repo, "retry_after", retryAfter)
 		return &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
 
 	default:
@@ -118,9 +123,9 @@ func checkStatus(resp *http.Response, repo string) error {
 	}
 }
 
-func closeBody(body io.Closer) {
+func (c *Client) closeBody(body io.Closer) {
 	if err := body.Close(); err != nil {
-		slog.Warn("close github response body", "err", err)
+		c.log.Warn("close github response body", "err", err)
 	}
 }
 

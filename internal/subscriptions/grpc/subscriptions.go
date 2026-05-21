@@ -3,7 +3,6 @@ package subscriptiongrpc
 import (
 	"context"
 	"errors"
-	"log/slog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -20,7 +19,7 @@ func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetS
 		if errors.Is(err, subscriptions.ErrInvalidEmail) {
 			return nil, status.Error(codes.InvalidArgument, "invalid email format")
 		}
-		slog.Error("subscriptions: list failed", "err", err)
+		s.log.Error("subscriptions: list failed", "err", err)
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 

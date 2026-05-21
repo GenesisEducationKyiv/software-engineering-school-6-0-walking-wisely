@@ -28,6 +28,7 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
+	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
@@ -41,49 +42,48 @@ import (
 var indexHTML []byte
 
 func main() {
-	if err := run(); err != nil {
-		slog.Error("application startup failed", "err", err)
+	appLogger := platformlogger.NewSlogAdapter(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+
+	if err := run(appLogger); err != nil {
+		appLogger.Error("application startup failed", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	// JSON structured logging to stdout from the very first line.
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
-
+func run(appLogger platformlogger.Logger) error {
 	cfg, err := config.LoadAppConfig()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	if err := postgres.RunMigrations(cfg.DatabaseURL); err != nil {
+	if err := postgres.RunMigrations(cfg.DatabaseURL, appLogger); err != nil {
 		return fmt.Errorf("run database migrations: %w", err)
 	}
 
-	db, err := platformpostgres.NewDB(cfg.DatabaseURL)
+	db, err := platformpostgres.NewDB(cfg.DatabaseURL, appLogger)
 	if err != nil {
 		return fmt.Errorf("init database: %w", err)
 	}
 	defer db.Close()
 
-	redisClient, err := platformredis.NewClient(cfg.RedisURL)
+	redisClient, err := platformredis.NewClient(cfg.RedisURL, appLogger)
 	if err != nil {
 		return fmt.Errorf("init redis: %w", err)
 	}
 
 	defer func() {
 		if err := redisClient.Close(); err != nil {
-			slog.Error("close redis", "err", err)
+			appLogger.Error("close redis", "err", err)
 		}
 	}()
 
-	subRepo := postgres.NewSubscriptionRepo(db)
-	githubClient := github.NewClient(cfg.GithubToken)
+	subRepo := postgres.NewSubscriptionRepo(db, appLogger)
+	githubClient := github.NewClient(cfg.GithubToken, appLogger)
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
-	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL)
-	resendClient := resend.NewResendClient(cfg.ResendAPIKey, cfg.FromEmail)
+	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
+	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, appLogger)
 
 	emailChan := make(chan mail.Message, cfg.EmailChannelSize)
 
@@ -105,13 +105,14 @@ func run() error {
 			GitHub:    cachedGithubClient,
 			EmailChan: emailChan,
 			BaseURL:   cfg.BaseURL,
+			Log:       appLogger,
 		}, cfg.ScannerInterval)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait)
+		worker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait, appLogger)
 	}()
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
@@ -121,6 +122,7 @@ func run() error {
 		EmailChan:      emailChan,
 		EmailSecretKey: cfg.EmailSecretKey,
 		BaseURL:        cfg.BaseURL,
+		Log:            appLogger,
 	})
 
 	grpcServer := grpc.NewServer()
@@ -136,9 +138,9 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		slog.Info("gRPC server listening", "port", grpcPort)
+		appLogger.Info("gRPC server listening", "port", grpcPort)
 		if err := grpcServer.Serve(lis); err != nil {
-			slog.Error("gRPC server error", "err", err)
+			appLogger.Error("gRPC server error", "err", err)
 			cancel()
 		}
 	}()
@@ -182,7 +184,7 @@ func run() error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
-	mux.Handle("/", middleware.Metrics(middleware.Logging(middleware.Recover(gwMux))))
+	mux.Handle("/", middleware.Metrics(middleware.Logging(middleware.Recover(gwMux, appLogger), appLogger)))
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.RestPort,
@@ -195,9 +197,9 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		slog.Info("HTTP REST gateway listening", "port", cfg.RestPort)
+		appLogger.Info("HTTP REST gateway listening", "port", cfg.RestPort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("http server error", "err", err)
+			appLogger.Error("http server error", "err", err)
 			cancel()
 		}
 	}()
@@ -207,7 +209,7 @@ func run() error {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	slog.Info("shutdown signal received")
+	appLogger.Info("shutdown signal received")
 	cancel()
 
 	grpcServer.GracefulStop()
@@ -215,10 +217,10 @@ func run() error {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("http server shutdown", "err", err)
+		appLogger.Error("http server shutdown", "err", err)
 	}
 
 	wg.Wait()
-	slog.Info("shutdown complete")
+	appLogger.Info("shutdown complete")
 	return nil
 }

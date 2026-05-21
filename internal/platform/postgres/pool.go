@@ -4,22 +4,25 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 // NewDB opens a PostgreSQL connection pool using retry defaults read from the environment.
-func NewDB(databaseURL string) (*pgxpool.Pool, error) {
-	return NewDBWithRetry(databaseURL, config.DBRetryConfigFromEnv())
+func NewDB(databaseURL string, log logger.Logger) (*pgxpool.Pool, error) {
+	return NewDBWithRetry(databaseURL, config.DBRetryConfigFromEnv(), log)
 }
 
 // NewDBWithRetry opens a PostgreSQL connection pool, retrying on transient failures according to retry.
-func NewDBWithRetry(databaseURL string, retry config.RetryConfig) (*pgxpool.Pool, error) {
+func NewDBWithRetry(databaseURL string, retry config.RetryConfig, log logger.Logger) (*pgxpool.Pool, error) {
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
 	poolCfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse DB config: %w", err)
@@ -35,7 +38,7 @@ func NewDBWithRetry(databaseURL string, retry config.RetryConfig) (*pgxpool.Pool
 		cancel()
 
 		if err == nil {
-			slog.Info("connected to database pool")
+			log.Info("connected to database pool")
 			return pool, nil
 		}
 		lastErr = err
@@ -48,7 +51,7 @@ func NewDBWithRetry(databaseURL string, retry config.RetryConfig) (*pgxpool.Pool
 		if wait > retry.MaxWait {
 			wait = retry.MaxWait
 		}
-		slog.Warn("database connection attempt failed, retrying",
+		log.Warn("database connection attempt failed, retrying",
 			"attempt", attempt, "max_attempts", retry.MaxAttempts,
 			"err", err, "retry_in", wait)
 		time.Sleep(wait)

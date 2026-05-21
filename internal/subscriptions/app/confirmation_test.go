@@ -19,7 +19,7 @@ func (q *fakeMailQueue) Enqueue(msg mail.Message) bool {
 
 func TestConfirmationNotifier_NotifyConfirmationBuildsAndQueuesEmail(t *testing.T) {
 	queue := &fakeMailQueue{ok: true}
-	notifier := NewMailConfirmationNotifier(queue, "http://localhost")
+	notifier := NewMailConfirmationNotifier(queue, "http://localhost", nil)
 
 	notifier.NotifyConfirmation(Confirmation{
 		Email:        validEmail,
@@ -50,9 +50,9 @@ func TestConfirmationNotifier_NotifyConfirmationBuildsAndQueuesEmail(t *testing.
 	}
 }
 
-func TestConfirmationNotifier_NotifyConfirmationIgnoresQueueFailure(t *testing.T) {
+func TestConfirmationNotifier_QueueFullDropsMessage(t *testing.T) {
 	queue := &fakeMailQueue{ok: false}
-	notifier := NewMailConfirmationNotifier(queue, "http://localhost")
+	notifier := NewMailConfirmationNotifier(queue, "http://localhost", nil)
 
 	notifier.NotifyConfirmation(Confirmation{
 		Email:        validEmail,

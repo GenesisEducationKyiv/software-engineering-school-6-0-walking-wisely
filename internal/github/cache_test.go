@@ -44,7 +44,7 @@ func TestCachedReleaseClient_CacheHit(t *testing.T) {
 	next := &fakeReleaseClient{release: &Release{TagName: "v2.0.0"}}
 	cache := &fakeReleaseCache{release: cached, ok: true}
 
-	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL)
+	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
 	got, err := client.GetLatestRelease(context.Background(), "owner/repo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -62,7 +62,7 @@ func TestCachedReleaseClient_CacheMissFetchesAndStores(t *testing.T) {
 	next := &fakeReleaseClient{release: fresh}
 	cache := &fakeReleaseCache{}
 
-	client := NewCachedReleaseClient(next, cache, 5*time.Minute)
+	client := NewCachedReleaseClient(next, cache, 5*time.Minute, nil)
 	got, err := client.GetLatestRelease(context.Background(), "owner/repo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -86,7 +86,7 @@ func TestCachedReleaseClient_CacheErrorsDoNotHideFreshRelease(t *testing.T) {
 		setErr: errors.New("redis still unavailable"),
 	}
 
-	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL)
+	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
 	got, err := client.GetLatestRelease(context.Background(), "owner/repo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -104,7 +104,7 @@ func TestCachedReleaseClient_PropagatesFetchError(t *testing.T) {
 	next := &fakeReleaseClient{err: wantErr}
 	cache := &fakeReleaseCache{}
 
-	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL)
+	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
 	_, err := client.GetLatestRelease(context.Background(), "owner/repo")
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("got error %v, want %v", err, wantErr)

@@ -4,22 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // SubscriptionRepo wraps a pgxpool.Pool and implements all subscription persistence operations.
 type SubscriptionRepo struct {
-	db *pgxpool.Pool
+	db  *pgxpool.Pool
+	log logger.Logger
 }
 
 // NewSubscriptionRepo returns a SubscriptionRepo backed by the given connection pool.
-func NewSubscriptionRepo(db *pgxpool.Pool) *SubscriptionRepo {
-	return &SubscriptionRepo{db: db}
+func NewSubscriptionRepo(db *pgxpool.Pool, log logger.Logger) *SubscriptionRepo {
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
+	return &SubscriptionRepo{db: db, log: log}
 }
 
 // Subscribe creates a new subscription or refreshes the confirm token for an
@@ -39,7 +43,7 @@ func (r *SubscriptionRepo) Subscribe(
 		if err != nil {
 			rollbackErr := tx.Rollback(ctx)
 			if rollbackErr != nil {
-				log.Printf("subscribe: failed to rollback transaction: %v", rollbackErr)
+				r.log.Error("subscribe: failed to rollback transaction", "err", rollbackErr)
 			}
 		}
 	}()
@@ -95,7 +99,7 @@ func (r *SubscriptionRepo) ConfirmByToken(ctx context.Context, token string) (id
 		if err != nil {
 			rollbackErr := tx.Rollback(ctx)
 			if rollbackErr != nil {
-				log.Printf("confirm: failed to rollback transaction: %v", rollbackErr)
+				r.log.Error("confirm: failed to rollback transaction", "err", rollbackErr)
 			}
 		}
 	}()

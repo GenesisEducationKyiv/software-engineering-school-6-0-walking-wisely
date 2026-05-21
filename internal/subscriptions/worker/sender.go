@@ -3,10 +3,10 @@ package worker
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -25,8 +25,13 @@ func StartSender(
 	sender mail.Sender,
 	emailChan <-chan mail.Message,
 	maxWait time.Duration,
+	log logger.Logger,
 ) {
-	slog.Info("sender started", "max_wait", maxWait)
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
+
+	log.Info("sender started", "max_wait", maxWait)
 	ticker := time.NewTicker(maxWait)
 	defer ticker.Stop()
 
@@ -38,27 +43,27 @@ func StartSender(
 		case msg, ok := <-emailChan:
 			if !ok {
 				// Channel closed - flush and exit.
-				flushBuffer(ctx, sender, buf, batchSize)
-				slog.Info("sender stopped (channel closed)")
+				flushBuffer(ctx, sender, buf, batchSize, log)
+				log.Info("sender stopped (channel closed)")
 				return
 			}
 			buf = append(buf, msg)
 			if len(buf) >= batchSize {
-				buf = flushBuffer(ctx, sender, buf, batchSize)
+				buf = flushBuffer(ctx, sender, buf, batchSize, log)
 			}
 
 		case <-ticker.C:
-			buf = flushBuffer(ctx, sender, buf, batchSize)
+			buf = flushBuffer(ctx, sender, buf, batchSize, log)
 
 		case <-ctx.Done():
 			// Drain any messages already in the channel before shutting down.
 			// Use a fresh background context so the final HTTP calls are not
 			// cancelled immediately.
 			drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-			buf = drainEmailChannel(drainCtx, sender, emailChan, buf, batchSize)
-			flushBuffer(drainCtx, sender, buf, batchSize)
+			buf = drainEmailChannel(drainCtx, sender, emailChan, buf, batchSize, log)
+			flushBuffer(drainCtx, sender, buf, batchSize, log)
 			cancel()
-			slog.Info("sender stopped")
+			log.Info("sender stopped")
 			return
 		}
 	}
@@ -80,14 +85,19 @@ func flushBuffer(
 	sender mail.Sender,
 	buf []mail.Message,
 	batchSize int,
+	log logger.Logger,
 ) []mail.Message {
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
+
 	if len(buf) == 0 {
 		return buf
 	}
 
 	for _, chunk := range chunkMessages(buf, batchSize) {
 		if err := sender.SendBatch(flushCtx, chunk); err != nil {
-			logSendError(err, len(chunk))
+			logSendError(log, err, len(chunk))
 		}
 	}
 
@@ -100,6 +110,7 @@ func drainEmailChannel(
 	emailChan <-chan mail.Message,
 	buf []mail.Message,
 	batchSize int,
+	log logger.Logger,
 ) []mail.Message {
 	for {
 		select {
@@ -109,7 +120,7 @@ func drainEmailChannel(
 			}
 			buf = append(buf, msg)
 			if len(buf) >= batchSize {
-				buf = flushBuffer(ctx, sender, buf, batchSize)
+				buf = flushBuffer(ctx, sender, buf, batchSize, log)
 			}
 		default:
 			return buf
@@ -133,14 +144,18 @@ func chunkMessages(messages []mail.Message, batchSize int) [][]mail.Message {
 	return chunks
 }
 
-func logSendError(err error, batchSize int) {
+func logSendError(log logger.Logger, err error, batchSize int) {
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
+
 	var rle *subscriptions.RateLimitError
 	if ok := errors.As(err, &rle); ok {
-		slog.Warn("sender: email provider rate limited, dropping batch",
+		log.Warn("sender: email provider rate limited, dropping batch",
 			"batch_size", batchSize, "retry_after", rle.RetryAfter)
 		return
 	}
 
-	slog.Error("sender: send batch failed",
+	log.Error("sender: send batch failed",
 		"batch_size", batchSize, "err", err)
 }

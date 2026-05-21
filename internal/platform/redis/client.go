@@ -4,22 +4,26 @@ package redis
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 // NewClient creates a Redis client and pings it, using retry defaults read from the environment.
-func NewClient(redisURL string) (*goredis.Client, error) {
-	return NewClientWithRetry(redisURL, config.RedisRetryConfigFromEnv())
+func NewClient(redisURL string, log logger.Logger) (*goredis.Client, error) {
+	return NewClientWithRetry(redisURL, config.RedisRetryConfigFromEnv(), log)
 }
 
 // NewClientWithRetry creates a Redis client and pings it, retrying on transient failures according to retry.
-func NewClientWithRetry(redisURL string, retry config.RetryConfig) (*goredis.Client, error) {
+func NewClientWithRetry(redisURL string, retry config.RetryConfig, log logger.Logger) (*goredis.Client, error) {
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
+
 	opts, err := goredis.ParseURL(redisURL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse Redis URL: %w", err)
@@ -34,7 +38,7 @@ func NewClientWithRetry(redisURL string, retry config.RetryConfig) (*goredis.Cli
 		cancel()
 
 		if err == nil {
-			slog.Info("connected to Redis")
+			log.Info("connected to Redis")
 			return client, nil
 		}
 		lastErr = err
@@ -47,7 +51,7 @@ func NewClientWithRetry(redisURL string, retry config.RetryConfig) (*goredis.Cli
 		if wait > retry.MaxWait {
 			wait = retry.MaxWait
 		}
-		slog.Warn("Redis connection attempt failed, retrying",
+		log.Warn("Redis connection attempt failed, retrying",
 			"attempt", attempt, "max_attempts", retry.MaxAttempts,
 			"err", err, "retry_in", wait)
 		time.Sleep(wait)
