@@ -96,7 +96,9 @@ func run(appLogger platformlogger.Logger) error {
 		}
 	}()
 
-	subRepo := postgres.NewSubscriptionRepo(db, appLogger)
+	subTokenRepo := postgres.NewTokenRepo(db, appLogger)
+	subReadRepo := postgres.NewReadRepo(db, appLogger)
+	releaseScanRepo := postgres.NewReleaseScanRepo(db, appLogger)
 	githubClient := github.NewClient(cfg.GithubToken, appLogger)
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
@@ -116,7 +118,7 @@ func run(appLogger platformlogger.Logger) error {
 	go func() {
 		defer wg.Done()
 		worker.StartScanner(ctx, worker.ScannerDeps{
-			Repo:      subRepo,
+			Repo:      releaseScanRepo,
 			GitHub:    cachedGithubClient,
 			EmailChan: emailChan,
 			BaseURL:   cfg.BaseURL,
@@ -131,8 +133,8 @@ func run(appLogger platformlogger.Logger) error {
 	}()
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
-		TokenRepo:      subRepo,
-		ReadRepo:       subRepo,
+		TokenRepo:      subTokenRepo,
+		ReadRepo:       subReadRepo,
 		Github:         githubClient,
 		EmailChan:      emailChan,
 		EmailSecretKey: cfg.EmailSecretKey,
