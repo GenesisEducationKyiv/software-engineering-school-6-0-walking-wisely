@@ -75,11 +75,11 @@ func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) 
 		return err
 	}
 
-	confirmToken, err := subscriptions.GenerateToken(s.emailSecretKey)
+	confirmToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
 		return fmt.Errorf("generate confirm token: %w", err)
 	}
-	unsubToken, err := subscriptions.GenerateToken(s.emailSecretKey)
+	unsubToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
 		return fmt.Errorf("generate unsub token: %w", err)
 	}

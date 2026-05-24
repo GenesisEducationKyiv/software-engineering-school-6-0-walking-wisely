@@ -2,6 +2,7 @@ package subscriptionapp
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
@@ -38,8 +39,9 @@ func NewMailConfirmationNotifier(queue mail.Queue, baseURL string, log logger.Lo
 // NotifyConfirmation queues a confirmation email. A full queue preserves the
 // existing best-effort behavior: the subscription succeeds and the drop is logged.
 func (n *MailConfirmationNotifier) NotifyConfirmation(c Confirmation) {
-	confirmURL := fmt.Sprintf("%s/api/confirm/%s", n.baseURL, c.ConfirmToken)
-	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", n.baseURL, c.UnsubToken)
+	baseURL := strings.TrimRight(n.baseURL, "/")
+	confirmURL := fmt.Sprintf("%s/api/confirm/%s", baseURL, c.ConfirmToken)
+	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", baseURL, c.UnsubToken)
 
 	if ok := n.queue.Enqueue(buildConfirmEmail(c.Email, c.Repo, confirmURL, unsubURL)); !ok {
 		// Channel full - log with repo only, not email (PII).
