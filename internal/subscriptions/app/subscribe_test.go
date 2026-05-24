@@ -55,7 +55,7 @@ func newSubscribeService(
 	repo SubscriptionWriter,
 	ch chan mail.Message,
 ) *SubscribeService {
-	return NewSubscribeService(SubscribeDeps{
+	return NewSubscribeService(&SubscribeDeps{
 		Repo:           repo,
 		Github:         gh,
 		EmailChan:      ch,

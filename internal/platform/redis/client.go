@@ -41,13 +41,13 @@ func NewClientWithRetry(redisURL string, retry config.RetryConfig, log logger.Lo
 
 func validateRedisRetryConfig(retry config.RetryConfig) error {
 	if retry.MaxAttempts <= 0 {
-		return errors.New("Redis retry max attempts must be positive")
+		return errors.New("redis retry max attempts must be positive")
 	}
 	if retry.InitialWait <= 0 {
-		return errors.New("Redis retry initial wait must be positive")
+		return errors.New("redis retry initial wait must be positive")
 	}
 	if retry.MaxWait <= 0 {
-		return errors.New("Redis retry max wait must be positive")
+		return errors.New("redis retry max wait must be positive")
 	}
 	return nil
 }

@@ -48,7 +48,7 @@ type SubscribeDeps struct {
 }
 
 // NewSubscribeService returns an application service for the subscribe workflow.
-func NewSubscribeService(deps SubscribeDeps) *SubscribeService {
+func NewSubscribeService(deps *SubscribeDeps) *SubscribeService {
 	return &SubscribeService{
 		repo:           deps.Repo,
 		github:         deps.Github,

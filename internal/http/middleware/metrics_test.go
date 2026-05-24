@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
 )
 
 type metricsCall struct {
@@ -48,7 +49,7 @@ func TestMetricsRecordsHTTPRequest(t *testing.T) {
 
 	metricsHandler := middleware.Metrics(handler, recorder)
 
-	req := httptest.NewRequest(http.MethodPost, "/subscriptions?email=user@example.com", nil)
+	req := httptest.NewRequest(http.MethodPost, "/subscriptions?email=user@example.com", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	metricsHandler.ServeHTTP(rec, req)
@@ -87,7 +88,7 @@ func TestMetricsRecordsOKWhenHandlerDoesNotWriteHeader(t *testing.T) {
 
 	metricsHandler := middleware.Metrics(handler, recorder)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	metricsHandler.ServeHTTP(rec, req)

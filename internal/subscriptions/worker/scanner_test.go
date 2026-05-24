@@ -288,6 +288,7 @@ func TestRunScanStopsWhenContextCancelledBeforeRepoScan(t *testing.T) {
 
 func TestStartScannerRunsUntilContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	repo := &cancelOnListRepo{
 		cancel: cancel,
 		called: make(chan struct{}),

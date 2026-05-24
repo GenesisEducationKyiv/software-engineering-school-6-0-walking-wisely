@@ -50,7 +50,7 @@ func NewSubscriptionService(deps *ServiceDeps) *SubscriptionService {
 	}
 
 	return &SubscriptionService{
-		subscribeUseCase: subscriptionapp.NewSubscribeService(subscriptionapp.SubscribeDeps{
+		subscribeUseCase: subscriptionapp.NewSubscribeService(&subscriptionapp.SubscribeDeps{
 			Repo:           deps.TokenRepo,
 			Github:         deps.Github,
 			EmailChan:      deps.EmailChan,

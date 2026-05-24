@@ -80,7 +80,7 @@ func TestNewHTTPHandlerRecoversPanicAndRecordsRequest(t *testing.T) {
 
 	handler := newHTTPHandler(gwMux, metricsHandler, recorder, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/panic?email=hidden@example.com", nil)
+	req := httptest.NewRequest(http.MethodGet, "/panic?email=hidden@example.com", http.NoBody)
 	res := httptest.NewRecorder()
 
 	handler.ServeHTTP(res, req)

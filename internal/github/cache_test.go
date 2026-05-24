@@ -37,7 +37,7 @@ type fakeReleaseCache struct {
 	sets    int
 }
 
-func (f *fakeReleaseCache) GetRelease(ctx context.Context, repo string) (*Release, bool, error) {
+func (f *fakeReleaseCache) GetRelease(ctx context.Context, repo string) (release *Release, ok bool, err error) {
 	f.gets++
 	f.getCtx = ctx
 	f.getRepo = repo
@@ -99,7 +99,7 @@ func TestCachedReleaseClient_ForwardsContextAndRepo(t *testing.T) {
 	fresh := &Release{TagName: "v2.0.0"}
 	next := &fakeReleaseClient{release: fresh}
 	cache := &fakeReleaseCache{}
-	ctx := context.WithValue(context.Background(), struct{}{}, "marker")
+	ctx := context.WithValue(context.Background(), releaseCacheContextKey{}, "marker")
 
 	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
 	if _, err := client.GetLatestRelease(ctx, "owner/repo"); err != nil {
@@ -115,6 +115,8 @@ func TestCachedReleaseClient_ForwardsContextAndRepo(t *testing.T) {
 		t.Fatalf("cache set = (%v, %q), want original context and owner/repo", cache.setCtx, cache.setRepo)
 	}
 }
+
+type releaseCacheContextKey struct{}
 
 func TestCachedReleaseClient_CacheErrorsDoNotHideFreshRelease(t *testing.T) {
 	fresh := &Release{TagName: "v2.0.0"}

@@ -17,7 +17,11 @@ func (m *MockLogger) Info(msg string, args ...interface{}) {
 	call := map[string]interface{}{"message": msg}
 	for i := 0; i < len(args); i += 2 {
 		if i+1 < len(args) {
-			call[args[i].(string)] = args[i+1]
+			key, ok := args[i].(string)
+			if !ok {
+				continue
+			}
+			call[key] = args[i+1]
 		}
 	}
 	m.calls = append(m.calls, call)
@@ -27,12 +31,12 @@ func TestLogging(t *testing.T) {
 	mockLogger := &MockLogger{}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test response"))
+		_, _ = w.Write([]byte("test response"))
 	})
 
 	loggingHandler := middleware.Logging(handler, mockLogger)
 
-	req := httptest.NewRequest("GET", "/test/path", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test/path", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	loggingHandler.ServeHTTP(rec, req)
@@ -75,7 +79,7 @@ func TestLoggingDifferentStatusCode(t *testing.T) {
 
 	loggingHandler := middleware.Logging(handler, mockLogger)
 
-	req := httptest.NewRequest("POST", "/api/resource", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/resource", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	loggingHandler.ServeHTTP(rec, req)
