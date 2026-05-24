@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -29,6 +27,7 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
@@ -56,6 +55,24 @@ func run(appLogger platformlogger.Logger) error {
 	cfg, err := config.LoadAppConfig()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+
+	meterProvider, err := platformmetrics.InitMeterProvider()
+	if err != nil {
+		return fmt.Errorf("init meter provider: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := meterProvider.Shutdown(shutdownCtx); err != nil {
+			appLogger.Error("shutdown meter provider", "err", err)
+		}
+	}()
+	metricsRecorder, err := middleware.NewOpenTelemetryRecorder(
+		meterProvider.Meter("github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/cmd/server"),
+	)
+	if err != nil {
+		return fmt.Errorf("init metrics recorder: %w", err)
 	}
 
 	if err := postgres.RunMigrations(cfg.DatabaseURL, appLogger); err != nil {
@@ -86,11 +103,9 @@ func run(appLogger platformlogger.Logger) error {
 	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, appLogger)
 
 	emailChan := make(chan mail.Message, cfg.EmailChannelSize)
-
-	promauto.NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "email_channel_depth",
-		Help: "Number of pending emails in the send queue.",
-	}, func() float64 { return float64(len(emailChan)) })
+	if err := metricsRecorder.RegisterEmailChannelDepth(func() int { return len(emailChan) }); err != nil {
+		return fmt.Errorf("register email channel depth metric: %w", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -184,7 +199,7 @@ func run(appLogger platformlogger.Logger) error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
-	mux.Handle("/", middleware.Metrics(middleware.Logging(middleware.Recover(gwMux, appLogger), appLogger)))
+	mux.Handle("/", middleware.Metrics(middleware.Logging(middleware.Recover(gwMux, appLogger), appLogger), metricsRecorder))
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.RestPort,

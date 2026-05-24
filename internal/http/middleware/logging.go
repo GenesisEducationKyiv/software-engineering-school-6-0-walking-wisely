@@ -1,4 +1,4 @@
-// Package middleware provides HTTP middleware for structured logging, Prometheus metrics, and panic recovery.
+// Package middleware provides HTTP middleware for structured logging, metrics, and panic recovery.
 package middleware
 
 import (
