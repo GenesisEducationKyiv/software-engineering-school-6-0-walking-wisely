@@ -15,7 +15,7 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
 )
 
-func TestInitRedisWithRetry_ConnectsToRedis(t *testing.T) {
+func TestIntegration_InitRedisWithRetry_ConnectsToRedis(t *testing.T) {
 	testcontainers.SkipIfProviderIsNotHealthy(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -72,7 +72,7 @@ func TestInitRedisWithRetry_ConnectsToRedis(t *testing.T) {
 	}
 }
 
-func TestInitRedisWithRetry_ReturnsErrorWhenRedisUnavailable(t *testing.T) {
+func TestIntegration_InitRedisWithRetry_ReturnsErrorWhenRedisUnavailable(t *testing.T) {
 	hostPort := freeTCPPort(t)
 	redisURL := fmt.Sprintf("redis://127.0.0.1:%d/0", hostPort)
 

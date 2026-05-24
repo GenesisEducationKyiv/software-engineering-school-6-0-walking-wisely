@@ -1,4 +1,4 @@
-name: Tests
+name: Integration Tests
 
 on:
   pull_request:
@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    name: Test
+  integration-test:
+    name: Integration Test
     runs-on: ubuntu-latest
 
     steps:
@@ -28,5 +28,5 @@ jobs:
       - name: Generate protobuf
         run: buf generate
 
-      - name: Run tests
-        run: go test -race -count=1 -skip '^TestIntegration_' ./...
+      - name: Run integration tests
+        run: go test -count=1 -tags=integration -run '^TestIntegration_' ./...

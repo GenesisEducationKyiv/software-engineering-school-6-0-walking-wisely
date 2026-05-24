@@ -16,7 +16,7 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
 )
 
-func TestGitHubReleaseCache_SetThenGetRelease(t *testing.T) {
+func TestIntegration_GitHubReleaseCache_SetThenGetRelease(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -53,7 +53,7 @@ func TestGitHubReleaseCache_SetThenGetRelease(t *testing.T) {
 	}
 }
 
-func TestGitHubReleaseCache_GetRelease_MissingKey(t *testing.T) {
+func TestIntegration_GitHubReleaseCache_GetRelease_MissingKey(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -72,7 +72,7 @@ func TestGitHubReleaseCache_GetRelease_MissingKey(t *testing.T) {
 	}
 }
 
-func TestGitHubReleaseCache_GetRelease_InvalidJSON(t *testing.T) {
+func TestIntegration_GitHubReleaseCache_GetRelease_InvalidJSON(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -99,7 +99,7 @@ func TestGitHubReleaseCache_GetRelease_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestGitHubReleaseCache_GetRelease_ExpiredKey(t *testing.T) {
+func TestIntegration_GitHubReleaseCache_GetRelease_ExpiredKey(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 

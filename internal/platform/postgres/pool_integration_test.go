@@ -15,7 +15,7 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
 )
 
-func TestInitDBWithRetry_ConnectsToPostgres(t *testing.T) {
+func TestIntegration_InitDBWithRetry_ConnectsToPostgres(t *testing.T) {
 	testcontainers.SkipIfProviderIsNotHealthy(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -62,7 +62,7 @@ func TestInitDBWithRetry_ConnectsToPostgres(t *testing.T) {
 	}
 }
 
-func TestInitDBWithRetry_ReturnsErrorWhenPostgresUnavailable(t *testing.T) {
+func TestIntegration_InitDBWithRetry_ReturnsErrorWhenPostgresUnavailable(t *testing.T) {
 	hostPort := freeTCPPort(t)
 	databaseURL := fmt.Sprintf("postgres://app:secret@127.0.0.1:%d/app?sslmode=disable&connect_timeout=1", hostPort)
 

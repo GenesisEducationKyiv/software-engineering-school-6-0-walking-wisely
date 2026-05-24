@@ -20,7 +20,7 @@ import (
 	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
 )
 
-func TestHTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
+func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	provider, err := platformmetrics.NewMeterProvider(registry)
 	if err != nil {

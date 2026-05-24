@@ -23,7 +23,7 @@ type testRepos struct {
 	pool        *pgxpool.Pool
 }
 
-func TestSubscriptionReposIntegration(t *testing.T) {
+func TestIntegration_SubscriptionRepos(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 

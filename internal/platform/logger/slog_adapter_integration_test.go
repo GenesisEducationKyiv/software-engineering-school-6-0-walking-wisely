@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestSlogAdapterWritesStructuredLogs(t *testing.T) {
+func TestIntegration_SlogAdapterWritesStructuredLogs(t *testing.T) {
 	var buf bytes.Buffer
 	adapter := NewSlogAdapter(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
