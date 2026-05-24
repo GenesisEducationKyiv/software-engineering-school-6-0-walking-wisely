@@ -3,7 +3,9 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,21 +27,31 @@ type fakeReleaseScanRepo struct {
 	updatedRepo      string
 	updatedTag       string
 	listedSubscriber []string
+	listReposCtx     context.Context
+	listSubsCtxs     []context.Context
+	updateCtx        context.Context
+	subsErrByRepo    map[string]error
 }
 
-func (f *fakeReleaseScanRepo) ListDistinctConfirmedRepos(_ context.Context) ([]string, error) {
+func (f *fakeReleaseScanRepo) ListDistinctConfirmedRepos(ctx context.Context) ([]string, error) {
 	f.listReposCalls++
+	f.listReposCtx = ctx
 	return f.repos, f.listErr
 }
 
-func (f *fakeReleaseScanRepo) ListConfirmedSubscribersForRepo(_ context.Context, repo string) ([]subscriptions.Subscription, error) {
+func (f *fakeReleaseScanRepo) ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]subscriptions.Subscription, error) {
 	f.listSubsCalls++
 	f.listedSubscriber = append(f.listedSubscriber, repo)
+	f.listSubsCtxs = append(f.listSubsCtxs, ctx)
+	if err := f.subsErrByRepo[repo]; err != nil {
+		return nil, err
+	}
 	return f.subscribers[repo], f.subsErr
 }
 
-func (f *fakeReleaseScanRepo) UpdateLastSeenTag(_ context.Context, repo, tag string) error {
+func (f *fakeReleaseScanRepo) UpdateLastSeenTag(ctx context.Context, repo, tag string) error {
 	f.updateCalls++
+	f.updateCtx = ctx
 	f.updatedRepo = repo
 	f.updatedTag = tag
 	return f.updateErr
@@ -50,13 +62,44 @@ type fakeReleaseClient struct {
 	err     error
 	calls   int
 	repos   []string
+	ctxs    []context.Context
+	byRepo  map[string]*releases.Release
+	errs    map[string]error
 }
 
-func (f *fakeReleaseClient) GetLatestRelease(_ context.Context, repo string) (*releases.Release, error) {
+func (f *fakeReleaseClient) GetLatestRelease(ctx context.Context, repo string) (*releases.Release, error) {
 	f.calls++
 	f.repos = append(f.repos, repo)
+	f.ctxs = append(f.ctxs, ctx)
+	if err := f.errs[repo]; err != nil {
+		return nil, err
+	}
+	if release := f.byRepo[repo]; release != nil {
+		return release, nil
+	}
 	return f.release, f.err
 }
+
+type recordingScannerLogger struct {
+	warnings []recordedScannerLog
+}
+
+type recordedScannerLog struct {
+	msg  string
+	args []any
+}
+
+func (l *recordingScannerLogger) Debug(string, ...any) {}
+
+func (l *recordingScannerLogger) Info(string, ...any) {}
+
+func (l *recordingScannerLogger) Warn(msg string, args ...any) {
+	l.warnings = append(l.warnings, recordedScannerLog{msg: msg, args: append([]any(nil), args...)})
+}
+
+func (l *recordingScannerLogger) Error(string, ...any) {}
+
+func (l *recordingScannerLogger) ErrorContext(context.Context, string, ...any) {}
 
 func newScannerDeps(repo *fakeReleaseScanRepo, client *fakeReleaseClient, ch chan mail.Message) ScannerDeps {
 	return ScannerDeps{
@@ -69,6 +112,33 @@ func newScannerDeps(repo *fakeReleaseScanRepo, client *fakeReleaseClient, ch cha
 
 func strPtr(s string) *string {
 	return &s
+}
+
+type scannerContextKey struct{}
+
+type cancelOnListRepo struct {
+	cancel context.CancelFunc
+	calls  int
+	mu     sync.Mutex
+	called chan struct{}
+	once   sync.Once
+}
+
+func (r *cancelOnListRepo) ListDistinctConfirmedRepos(context.Context) ([]string, error) {
+	r.mu.Lock()
+	r.calls++
+	r.mu.Unlock()
+	r.cancel()
+	r.once.Do(func() { close(r.called) })
+	return nil, nil
+}
+
+func (r *cancelOnListRepo) ListConfirmedSubscribersForRepo(context.Context, string) ([]subscriptions.Subscription, error) {
+	return nil, nil
+}
+
+func (r *cancelOnListRepo) UpdateLastSeenTag(context.Context, string, string) error {
+	return nil
 }
 
 func TestRunScanNotifiesSubscribersAndUpdatesLastSeenTag(t *testing.T) {
@@ -133,6 +203,33 @@ func TestRunScanNotifiesSubscribersAndUpdatesLastSeenTag(t *testing.T) {
 	}
 }
 
+func TestRunScanPassesContextToDependencies(t *testing.T) {
+	ctx := context.WithValue(context.Background(), scannerContextKey{}, "request-123")
+	repo := &fakeReleaseScanRepo{
+		repos: []string{"owner/repo"},
+		subscribers: map[string][]subscriptions.Subscription{
+			"owner/repo": {{ID: "sub-1", Email: "user@example.com", Repo: "owner/repo"}},
+		},
+	}
+	client := &fakeReleaseClient{release: &releases.Release{TagName: "v1"}}
+	ch := make(chan mail.Message, 1)
+
+	runScan(ctx, newScannerDeps(repo, client, ch))
+
+	if repo.listReposCtx != ctx {
+		t.Errorf("list repos context was not passed through")
+	}
+	if len(client.ctxs) != 1 || client.ctxs[0] != ctx {
+		t.Fatalf("github contexts = %#v, want original context once", client.ctxs)
+	}
+	if len(repo.listSubsCtxs) != 1 || repo.listSubsCtxs[0] != ctx {
+		t.Fatalf("list subscriber contexts = %#v, want original context once", repo.listSubsCtxs)
+	}
+	if repo.updateCtx != ctx {
+		t.Errorf("update context was not passed through")
+	}
+}
+
 func TestRunScanNoReposDoesNothing(t *testing.T) {
 	repo := &fakeReleaseScanRepo{subscribers: map[string][]subscriptions.Subscription{}}
 	client := &fakeReleaseClient{release: &releases.Release{TagName: "v1"}}
@@ -186,6 +283,46 @@ func TestRunScanStopsWhenContextCancelledBeforeRepoScan(t *testing.T) {
 	}
 	if repo.listSubsCalls != 0 || repo.updateCalls != 0 || len(ch) != 0 {
 		t.Fatalf("unexpected work: listSubs=%d update=%d emails=%d", repo.listSubsCalls, repo.updateCalls, len(ch))
+	}
+}
+
+func TestStartScannerRunsUntilContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	repo := &cancelOnListRepo{
+		cancel: cancel,
+		called: make(chan struct{}),
+	}
+	client := &fakeReleaseClient{}
+	ch := make(chan mail.Message, 1)
+	done := make(chan struct{})
+
+	go func() {
+		StartScanner(ctx, ScannerDeps{
+			Repo:      repo,
+			GitHub:    client,
+			EmailChan: ch,
+			BaseURL:   "https://example.com",
+		}, time.Millisecond)
+		close(done)
+	}()
+
+	select {
+	case <-repo.called:
+	case <-time.After(time.Second):
+		t.Fatal("scanner did not run a scan")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("scanner did not stop after context cancellation")
+	}
+
+	repo.mu.Lock()
+	calls := repo.calls
+	repo.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("list repos calls = %d, want 1", calls)
 	}
 }
 
@@ -305,6 +442,37 @@ func TestScanRepoFullEmailChannelDropsNotificationsAndSkipsUpdate(t *testing.T) 
 	}
 	if len(ch) != 1 {
 		t.Fatalf("email queue length = %d, want existing message only", len(ch))
+	}
+}
+
+func TestScanRepoFullEmailChannelLogsWithoutPII(t *testing.T) {
+	repo := &fakeReleaseScanRepo{
+		subscribers: map[string][]subscriptions.Subscription{
+			"owner/repo": {{ID: "sub-1", Email: "user@example.com", Repo: "owner/repo"}},
+		},
+	}
+	client := &fakeReleaseClient{release: &releases.Release{TagName: "v1"}}
+	ch := make(chan mail.Message)
+	log := &recordingScannerLogger{}
+	deps := newScannerDeps(repo, client, ch)
+	deps.Log = log
+
+	scanRepo(context.Background(), deps, "owner/repo")
+
+	if len(log.warnings) != 1 {
+		t.Fatalf("warnings = %d, want 1", len(log.warnings))
+	}
+	warning := log.warnings[0]
+	if warning.msg != "scanner: email channel full, dropping notification" {
+		t.Fatalf("warning message = %q", warning.msg)
+	}
+	if got := fmt.Sprint(warning.msg, warning.args); strings.Contains(got, "user@example.com") {
+		t.Fatalf("warning contains email PII: %q", got)
+	}
+	for _, want := range []string{"subscription_id", "sub-1", "repo", "owner/repo"} {
+		if !strings.Contains(fmt.Sprint(warning.args), want) {
+			t.Fatalf("warning args missing %q: %#v", want, warning.args)
+		}
 	}
 }
 
