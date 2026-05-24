@@ -160,35 +160,9 @@ func run(appLogger platformlogger.Logger) error {
 		}
 	}()
 
-	// gRPC-Gateway setup (HTTP server)
-	gwMux := runtime.NewServeMux(
-		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
-			MarshalOptions: protojson.MarshalOptions{
-				UseProtoNames:   true,
-				EmitUnpopulated: true,
-			},
-		}),
-	)
-
-	if err := gwMux.HandlePath("GET", "/swagger.json", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
-		http.ServeFile(w, r, "gen/subscription/v1/subscription.swagger.json")
-	}); err != nil {
-		return fmt.Errorf("register route GET /swagger.json: %w", err)
-	}
-
-	if err := gwMux.HandlePath("GET", "/health", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	}); err != nil {
-		return fmt.Errorf("register route GET /health: %w", err)
-	}
-
-	if err := gwMux.HandlePath("GET", "/", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(indexHTML)
-	}); err != nil {
-		return fmt.Errorf("register route GET /: %w", err)
+	gwMux := newGatewayMux()
+	if err := registerGatewayRoutes(gwMux); err != nil {
+		return err
 	}
 
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
@@ -197,13 +171,9 @@ func run(appLogger platformlogger.Logger) error {
 		return fmt.Errorf("register gRPC-Gateway: %w", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	mux.Handle("/", middleware.Metrics(middleware.Logging(middleware.Recover(gwMux, appLogger), appLogger), metricsRecorder))
-
 	srv := &http.Server{
 		Addr:         ":" + cfg.RestPort,
-		Handler:      mux,
+		Handler:      newHTTPHandler(gwMux, promhttp.Handler(), metricsRecorder, appLogger),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -238,4 +208,58 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Wait()
 	appLogger.Info("shutdown complete")
 	return nil
+}
+
+func newGatewayMux() *runtime.ServeMux {
+	return runtime.NewServeMux(
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
+			MarshalOptions: protojson.MarshalOptions{
+				UseProtoNames:   true,
+				EmitUnpopulated: true,
+			},
+		}),
+	)
+}
+
+func registerGatewayRoutes(gwMux *runtime.ServeMux) error {
+	if err := gwMux.HandlePath("GET", "/swagger.json", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
+		http.ServeFile(w, r, "gen/subscription/v1/subscription.swagger.json")
+	}); err != nil {
+		return fmt.Errorf("register route GET /swagger.json: %w", err)
+	}
+
+	if err := gwMux.HandlePath("GET", "/health", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}); err != nil {
+		return fmt.Errorf("register route GET /health: %w", err)
+	}
+
+	if err := gwMux.HandlePath("GET", "/", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(indexHTML)
+	}); err != nil {
+		return fmt.Errorf("register route GET /: %w", err)
+	}
+
+	return nil
+}
+
+func newHTTPHandler(
+	gwMux http.Handler,
+	metricsHandler http.Handler,
+	recorder middleware.MetricsRecorder,
+	log platformlogger.Logger,
+) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", metricsHandler)
+	mux.Handle("/", middleware.Metrics(
+		middleware.Logging(
+			middleware.Recover(gwMux, log),
+			log,
+		),
+		recorder,
+	))
+	return mux
 }
