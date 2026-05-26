@@ -15,26 +15,29 @@ type Confirmation struct {
 	UnsubToken   string
 }
 
-// ConfirmationNotifier turns confirmation requests into queued email messages.
-type ConfirmationNotifier struct {
-	emailChan chan<- mail.Message
-	baseURL   string
+// ConfirmationNotifier notifies users about pending subscription confirmations.
+type ConfirmationNotifier interface {
+	NotifyConfirmation(c Confirmation)
 }
 
-// NewConfirmationNotifier returns a confirmation email queue adapter.
-func NewConfirmationNotifier(emailChan chan<- mail.Message, baseURL string) *ConfirmationNotifier {
-	return &ConfirmationNotifier{emailChan: emailChan, baseURL: baseURL}
+// MailConfirmationNotifier turns confirmation requests into email messages.
+type MailConfirmationNotifier struct {
+	queue   mail.Queue
+	baseURL string
 }
 
-// EnqueueConfirmation queues a confirmation email. A full queue preserves the
+// NewMailConfirmationNotifier returns a mail-backed confirmation notifier.
+func NewMailConfirmationNotifier(queue mail.Queue, baseURL string) *MailConfirmationNotifier {
+	return &MailConfirmationNotifier{queue: queue, baseURL: baseURL}
+}
+
+// NotifyConfirmation queues a confirmation email. A full queue preserves the
 // existing best-effort behavior: the subscription succeeds and the drop is logged.
-func (n *ConfirmationNotifier) EnqueueConfirmation(c Confirmation) {
+func (n *MailConfirmationNotifier) NotifyConfirmation(c Confirmation) {
 	confirmURL := fmt.Sprintf("%s/api/confirm/%s", n.baseURL, c.ConfirmToken)
 	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", n.baseURL, c.UnsubToken)
 
-	select {
-	case n.emailChan <- buildConfirmEmail(c.Email, c.Repo, confirmURL, unsubURL):
-	default:
+	if ok := n.queue.Enqueue(buildConfirmEmail(c.Email, c.Repo, confirmURL, unsubURL)); !ok {
 		// Channel full - log with repo only, not email (PII).
 		slog.Warn("subscribe: email channel full, confirmation email dropped", "repo", c.Repo)
 	}

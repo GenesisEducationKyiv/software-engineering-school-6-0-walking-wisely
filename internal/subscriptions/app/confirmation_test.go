@@ -7,22 +7,32 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 )
 
-func TestConfirmationNotifier_EnqueueConfirmation(t *testing.T) {
-	ch := make(chan mail.Message, 1)
-	notifier := NewConfirmationNotifier(ch, "http://localhost")
+type fakeMailQueue struct {
+	ok       bool
+	messages []mail.Message
+}
 
-	notifier.EnqueueConfirmation(Confirmation{
+func (q *fakeMailQueue) Enqueue(msg mail.Message) bool {
+	q.messages = append(q.messages, msg)
+	return q.ok
+}
+
+func TestConfirmationNotifier_NotifyConfirmationBuildsAndQueuesEmail(t *testing.T) {
+	queue := &fakeMailQueue{ok: true}
+	notifier := NewMailConfirmationNotifier(queue, "http://localhost")
+
+	notifier.NotifyConfirmation(Confirmation{
 		Email:        validEmail,
 		Repo:         validRepo,
 		ConfirmToken: "confirm-token",
 		UnsubToken:   "unsub-token",
 	})
 
-	if len(ch) != 1 {
-		t.Fatalf("queued messages = %d, want 1", len(ch))
+	if len(queue.messages) != 1 {
+		t.Fatalf("queued messages = %d, want 1", len(queue.messages))
 	}
 
-	msg := <-ch
+	msg := queue.messages[0]
 	if msg.To != validEmail {
 		t.Errorf("To = %q, want %q", msg.To, validEmail)
 	}
@@ -40,18 +50,18 @@ func TestConfirmationNotifier_EnqueueConfirmation(t *testing.T) {
 	}
 }
 
-func TestConfirmationNotifier_QueueFullDropsMessage(t *testing.T) {
-	ch := make(chan mail.Message)
-	notifier := NewConfirmationNotifier(ch, "http://localhost")
+func TestConfirmationNotifier_NotifyConfirmationIgnoresQueueFailure(t *testing.T) {
+	queue := &fakeMailQueue{ok: false}
+	notifier := NewMailConfirmationNotifier(queue, "http://localhost")
 
-	notifier.EnqueueConfirmation(Confirmation{
+	notifier.NotifyConfirmation(Confirmation{
 		Email:        validEmail,
 		Repo:         validRepo,
 		ConfirmToken: "confirm-token",
 		UnsubToken:   "unsub-token",
 	})
 
-	if len(ch) != 0 {
-		t.Errorf("queued messages = %d, want 0", len(ch))
+	if len(queue.messages) != 1 {
+		t.Fatalf("enqueue attempts = %d, want 1", len(queue.messages))
 	}
 }

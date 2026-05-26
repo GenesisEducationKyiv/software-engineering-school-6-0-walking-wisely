@@ -32,7 +32,7 @@ type SubscribeCommand struct {
 type SubscribeService struct {
 	repo           SubscriptionWriter
 	github         GithubRepoValidator
-	notifier       *ConfirmationNotifier
+	notifier       ConfirmationNotifier
 	emailSecretKey string
 }
 
@@ -50,7 +50,7 @@ func NewSubscribeService(deps SubscribeDeps) *SubscribeService {
 	return &SubscribeService{
 		repo:           deps.Repo,
 		github:         deps.Github,
-		notifier:       NewConfirmationNotifier(deps.EmailChan, deps.BaseURL),
+		notifier:       NewMailConfirmationNotifier(mail.NewChannelQueue(deps.EmailChan), deps.BaseURL),
 		emailSecretKey: deps.EmailSecretKey,
 	}
 }
@@ -86,7 +86,7 @@ func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) 
 		return err
 	}
 
-	s.notifier.EnqueueConfirmation(Confirmation{
+	s.notifier.NotifyConfirmation(Confirmation{
 		Email:        email,
 		Repo:         repo,
 		ConfirmToken: confirmToken,
