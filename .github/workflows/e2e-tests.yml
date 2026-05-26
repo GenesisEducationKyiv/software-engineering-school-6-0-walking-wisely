@@ -20,16 +20,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Set up buf (protobuf codegen)
-        uses: bufbuild/buf-setup-action@v1
-        with:
-          version: v1.65.0
-
       - name: Generate protobuf
-        run: buf generate
+        run: make generate
 
       - name: Install Playwright Chromium
-        run: go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps chromium
+        run: make playwright-install-ci
 
       - name: Run E2E tests
-        run: go test -count=1 -tags=e2e -run ./cmd/server
+        run: make test-e2e

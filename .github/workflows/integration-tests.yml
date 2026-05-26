@@ -20,13 +20,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Set up buf (protobuf codegen)
-        uses: bufbuild/buf-setup-action@v1
-        with:
-          version: v1.65.0
-
       - name: Generate protobuf
-        run: buf generate
+        run: make generate
 
       - name: Run integration tests
-        run: go test -count=1 -tags=integration -run '^TestIntegration_' ./...
+        run: make test-integration
