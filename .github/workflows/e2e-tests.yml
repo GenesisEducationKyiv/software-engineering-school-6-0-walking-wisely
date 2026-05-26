@@ -32,4 +32,4 @@ jobs:
         run: go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps chromium
 
       - name: Run E2E tests
-        run: go test -count=1 -tags=e2e -run '^TestIndexPageSubscriptionFlow$' ./cmd/server
+        run: go test -count=1 -tags=e2e -run ./cmd/server
