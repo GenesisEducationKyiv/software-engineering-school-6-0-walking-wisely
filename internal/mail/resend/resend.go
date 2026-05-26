@@ -27,18 +27,18 @@ type resendEmail struct {
 	HTML    string   `json:"html"`
 }
 
-// ResendClient sends transactional email via the Resend batch API.
+// Client sends transactional email via the Resend batch API.
 // It surfaces rate-limit responses as *subscriptions.RateLimitError so callers can
 // decide whether to retry or log-and-drop.
-type ResendClient struct {
+type Client struct {
 	http      *http.Client
 	apiKey    string
 	fromEmail string
 }
 
 // NewResendClient returns a ResendClient that delivers email via the Resend batch API.
-func NewResendClient(apiKey, fromEmail string) *ResendClient {
-	return &ResendClient{
+func NewResendClient(apiKey, fromEmail string) *Client {
+	return &Client{
 		http:      &http.Client{Timeout: 15 * time.Second},
 		apiKey:    apiKey,
 		fromEmail: fromEmail,
@@ -47,7 +47,7 @@ func NewResendClient(apiKey, fromEmail string) *ResendClient {
 
 // SendBatch delivers up to ResendBatchMax emails in a single API call.
 // Callers are responsible for splitting larger slices into chunks.
-func (c *ResendClient) SendBatch(ctx context.Context, messages []mail.Message) error {
+func (c *Client) SendBatch(ctx context.Context, messages []mail.Message) error {
 	if len(messages) == 0 {
 		return nil
 	}
@@ -102,7 +102,7 @@ func (c *ResendClient) SendBatch(ctx context.Context, messages []mail.Message) e
 }
 
 // MaxBatchSize returns the largest batch accepted by the Resend batch API.
-func (c *ResendClient) MaxBatchSize() int {
+func (c *Client) MaxBatchSize() int {
 	return ResendBatchMax
 }
 

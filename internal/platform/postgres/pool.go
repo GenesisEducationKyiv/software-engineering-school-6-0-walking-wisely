@@ -13,13 +13,13 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
 )
 
-// InitDB opens a PostgreSQL connection pool using retry defaults read from the environment.
-func InitDB(databaseURL string) (*pgxpool.Pool, error) {
-	return InitDBWithRetry(databaseURL, config.DBRetryConfigFromEnv())
+// NewDB opens a PostgreSQL connection pool using retry defaults read from the environment.
+func NewDB(databaseURL string) (*pgxpool.Pool, error) {
+	return NewDBWithRetry(databaseURL, config.DBRetryConfigFromEnv())
 }
 
-// InitDBWithRetry opens a PostgreSQL connection pool, retrying on transient failures according to retry.
-func InitDBWithRetry(databaseURL string, retry config.RetryConfig) (*pgxpool.Pool, error) {
+// NewDBWithRetry opens a PostgreSQL connection pool, retrying on transient failures according to retry.
+func NewDBWithRetry(databaseURL string, retry config.RetryConfig) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse DB config: %w", err)

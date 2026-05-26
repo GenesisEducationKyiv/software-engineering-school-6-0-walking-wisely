@@ -62,13 +62,13 @@ func run() error {
 		return fmt.Errorf("run database migrations: %w", err)
 	}
 
-	db, err := platformpostgres.InitDB(cfg.DatabaseURL)
+	db, err := platformpostgres.NewDB(cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("init database: %w", err)
 	}
 	defer db.Close()
 
-	redisClient, err := platformredis.InitRedis(cfg.RedisURL)
+	redisClient, err := platformredis.NewClient(cfg.RedisURL)
 	if err != nil {
 		return fmt.Errorf("init redis: %w", err)
 	}

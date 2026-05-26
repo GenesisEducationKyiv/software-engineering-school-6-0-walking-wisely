@@ -13,13 +13,13 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
 )
 
-// InitRedis creates a Redis client and pings it, using retry defaults read from the environment.
-func InitRedis(redisURL string) (*goredis.Client, error) {
-	return InitRedisWithRetry(redisURL, config.RedisRetryConfigFromEnv())
+// NewClient creates a Redis client and pings it, using retry defaults read from the environment.
+func NewClient(redisURL string) (*goredis.Client, error) {
+	return NewClientWithRetry(redisURL, config.RedisRetryConfigFromEnv())
 }
 
-// InitRedisWithRetry creates a Redis client and pings it, retrying on transient failures according to retry.
-func InitRedisWithRetry(redisURL string, retry config.RetryConfig) (*goredis.Client, error) {
+// NewClientWithRetry creates a Redis client and pings it, retrying on transient failures according to retry.
+func NewClientWithRetry(redisURL string, retry config.RetryConfig) (*goredis.Client, error) {
 	opts, err := goredis.ParseURL(redisURL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse Redis URL: %w", err)
