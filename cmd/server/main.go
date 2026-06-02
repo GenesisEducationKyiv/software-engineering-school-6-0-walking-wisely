@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -41,9 +40,7 @@ import (
 var indexHTML []byte
 
 func main() {
-	appLogger := platformlogger.NewSlogAdapter(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	appLogger := platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{})
 
 	if err := run(appLogger); err != nil {
 		appLogger.Error("application startup failed", "err", err)
@@ -56,6 +53,11 @@ func run(appLogger platformlogger.Logger) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	appLogger = platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{
+		Level:       cfg.LogLevel,
+		ServiceName: cfg.ServiceName,
+		Environment: cfg.Environment,
+	})
 
 	meterProvider, err := platformmetrics.InitMeterProvider()
 	if err != nil {

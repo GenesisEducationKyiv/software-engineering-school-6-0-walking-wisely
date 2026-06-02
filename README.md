@@ -22,6 +22,7 @@ Built for **Software Engineering School 6.0** (Genesis Academy).
 | **Extra:** gRPC interface (gRPC-Gateway bridges to REST) | Done |
 | **Extra:** Redis caching of GitHub API responses (TTL 10 min) | Done |
 | **Extra:** Prometheus metrics at `/metrics` | Done |
+| **Extra:** Structured JSON logs shipped to Elasticsearch + Kibana | Done |
 | **Extra:** GitHub Actions CI (lint + tests on every push/PR) | Done |
 
 ---
@@ -110,6 +111,18 @@ The full machine-readable contract is at `/swagger.json` when the server is runn
 
 `email_channel_depth` is the primary operational signal for the sender pipeline — a value consistently near `EMAIL_CHANNEL_SIZE` means the sender cannot keep up with the scanner and notifications may start being dropped.
 
+### Structured logs
+
+The API writes structured JSON logs to stdout through the `internal/platform/logger.Logger` interface. Production containers labeled with `co.elastic.logs/enabled=true` are collected by Filebeat and shipped to Elasticsearch into daily indices named `ses2026-case-logs-*`; Kibana is exposed on `http://localhost:5601`.
+
+The log pipeline is:
+
+```
+Go slog JSON stdout -> Docker container logs -> Filebeat -> Elasticsearch -> Kibana
+```
+
+Useful Kibana data view: `ses2026-case-logs-*`, timestamp field `@timestamp`.
+
 ### Error responses
 
 | HTTP | gRPC | Cause |
@@ -194,6 +207,9 @@ All configuration is done through environment variables. See `.env.example` for 
 | `EMAIL_SECRET_KEY` | — | HMAC secret for token generation (required) |
 | `BASE_URL` | — | Public URL used in email links, e.g. `https://your-domain.com` (required) |
 | `GITHUB_TOKEN` | _(empty)_ | Personal access token — raises rate limit from 60 to 5 000 req/h |
+| `LOG_LEVEL` | `info` | Structured log level: `debug`, `info`, `warn`, or `error` |
+| `SERVICE_NAME` | `github-release-notifier` | Service name attached to every log entry |
+| `ENVIRONMENT` | `local` | Deployment environment attached to every log entry |
 | `SCANNER_INTERVAL` | `5m` | How often to check repos for new releases |
 | `RESEND_MAX_WAIT` | `200ms` | Max time to buffer emails before flushing a batch |
 | `EMAIL_CHANNEL_SIZE` | `1000` | Buffered channel size between scanner and sender |
