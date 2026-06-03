@@ -21,7 +21,7 @@ Built for **Software Engineering School 6.0** (Genesis Academy).
 | **Extra:** HTML subscription page at `/` | Done |
 | **Extra:** gRPC interface (gRPC-Gateway bridges to REST) | Done |
 | **Extra:** Redis caching of GitHub API responses (TTL 10 min) | Done |
-| **Extra:** Prometheus metrics at `/metrics` | Done |
+| **Extra:** RED metrics exported at `/metrics` and scraped by Prometheus | Done |
 | **Extra:** Structured JSON logs shipped to Elasticsearch + Kibana | Done |
 | **Extra:** GitHub Actions CI (lint + tests on every push/PR) | Done |
 
@@ -103,6 +103,12 @@ The full machine-readable contract is at `/swagger.json` when the server is runn
 
 ### Prometheus metrics
 
+The application exposes metrics in Prometheus format at `/metrics`. In Docker Compose, the metrics pipeline is:
+
+```
+Go OpenTelemetry metrics -> /metrics endpoint -> Prometheus
+```
+
 | Metric | Type | Labels | Description |
 |---|---|---|---|
 | `http_requests_total` | Counter | `method`, `path`, `status` | Total HTTP requests handled |
@@ -110,6 +116,8 @@ The full machine-readable contract is at `/swagger.json` when the server is runn
 | `email_channel_depth` | Gauge | — | Number of pending emails currently buffered in the send queue |
 
 `email_channel_depth` is the primary operational signal for the sender pipeline — a value consistently near `EMAIL_CHANNEL_SIZE` means the sender cannot keep up with the scanner and notifications may start being dropped.
+
+Prometheus is exposed at `http://localhost:9091` in Compose because `9090` is already used by the gRPC server.
 
 ### Structured logs
 
@@ -153,6 +161,7 @@ docker compose up --build
 ```
 
 The REST API is available at `http://localhost:8080` and the gRPC server at `localhost:9090`.
+Kibana is available at `http://localhost:5601` and Prometheus at `http://localhost:9091`.
 
 ---
 
@@ -259,5 +268,5 @@ gen/subscription/v1/  — generated gRPC + HTTP gateway code (do not edit by han
 - **Migrations:** `golang-migrate/migrate`
 - **Cache:** Redis 8 via `go-redis/v9`
 - **Email:** [Resend](https://resend.com) batch API
-- **Metrics:** Prometheus (`prometheus/client_golang`)
+- **Metrics:** OpenTelemetry + Prometheus (`prometheus/client_golang`)
 - **Container:** Docker multi-stage build (buf → Go builder → Alpine runtime)

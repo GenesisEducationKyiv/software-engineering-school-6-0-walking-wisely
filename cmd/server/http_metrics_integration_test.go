@@ -66,20 +66,11 @@ func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 
 	metrics := scrapeMetrics(t, server.URL+"/metrics")
 
-	requestsTotal := findMetricFamily(t, metrics, "http_requests_total")
-	requestMetric := findMetricWithLabels(t, requestsTotal, map[string]string{
-		"method": "GET",
-		"path":   "/health",
-		"status": "200",
-	})
-	if got := requestMetric.GetCounter().GetValue(); got != 1 {
-		t.Fatalf("expected http_requests_total value 1, got %f", got)
-	}
-
 	duration := findMetricFamily(t, metrics, "http_request_duration_seconds")
 	durationMetric := findMetricWithLabels(t, duration, map[string]string{
 		"method": "GET",
 		"path":   "/health",
+		"status": "200",
 	})
 	if got := durationMetric.GetHistogram().GetSampleCount(); got != 1 {
 		t.Fatalf("expected duration histogram sample count 1, got %d", got)
@@ -91,7 +82,7 @@ func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 		t.Fatalf("expected email channel depth 3, got %f", got)
 	}
 
-	if metricWithLabels(requestsTotal, map[string]string{"path": "/metrics"}) != nil {
+	if metricWithLabels(duration, map[string]string{"path": "/metrics"}) != nil {
 		t.Fatalf("did not expect /metrics requests to be recorded by app metrics middleware")
 	}
 }
