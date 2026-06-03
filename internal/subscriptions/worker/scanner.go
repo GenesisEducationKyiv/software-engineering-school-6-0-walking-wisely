@@ -57,29 +57,71 @@ func StartScanner(ctx context.Context, deps ScannerDeps, interval time.Duration)
 
 func runScan(ctx context.Context, deps ScannerDeps) {
 	log := scannerLogger(deps)
+	start := time.Now()
 	repos, err := deps.Repo.ListDistinctConfirmedRepos(ctx)
 	if err != nil {
 		log.Error("scanner: list repos failed", "err", err)
 		return
 	}
 	if len(repos) == 0 {
+		log.Info("scanner: scan complete",
+			"repos_total", 0,
+			"repos_checked", 0,
+			"repos_failed", 0,
+			"notifications_enqueued", 0,
+			"notifications_dropped", 0,
+			"duration_ms", time.Since(start).Milliseconds())
 		return
 	}
 
 	log.Info("scanner: scanning repos", "count", len(repos))
+	summary := scanSummary{reposTotal: len(repos)}
 
 	for _, repo := range repos {
 		if ctx.Err() != nil {
-			return
+			break
 		}
-		scanRepo(ctx, deps, repo)
+		result := scanRepo(ctx, deps, repo)
+		if result.checked {
+			summary.reposChecked++
+		}
+		if result.failed {
+			summary.reposFailed++
+		}
+		summary.notificationsEnqueued += result.notificationsEnqueued
+		summary.notificationsDropped += result.notificationsDropped
 	}
+
+	log.Info("scanner: scan complete",
+		"repos_total", summary.reposTotal,
+		"repos_checked", summary.reposChecked,
+		"repos_failed", summary.reposFailed,
+		"notifications_enqueued", summary.notificationsEnqueued,
+		"notifications_dropped", summary.notificationsDropped,
+		"duration_ms", time.Since(start).Milliseconds())
 }
 
-func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
+type scanSummary struct {
+	reposTotal            int
+	reposChecked          int
+	reposFailed           int
+	notificationsEnqueued int
+	notificationsDropped  int
+}
+
+type scanRepoResult struct {
+	checked               bool
+	failed                bool
+	notificationsEnqueued int
+	notificationsDropped  int
+}
+
+func scanRepo(ctx context.Context, deps ScannerDeps, repo string) scanRepoResult {
 	log := scannerLogger(deps)
+	result := scanRepoResult{checked: true}
 	release, err := deps.GitHub.GetLatestRelease(ctx, repo)
 	if err != nil {
+		result.failed = true
 		var rle *subscriptions.RateLimitError
 		if ok := errors.As(err, &rle); ok {
 			log.Warn("scanner: github rate limited, skipping repo",
@@ -87,20 +129,23 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 		} else {
 			log.Error("scanner: get latest release failed", "repo", repo, "err", err)
 		}
-		return
+		return result
 	}
 	if release == nil {
 		log.Error("scanner: release client returned nil release", "repo", repo)
-		return
+		result.failed = true
+		return result
 	}
 
 	subscribers, err := deps.Repo.ListConfirmedSubscribersForRepo(ctx, repo)
 	if err != nil {
 		log.Error("scanner: list subscribers failed", "repo", repo, "err", err)
-		return
+		result.failed = true
+		return result
 	}
 
 	var notified int
+	var dropped int
 	for i := range subscribers {
 		sub := &subscribers[i]
 		if sub.LastSeenTag != nil && *sub.LastSeenTag == release.TagName {
@@ -111,20 +156,25 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 		case deps.EmailChan <- msg:
 			notified++
 		default:
+			dropped++
 			// Channel full - log with subscription_id, not email, to avoid PII in logs.
 			log.Warn("scanner: email channel full, dropping notification",
 				"subscription_id", sub.ID, "repo", repo)
 		}
 	}
+	result.notificationsEnqueued = notified
+	result.notificationsDropped = dropped
 
 	if notified > 0 {
 		if err := deps.Repo.UpdateLastSeenTag(ctx, repo, release.TagName); err != nil {
 			log.Error("scanner: update last seen tag failed", "repo", repo, "err", err)
+			result.failed = true
 		} else {
 			log.Info("scanner: release notifications enqueued",
 				"repo", repo, "tag", release.TagName, "notified", notified)
 		}
 	}
+	return result
 }
 
 func scannerLogger(deps ScannerDeps) logger.Logger {

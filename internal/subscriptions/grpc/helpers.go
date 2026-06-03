@@ -15,6 +15,9 @@ import (
 
 func (s *SubscriptionService) handleRateLimitError(ctx context.Context, rle *subscriptions.RateLimitError) error {
 	secs := int(math.Ceil(rle.RetryAfter.Seconds()))
+	s.log.Warn("rate limited dependency",
+		"service", rle.Service,
+		"retry_after", rle.RetryAfter)
 
 	header := metadata.Pairs("Retry-After", fmt.Sprintf("%d", secs))
 	if err := grpc.SetHeader(ctx, header); err != nil {

@@ -167,7 +167,7 @@ func (c *Client) checkStatus(resp *http.Response, repo string) error {
 		// GitHub uses 403 + X-RateLimit-* for primary rate limits and
 		// 429 + Retry-After for secondary rate limits.
 		retryAfter := parseRetryAfter(resp)
-		c.log.Warn("github rate limited", "repo", repo, "retry_after", retryAfter)
+		c.log.Debug("github rate limited", "repo", repo, "retry_after", retryAfter)
 		return &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
 
 	default:

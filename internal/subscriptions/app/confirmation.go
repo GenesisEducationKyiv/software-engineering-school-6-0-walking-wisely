@@ -10,10 +10,11 @@ import (
 
 // Confirmation is the data needed to notify a user about a pending subscription.
 type Confirmation struct {
-	Email        string
-	Repo         string
-	ConfirmToken string
-	UnsubToken   string
+	SubscriptionID string
+	Email          string
+	Repo           string
+	ConfirmToken   string
+	UnsubToken     string
 }
 
 // ConfirmationNotifier notifies users about pending subscription confirmations.
@@ -45,8 +46,19 @@ func (n *MailConfirmationNotifier) NotifyConfirmation(c Confirmation) {
 
 	if ok := n.queue.Enqueue(buildConfirmEmail(c.Email, c.Repo, confirmURL, unsubURL)); !ok {
 		// Channel full - log with repo only, not email (PII).
-		n.log.Warn("subscribe: email channel full, confirmation email dropped", "repo", c.Repo)
+		n.log.Warn("subscribe: email channel full, confirmation email dropped",
+			confirmationLogArgs(c)...)
+		return
 	}
+	n.log.Info("subscribe: confirmation email enqueued", confirmationLogArgs(c)...)
+}
+
+func confirmationLogArgs(c Confirmation) []any {
+	args := []any{"repo", c.Repo}
+	if c.SubscriptionID != "" {
+		args = append([]any{"subscription_id", c.SubscriptionID}, args...)
+	}
+	return args
 }
 
 func buildConfirmEmail(email, repo, confirmURL, unsubURL string) mail.Message {

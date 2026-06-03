@@ -163,7 +163,7 @@ func run(appLogger platformlogger.Logger) error {
 	go func() {
 		defer wg.Done()
 		appLogger.Info("gRPC server listening", "port", grpcPort)
-		if err := grpcServer.Serve(lis); err != nil {
+		if err := grpcServer.Serve(lis); err != nil && err != grpc.ErrServerStopped {
 			appLogger.Error("gRPC server error", "err", err)
 			cancel()
 		}
