@@ -261,6 +261,79 @@ func TestClient_ValidateRepo_InvalidRepoDoesNotCallHTTP(t *testing.T) {
 	}
 }
 
+func TestClient_CheckAvailability_NoTokenChecksRateLimit(t *testing.T) {
+	t.Parallel()
+
+	client, calls := newTestClient(t, "", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rate_limit" {
+			t.Fatalf("path = %s, want /rate_limit", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("Authorization = %q, want empty", got)
+		}
+		_, _ = fmt.Fprint(w, `{"resources":{"core":{"remaining":1,"reset":4102444800}}}`)
+	}))
+
+	if err := client.CheckAvailability(context.Background()); err != nil {
+		t.Fatalf("CheckAvailability returned error: %v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("HTTP calls = %d, want 1", calls.Load())
+	}
+}
+
+func TestClient_CheckAvailability_ValidToken(t *testing.T) {
+	t.Parallel()
+
+	client, _ := newTestClient(t, "valid-token", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rate_limit" {
+			t.Fatalf("path = %s, want /rate_limit", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer valid-token" {
+			t.Fatalf("Authorization = %q, want Bearer valid-token", got)
+		}
+		_, _ = fmt.Fprint(w, `{"resources":{"core":{"remaining":5000,"reset":4102444800}}}`)
+	}))
+
+	if err := client.CheckAvailability(context.Background()); err != nil {
+		t.Fatalf("CheckAvailability returned error: %v", err)
+	}
+}
+
+func TestClient_CheckAvailability_InvalidToken(t *testing.T) {
+	t.Parallel()
+
+	client, _ := newTestClient(t, "bad-token", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+
+	err := client.CheckAvailability(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "invalid or unauthorized") {
+		t.Fatalf("error = %v, want invalid or unauthorized", err)
+	}
+}
+
+func TestClient_CheckAvailability_ZeroRemainingMapsToRateLimit(t *testing.T) {
+	t.Parallel()
+
+	resetAt := time.Now().Add(2 * time.Minute)
+	client, _ := newTestClient(t, "", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"resources":{"core":{"remaining":0,"reset":%d}}}`, resetAt.Unix())
+	}))
+
+	err := client.CheckAvailability(context.Background())
+	var rateLimitErr *subscriptions.RateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("error = %v, want RateLimitError", err)
+	}
+	if rateLimitErr.RetryAfter <= 0 {
+		t.Fatalf("RetryAfter = %s, want positive duration", rateLimitErr.RetryAfter)
+	}
+	if rateLimitErr.RetryAfter > 2*time.Minute {
+		t.Fatalf("RetryAfter = %s, want at most 2m", rateLimitErr.RetryAfter)
+	}
+}
+
 func TestClient_GetLatestRelease_ContextCancellation(t *testing.T) {
 	t.Parallel()
 

@@ -102,6 +102,11 @@ func run(appLogger platformlogger.Logger) error {
 	subReadRepo := postgres.NewReadRepo(db, appLogger)
 	releaseScanRepo := postgres.NewReleaseScanRepo(db, appLogger)
 	githubClient := github.NewClient(cfg.GithubToken, appLogger)
+	checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer checkCancel()
+	if err := githubClient.CheckAvailability(checkCtx); err != nil {
+		appLogger.Warn("github availability check failed", "err", err)
+	}
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, appLogger)

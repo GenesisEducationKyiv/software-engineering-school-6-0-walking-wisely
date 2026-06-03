@@ -26,6 +26,18 @@ type Client struct {
 	log   logger.Logger
 }
 
+type rateLimitResource struct {
+	Remaining int   `json:"remaining"`
+	Reset     int64 `json:"reset"`
+}
+
+type rateLimitResponse struct {
+	Resources struct {
+		Core rateLimitResource `json:"core"`
+	} `json:"resources"`
+	Rate rateLimitResource `json:"rate"`
+}
+
 // NewClient returns a GitHub API client. githubToken is optional but raises the
 // GitHub API rate limit from 60 to 5 000 requests per hour when provided.
 func NewClient(githubToken string, log logger.Logger) *Client {
@@ -84,6 +96,43 @@ func (c *Client) ValidateRepo(ctx context.Context, repo string) error {
 	return c.checkStatus(resp, repo)
 }
 
+// CheckAvailability verifies that GitHub accepts the configured credentials and
+// that the current caller still has core API requests available.
+func (c *Client) CheckAvailability(ctx context.Context) error {
+	resp, err := c.get(ctx, "https://api.github.com/rate_limit")
+	if err != nil {
+		return fmt.Errorf("github availability check: %w", err)
+	}
+	defer c.closeBody(resp.Body)
+	switch resp.StatusCode {
+	case http.StatusOK:
+		limit, err := decodeRateLimit(resp.Body)
+		if err != nil {
+			return fmt.Errorf("github availability check: %w", err)
+		}
+		if limit.Remaining <= 0 {
+			retryAfter := retryAfterFromUnix(limit.Reset)
+			c.log.Warn("github API unavailable due to rate limit", "retry_after", retryAfter)
+			return &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
+		}
+		c.log.Info("github API availability checked", "authenticated", c.token != "", "remaining", limit.Remaining)
+		return nil
+	case http.StatusUnauthorized:
+		return fmt.Errorf("github token is invalid or unauthorized")
+	case http.StatusTooManyRequests, http.StatusForbidden:
+		retryAfter := parseRetryAfter(resp)
+		c.log.Warn("github API unavailable due to rate limit", "retry_after", retryAfter)
+		return &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
+	default:
+		return fmt.Errorf("github availability check: unexpected status %d", resp.StatusCode)
+	}
+}
+
+// CheckToken verifies that the configured token is accepted by GitHub.
+func (c *Client) CheckToken(ctx context.Context) error {
+	return c.CheckAvailability(ctx)
+}
+
 func (c *Client) get(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
@@ -110,6 +159,9 @@ func (c *Client) checkStatus(resp *http.Response, repo string) error {
 
 	case http.StatusNotFound:
 		return subscriptions.ErrRepoNotFound
+
+	case http.StatusUnauthorized:
+		return fmt.Errorf("github token is invalid or unauthorized")
 
 	case http.StatusTooManyRequests, http.StatusForbidden:
 		// GitHub uses 403 + X-RateLimit-* for primary rate limits and
@@ -153,4 +205,25 @@ func parseRetryAfter(resp *http.Response) time.Duration {
 		}
 	}
 	return 60 * time.Second // conservative fallback
+}
+
+func decodeRateLimit(body io.Reader) (rateLimitResource, error) {
+	var rateLimit rateLimitResponse
+	if err := json.NewDecoder(body).Decode(&rateLimit); err != nil {
+		return rateLimitResource{}, fmt.Errorf("decode github rate limit response: %w", err)
+	}
+	if rateLimit.Resources.Core.Reset != 0 || rateLimit.Resources.Core.Remaining != 0 {
+		return rateLimit.Resources.Core, nil
+	}
+	return rateLimit.Rate, nil
+}
+
+func retryAfterFromUnix(unix int64) time.Duration {
+	if unix == 0 {
+		return 60 * time.Second
+	}
+	if d := time.Until(time.Unix(unix, 0)); d > 0 {
+		return d
+	}
+	return 60 * time.Second
 }
