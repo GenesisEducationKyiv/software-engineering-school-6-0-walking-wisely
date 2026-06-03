@@ -16,7 +16,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_request_duration_seconds_count[5m])) by (path)",
+          "expr": "sum(irate(http_requests_total[1m])) by (path)",
           "legendFormat": "{{path}}"
         }
       ],
@@ -34,7 +34,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_request_duration_seconds_count{status=~\"[45]..\"}[5m])) by (path, status)",
+          "expr": "sum(irate(http_requests_total{status=~\"[45]..\"}[1m])) by (path, status)",
           "legendFormat": "{{path}} {{status}}"
         }
       ],

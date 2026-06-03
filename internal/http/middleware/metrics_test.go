@@ -124,6 +124,28 @@ func TestOpenTelemetryRecorderRecordsHTTPMetricsAndEmailDepth(t *testing.T) {
 		t.Fatalf("collect metrics: %v", err)
 	}
 
+	requestsMetric := findMetric(t, metrics, "http_requests_total")
+	if requestsMetric.Description != "Total HTTP requests handled." {
+		t.Errorf("unexpected counter description: %q", requestsMetric.Description)
+	}
+	if requestsMetric.Unit != "{request}" {
+		t.Errorf("unexpected counter unit: %q", requestsMetric.Unit)
+	}
+
+	requests, ok := requestsMetric.Data.(metricdata.Sum[int64])
+	if !ok {
+		t.Fatalf("expected http_requests_total to be an int64 sum, got %T", requestsMetric.Data)
+	}
+	if len(requests.DataPoints) != 1 {
+		t.Fatalf("expected 1 counter data point, got %d", len(requests.DataPoints))
+	}
+	if requests.DataPoints[0].Value != 1 {
+		t.Errorf("expected counter value 1, got %d", requests.DataPoints[0].Value)
+	}
+	assertAttribute(t, requests.DataPoints[0].Attributes, "method", http.MethodPatch)
+	assertAttribute(t, requests.DataPoints[0].Attributes, "path", "/subscriptions/123")
+	assertAttribute(t, requests.DataPoints[0].Attributes, "status", "202")
+
 	durationMetric := findMetric(t, metrics, "http_request_duration_seconds")
 	if durationMetric.Description != "HTTP request latency." {
 		t.Errorf("unexpected histogram description: %q", durationMetric.Description)
@@ -147,6 +169,7 @@ func TestOpenTelemetryRecorderRecordsHTTPMetricsAndEmailDepth(t *testing.T) {
 	}
 	assertAttribute(t, duration.DataPoints[0].Attributes, "method", http.MethodPatch)
 	assertAttribute(t, duration.DataPoints[0].Attributes, "path", "/subscriptions/123")
+	assertAttribute(t, duration.DataPoints[0].Attributes, "status", "202")
 
 	emailDepthMetric := findMetric(t, metrics, "email_channel_depth")
 	if emailDepthMetric.Unit != "{email}" {

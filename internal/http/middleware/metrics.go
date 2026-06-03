@@ -18,10 +18,20 @@ type MetricsRecorder interface {
 
 type OpenTelemetryRecorder struct {
 	meter               metric.Meter
+	httpRequestsTotal   metric.Int64Counter
 	httpRequestDuration metric.Float64Histogram
 }
 
 func NewOpenTelemetryRecorder(meter metric.Meter) (*OpenTelemetryRecorder, error) {
+	httpRequestsTotal, err := meter.Int64Counter(
+		"http_requests_total",
+		metric.WithDescription("Total HTTP requests handled."),
+		metric.WithUnit("{request}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create http requests counter: %w", err)
+	}
+
 	httpRequestDuration, err := meter.Float64Histogram(
 		"http_request_duration_seconds",
 		metric.WithDescription("HTTP request latency."),
@@ -33,6 +43,7 @@ func NewOpenTelemetryRecorder(meter metric.Meter) (*OpenTelemetryRecorder, error
 
 	return &OpenTelemetryRecorder{
 		meter:               meter,
+		httpRequestsTotal:   httpRequestsTotal,
 		httpRequestDuration: httpRequestDuration,
 	}, nil
 }
@@ -59,14 +70,17 @@ func (r *OpenTelemetryRecorder) RegisterEmailChannelDepth(depth func() int) erro
 }
 
 func (r *OpenTelemetryRecorder) RecordHTTPRequest(ctx context.Context, method, path string, status int, duration time.Duration) {
+	attrs := metric.WithAttributes(
+		attribute.String("method", method),
+		attribute.String("path", path),
+		attribute.String("status", strconv.Itoa(status)),
+	)
+
+	r.httpRequestsTotal.Add(ctx, 1, attrs)
 	r.httpRequestDuration.Record(
 		ctx,
 		duration.Seconds(),
-		metric.WithAttributes(
-			attribute.String("method", method),
-			attribute.String("path", path),
-			attribute.String("status", strconv.Itoa(status)),
-		),
+		attrs,
 	)
 }
 

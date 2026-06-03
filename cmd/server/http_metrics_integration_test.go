@@ -66,6 +66,16 @@ func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 
 	metrics := scrapeMetrics(t, server.URL+"/metrics")
 
+	requests := findMetricFamily(t, metrics, "http_requests_total")
+	requestMetric := findMetricWithLabels(t, requests, map[string]string{
+		"method": "GET",
+		"path":   "/health",
+		"status": "200",
+	})
+	if got := requestMetric.GetCounter().GetValue(); got != 1 {
+		t.Fatalf("expected request counter 1, got %f", got)
+	}
+
 	duration := findMetricFamily(t, metrics, "http_request_duration_seconds")
 	durationMetric := findMetricWithLabels(t, duration, map[string]string{
 		"method": "GET",
@@ -83,6 +93,9 @@ func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 	}
 
 	if metricWithLabels(duration, map[string]string{"path": "/metrics"}) != nil {
+		t.Fatalf("did not expect /metrics requests to be recorded by app metrics middleware")
+	}
+	if metricWithLabels(requests, map[string]string{"path": "/metrics"}) != nil {
 		t.Fatalf("did not expect /metrics requests to be recorded by app metrics middleware")
 	}
 }
