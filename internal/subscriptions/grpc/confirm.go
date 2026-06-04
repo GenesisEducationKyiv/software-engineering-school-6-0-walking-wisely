@@ -3,7 +3,6 @@ package subscriptiongrpc
 import (
 	"context"
 	"errors"
-	"log/slog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -24,10 +23,10 @@ func (s *SubscriptionService) ConfirmSubscription(ctx context.Context, req *pb.C
 		case errors.Is(err, subscriptions.ErrTokenNotFound):
 			return nil, status.Error(codes.NotFound, "token not found")
 		}
-		slog.Error("confirm: db error", "err", err)
+		s.log.Error("confirm: db error", "err", err)
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	slog.Info("confirm: subscription confirmed", "subscription_id", id)
+	s.log.Info("confirm: subscription confirmed", "subscription_id", id)
 	return &pb.ConfirmSubscriptionResponse{}, nil
 }

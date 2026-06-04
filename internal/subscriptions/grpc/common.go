@@ -4,6 +4,7 @@ package subscriptiongrpc
 import (
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
@@ -28,6 +29,7 @@ type ServiceDeps struct {
 	EmailChan      chan<- mail.Message
 	EmailSecretKey string
 	BaseURL        string
+	Log            logger.Logger
 }
 
 // SubscriptionService implements the gRPC SubscribeServiceServer interface.
@@ -37,20 +39,28 @@ type SubscriptionService struct {
 	confirmUseCase     *subscriptionapp.ConfirmService
 	unsubscribeUseCase *subscriptionapp.UnsubscribeService
 	listUseCase        *subscriptionapp.ListService
+	log                logger.Logger
 }
 
 // NewSubscriptionService constructs a SubscriptionService with the provided dependencies.
 func NewSubscriptionService(deps *ServiceDeps) *SubscriptionService {
+	log := deps.Log
+	if log == nil {
+		log = logger.NoopLogger{}
+	}
+
 	return &SubscriptionService{
-		subscribeUseCase: subscriptionapp.NewSubscribeService(subscriptionapp.SubscribeDeps{
+		subscribeUseCase: subscriptionapp.NewSubscribeService(&subscriptionapp.SubscribeDeps{
 			Repo:           deps.TokenRepo,
 			Github:         deps.Github,
 			EmailChan:      deps.EmailChan,
 			EmailSecretKey: deps.EmailSecretKey,
 			BaseURL:        deps.BaseURL,
+			Log:            log,
 		}),
 		confirmUseCase:     subscriptionapp.NewConfirmService(deps.TokenRepo),
 		unsubscribeUseCase: subscriptionapp.NewUnsubscribeService(deps.TokenRepo),
 		listUseCase:        subscriptionapp.NewListService(deps.ReadRepo),
+		log:                log,
 	}
 }

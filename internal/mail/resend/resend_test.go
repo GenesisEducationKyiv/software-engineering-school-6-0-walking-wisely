@@ -21,7 +21,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestResendClientSendBatchBuildsRequest(t *testing.T) {
 	var gotMethod, gotURL, gotAuth, gotContentType, gotBody string
-	client := NewResendClient("test-key", "noreply@example.com")
+	client := NewClient("test-key", "noreply@example.com", nil)
 	client.http = &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			gotMethod = req.Method
@@ -69,7 +69,7 @@ func TestResendClientSendBatchBuildsRequest(t *testing.T) {
 }
 
 func TestResendClientSendBatchMapsRateLimit(t *testing.T) {
-	client := NewResendClient("test-key", "noreply@example.com")
+	client := NewClient("test-key", "noreply@example.com", nil)
 	client.http = &http.Client{
 		Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -97,7 +97,7 @@ func TestResendClientSendBatchMapsRateLimit(t *testing.T) {
 }
 
 func TestResendClientSendBatchIgnoresEmptyBatch(t *testing.T) {
-	client := NewResendClient("test-key", "noreply@example.com")
+	client := NewClient("test-key", "noreply@example.com", nil)
 	called := false
 	client.http = &http.Client{
 		Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {

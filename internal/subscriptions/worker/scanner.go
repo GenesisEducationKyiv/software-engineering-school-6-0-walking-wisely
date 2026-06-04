@@ -5,10 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/releases"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
@@ -31,6 +31,7 @@ type ScannerDeps struct {
 	GitHub    ReleaseClient
 	EmailChan chan<- mail.Message
 	BaseURL   string
+	Log       logger.Logger
 }
 
 // StartScanner runs the release-scan loop on a fixed ticker until ctx is cancelled.
@@ -38,14 +39,15 @@ type ScannerDeps struct {
 // each (via the cached GitHub client), and enqueues notification emails for any
 // subscriber whose last_seen_tag differs from the current release.
 func StartScanner(ctx context.Context, deps ScannerDeps, interval time.Duration) {
-	slog.Info("scanner started", "interval", interval)
+	log := scannerLogger(deps)
+	log.Info("scanner started", "interval", interval)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("scanner stopped")
+			log.Info("scanner stopped")
 			return
 		case <-ticker.C:
 			runScan(ctx, deps)
@@ -54,16 +56,17 @@ func StartScanner(ctx context.Context, deps ScannerDeps, interval time.Duration)
 }
 
 func runScan(ctx context.Context, deps ScannerDeps) {
+	log := scannerLogger(deps)
 	repos, err := deps.Repo.ListDistinctConfirmedRepos(ctx)
 	if err != nil {
-		slog.Error("scanner: list repos failed", "err", err)
+		log.Error("scanner: list repos failed", "err", err)
 		return
 	}
 	if len(repos) == 0 {
 		return
 	}
 
-	slog.Info("scanner: scanning repos", "count", len(repos))
+	log.Info("scanner: scanning repos", "count", len(repos))
 
 	for _, repo := range repos {
 		if ctx.Err() != nil {
@@ -74,25 +77,26 @@ func runScan(ctx context.Context, deps ScannerDeps) {
 }
 
 func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
+	log := scannerLogger(deps)
 	release, err := deps.GitHub.GetLatestRelease(ctx, repo)
 	if err != nil {
 		var rle *subscriptions.RateLimitError
 		if ok := errors.As(err, &rle); ok {
-			slog.Warn("scanner: github rate limited, skipping repo",
+			log.Warn("scanner: github rate limited, skipping repo",
 				"repo", repo, "retry_after", rle.RetryAfter)
 		} else {
-			slog.Error("scanner: get latest release failed", "repo", repo, "err", err)
+			log.Error("scanner: get latest release failed", "repo", repo, "err", err)
 		}
 		return
 	}
 	if release == nil {
-		slog.Error("scanner: release client returned nil release", "repo", repo)
+		log.Error("scanner: release client returned nil release", "repo", repo)
 		return
 	}
 
 	subscribers, err := deps.Repo.ListConfirmedSubscribersForRepo(ctx, repo)
 	if err != nil {
-		slog.Error("scanner: list subscribers failed", "repo", repo, "err", err)
+		log.Error("scanner: list subscribers failed", "repo", repo, "err", err)
 		return
 	}
 
@@ -108,19 +112,26 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) {
 			notified++
 		default:
 			// Channel full - log with subscription_id, not email, to avoid PII in logs.
-			slog.Warn("scanner: email channel full, dropping notification",
+			log.Warn("scanner: email channel full, dropping notification",
 				"subscription_id", sub.ID, "repo", repo)
 		}
 	}
 
 	if notified > 0 {
 		if err := deps.Repo.UpdateLastSeenTag(ctx, repo, release.TagName); err != nil {
-			slog.Error("scanner: update last seen tag failed", "repo", repo, "err", err)
+			log.Error("scanner: update last seen tag failed", "repo", repo, "err", err)
 		} else {
-			slog.Info("scanner: release notifications enqueued",
+			log.Info("scanner: release notifications enqueued",
 				"repo", repo, "tag", release.TagName, "notified", notified)
 		}
 	}
+}
+
+func scannerLogger(deps ScannerDeps) logger.Logger {
+	if deps.Log == nil {
+		return logger.NoopLogger{}
+	}
+	return deps.Log
 }
 
 func buildReleaseEmail(sub *subscriptions.Subscription, release *releases.Release, baseURL string) mail.Message {

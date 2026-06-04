@@ -25,7 +25,7 @@ func NewGitHubReleaseCache(client *goredis.Client) *GitHubReleaseCache {
 
 // GetRelease loads a cached release for repo. The boolean return value is false
 // when no usable cached value exists.
-func (c *GitHubReleaseCache) GetRelease(ctx context.Context, repo string) (*github.Release, bool, error) {
+func (c *GitHubReleaseCache) GetRelease(ctx context.Context, repo string) (release *github.Release, ok bool, err error) {
 	data, err := c.client.Get(ctx, releaseKey(repo)).Bytes()
 	if errors.Is(err, goredis.Nil) {
 		return nil, false, nil
@@ -34,11 +34,11 @@ func (c *GitHubReleaseCache) GetRelease(ctx context.Context, repo string) (*gith
 		return nil, false, err
 	}
 
-	var release github.Release
-	if err := json.Unmarshal(data, &release); err != nil {
+	var cachedRelease github.Release
+	if err := json.Unmarshal(data, &cachedRelease); err != nil {
 		return nil, false, fmt.Errorf("decode cached github release: %w", err)
 	}
-	return &release, true, nil
+	return &cachedRelease, true, nil
 }
 
 // SetRelease stores release for repo with ttl.

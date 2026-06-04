@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,6 +26,8 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
+	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
@@ -41,56 +41,73 @@ import (
 var indexHTML []byte
 
 func main() {
-	if err := run(); err != nil {
-		slog.Error("application startup failed", "err", err)
+	appLogger := platformlogger.NewSlogAdapter(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+
+	if err := run(appLogger); err != nil {
+		appLogger.Error("application startup failed", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	// JSON structured logging to stdout from the very first line.
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
-
+func run(appLogger platformlogger.Logger) error {
 	cfg, err := config.LoadAppConfig()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	if err := postgres.RunMigrations(cfg.DatabaseURL); err != nil {
+	meterProvider, err := platformmetrics.InitMeterProvider()
+	if err != nil {
+		return fmt.Errorf("init meter provider: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := meterProvider.Shutdown(shutdownCtx); err != nil {
+			appLogger.Error("shutdown meter provider", "err", err)
+		}
+	}()
+	metricsRecorder, err := middleware.NewOpenTelemetryRecorder(
+		meterProvider.Meter("github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/cmd/server"),
+	)
+	if err != nil {
+		return fmt.Errorf("init metrics recorder: %w", err)
+	}
+
+	if err := postgres.RunMigrations(cfg.DatabaseURL, appLogger); err != nil {
 		return fmt.Errorf("run database migrations: %w", err)
 	}
 
-	db, err := platformpostgres.NewDB(cfg.DatabaseURL)
+	db, err := platformpostgres.NewDB(cfg.DatabaseURL, appLogger)
 	if err != nil {
 		return fmt.Errorf("init database: %w", err)
 	}
 	defer db.Close()
 
-	redisClient, err := platformredis.NewClient(cfg.RedisURL)
+	redisClient, err := platformredis.NewClient(cfg.RedisURL, appLogger)
 	if err != nil {
 		return fmt.Errorf("init redis: %w", err)
 	}
 
 	defer func() {
 		if err := redisClient.Close(); err != nil {
-			slog.Error("close redis", "err", err)
+			appLogger.Error("close redis", "err", err)
 		}
 	}()
 
-	subRepo := postgres.NewSubscriptionRepo(db)
-	githubClient := github.NewClient(cfg.GithubToken)
+	subTokenRepo := postgres.NewTokenRepo(db, appLogger)
+	subReadRepo := postgres.NewReadRepo(db, appLogger)
+	releaseScanRepo := postgres.NewReleaseScanRepo(db, appLogger)
+	githubClient := github.NewClient(cfg.GithubToken, appLogger)
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
-	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL)
-	resendClient := resend.NewResendClient(cfg.ResendAPIKey, cfg.FromEmail)
+	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
+	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, appLogger)
 
 	emailChan := make(chan mail.Message, cfg.EmailChannelSize)
-
-	promauto.NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "email_channel_depth",
-		Help: "Number of pending emails in the send queue.",
-	}, func() float64 { return float64(len(emailChan)) })
+	if err := metricsRecorder.RegisterEmailChannelDepth(func() int { return len(emailChan) }); err != nil {
+		return fmt.Errorf("register email channel depth metric: %w", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -101,26 +118,28 @@ func run() error {
 	go func() {
 		defer wg.Done()
 		worker.StartScanner(ctx, worker.ScannerDeps{
-			Repo:      subRepo,
+			Repo:      releaseScanRepo,
 			GitHub:    cachedGithubClient,
 			EmailChan: emailChan,
 			BaseURL:   cfg.BaseURL,
+			Log:       appLogger,
 		}, cfg.ScannerInterval)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait)
+		worker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait, appLogger)
 	}()
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
-		TokenRepo:      subRepo,
-		ReadRepo:       subRepo,
+		TokenRepo:      subTokenRepo,
+		ReadRepo:       subReadRepo,
 		Github:         githubClient,
 		EmailChan:      emailChan,
 		EmailSecretKey: cfg.EmailSecretKey,
 		BaseURL:        cfg.BaseURL,
+		Log:            appLogger,
 	})
 
 	grpcServer := grpc.NewServer()
@@ -136,15 +155,65 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		slog.Info("gRPC server listening", "port", grpcPort)
+		appLogger.Info("gRPC server listening", "port", grpcPort)
 		if err := grpcServer.Serve(lis); err != nil {
-			slog.Error("gRPC server error", "err", err)
+			appLogger.Error("gRPC server error", "err", err)
 			cancel()
 		}
 	}()
 
-	// gRPC-Gateway setup (HTTP server)
-	gwMux := runtime.NewServeMux(
+	gwMux := newGatewayMux()
+	if err := registerGatewayRoutes(gwMux); err != nil {
+		return err
+	}
+
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	err = pb.RegisterSubscribeServiceHandlerFromEndpoint(ctx, gwMux, "localhost:"+grpcPort, opts)
+	if err != nil {
+		return fmt.Errorf("register gRPC-Gateway: %w", err)
+	}
+
+	srv := &http.Server{
+		Addr:         ":" + cfg.RestPort,
+		Handler:      newHTTPHandler(gwMux, promhttp.Handler(), metricsRecorder, appLogger),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		appLogger.Info("HTTP REST gateway listening", "port", cfg.RestPort)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			appLogger.Error("http server error", "err", err)
+			cancel()
+		}
+	}()
+
+	// Block until SIGINT or SIGTERM.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	appLogger.Info("shutdown signal received")
+	cancel()
+
+	grpcServer.GracefulStop()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		appLogger.Error("http server shutdown", "err", err)
+	}
+
+	wg.Wait()
+	appLogger.Info("shutdown complete")
+	return nil
+}
+
+func newGatewayMux() *runtime.ServeMux {
+	return runtime.NewServeMux(
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
 			MarshalOptions: protojson.MarshalOptions{
 				UseProtoNames:   true,
@@ -152,7 +221,9 @@ func run() error {
 			},
 		}),
 	)
+}
 
+func registerGatewayRoutes(gwMux *runtime.ServeMux) error {
 	if err := gwMux.HandlePath("GET", "/swagger.json", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
 		http.ServeFile(w, r, "gen/subscription/v1/subscription.swagger.json")
 	}); err != nil {
@@ -174,51 +245,23 @@ func run() error {
 		return fmt.Errorf("register route GET /: %w", err)
 	}
 
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	err = pb.RegisterSubscribeServiceHandlerFromEndpoint(ctx, gwMux, "localhost:"+grpcPort, opts)
-	if err != nil {
-		return fmt.Errorf("register gRPC-Gateway: %w", err)
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	mux.Handle("/", middleware.Metrics(middleware.Logging(middleware.Recover(gwMux))))
-
-	srv := &http.Server{
-		Addr:         ":" + cfg.RestPort,
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		slog.Info("HTTP REST gateway listening", "port", cfg.RestPort)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("http server error", "err", err)
-			cancel()
-		}
-	}()
-
-	// Block until SIGINT or SIGTERM.
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	slog.Info("shutdown signal received")
-	cancel()
-
-	grpcServer.GracefulStop()
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer shutdownCancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("http server shutdown", "err", err)
-	}
-
-	wg.Wait()
-	slog.Info("shutdown complete")
 	return nil
+}
+
+func newHTTPHandler(
+	gwMux http.Handler,
+	metricsHandler http.Handler,
+	recorder middleware.MetricsRecorder,
+	log platformlogger.Logger,
+) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", metricsHandler)
+	mux.Handle("/", middleware.Metrics(
+		middleware.Logging(
+			middleware.Recover(gwMux, log),
+			log,
+		),
+		recorder,
+	))
+	return mux
 }

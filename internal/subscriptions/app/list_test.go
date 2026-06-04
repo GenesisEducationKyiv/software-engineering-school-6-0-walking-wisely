@@ -3,6 +3,7 @@ package subscriptionapp
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
@@ -11,10 +12,14 @@ import (
 type fakeListRepo struct {
 	result []subscriptions.Subscription
 	err    error
+	calls  int
+	ctx    context.Context
 	email  string
 }
 
-func (f *fakeListRepo) ListByEmail(_ context.Context, email string) ([]subscriptions.Subscription, error) {
+func (f *fakeListRepo) ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error) {
+	f.calls++
+	f.ctx = ctx
 	f.email = email
 	return f.result, f.err
 }
@@ -23,25 +28,65 @@ func TestListByEmail(t *testing.T) {
 	expected := []subscriptions.Subscription{{Email: validEmail, Repo: validRepo}}
 	repo := &fakeListRepo{result: expected}
 	svc := NewListService(repo)
+	ctx := context.WithValue(context.Background(), testContextKey{}, "request-123")
 
-	got, err := svc.ListByEmail(context.Background(), "  User@Example.COM  ")
+	got, err := svc.ListByEmail(ctx, "  User@Example.COM  ")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.calls != 1 {
+		t.Fatalf("repo calls = %d, want 1", repo.calls)
+	}
+	if repo.ctx != ctx {
+		t.Errorf("repo context was not passed through")
 	}
 	if repo.email != validEmail {
 		t.Errorf("repo email = %q, want %q", repo.email, validEmail)
 	}
-	if len(got) != 1 || got[0].Repo != validRepo {
+	if !reflect.DeepEqual(got, expected) {
 		t.Errorf("result = %+v, want %+v", got, expected)
 	}
 }
 
 func TestListByEmail_InvalidEmail(t *testing.T) {
-	svc := NewListService(&fakeListRepo{})
+	tests := []struct {
+		name  string
+		email string
+	}{
+		{"empty string", ""},
+		{"no at-sign", "not-an-email"},
+		{"domain without dot", "user@domain"},
+	}
 
-	_, err := svc.ListByEmail(context.Background(), "not-an-email")
-	if !errors.Is(err, subscriptions.ErrInvalidEmail) {
-		t.Errorf("got %v, want ErrInvalidEmail", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeListRepo{}
+			svc := NewListService(repo)
+
+			_, err := svc.ListByEmail(context.Background(), tc.email)
+			if !errors.Is(err, subscriptions.ErrInvalidEmail) {
+				t.Errorf("got %v, want ErrInvalidEmail", err)
+			}
+			if repo.calls != 0 {
+				t.Errorf("repo calls = %d, want 0", repo.calls)
+			}
+		})
+	}
+}
+
+func TestListByEmail_EmptyResult(t *testing.T) {
+	repo := &fakeListRepo{result: []subscriptions.Subscription{}}
+	svc := NewListService(repo)
+
+	got, err := svc.ListByEmail(context.Background(), validEmail)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatalf("result = nil, want empty slice from repo")
+	}
+	if len(got) != 0 {
+		t.Errorf("result = %+v, want empty slice", got)
 	}
 }
 

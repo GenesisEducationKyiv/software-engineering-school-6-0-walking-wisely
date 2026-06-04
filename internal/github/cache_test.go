@@ -11,10 +11,14 @@ type fakeReleaseClient struct {
 	release *Release
 	err     error
 	calls   int
+	ctx     context.Context
+	repo    string
 }
 
-func (f *fakeReleaseClient) GetLatestRelease(_ context.Context, _ string) (*Release, error) {
+func (f *fakeReleaseClient) GetLatestRelease(ctx context.Context, repo string) (*Release, error) {
 	f.calls++
+	f.ctx = ctx
+	f.repo = repo
 	return f.release, f.err
 }
 
@@ -25,14 +29,24 @@ type fakeReleaseCache struct {
 	setErr  error
 	setTTL  time.Duration
 	setRepo string
+	getRepo string
+	getCtx  context.Context
+	setCtx  context.Context
 	set     *Release
+	gets    int
+	sets    int
 }
 
-func (f *fakeReleaseCache) GetRelease(_ context.Context, _ string) (*Release, bool, error) {
+func (f *fakeReleaseCache) GetRelease(ctx context.Context, repo string) (release *Release, ok bool, err error) {
+	f.gets++
+	f.getCtx = ctx
+	f.getRepo = repo
 	return f.release, f.ok, f.getErr
 }
 
-func (f *fakeReleaseCache) SetRelease(_ context.Context, repo string, release *Release, ttl time.Duration) error {
+func (f *fakeReleaseCache) SetRelease(ctx context.Context, repo string, release *Release, ttl time.Duration) error {
+	f.sets++
+	f.setCtx = ctx
 	f.setRepo = repo
 	f.set = release
 	f.setTTL = ttl
@@ -44,7 +58,7 @@ func TestCachedReleaseClient_CacheHit(t *testing.T) {
 	next := &fakeReleaseClient{release: &Release{TagName: "v2.0.0"}}
 	cache := &fakeReleaseCache{release: cached, ok: true}
 
-	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL)
+	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
 	got, err := client.GetLatestRelease(context.Background(), "owner/repo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -55,6 +69,9 @@ func TestCachedReleaseClient_CacheHit(t *testing.T) {
 	if next.calls != 0 {
 		t.Fatalf("next calls = %d, want 0", next.calls)
 	}
+	if cache.sets != 0 {
+		t.Fatalf("cache sets = %d, want 0", cache.sets)
+	}
 }
 
 func TestCachedReleaseClient_CacheMissFetchesAndStores(t *testing.T) {
@@ -62,7 +79,7 @@ func TestCachedReleaseClient_CacheMissFetchesAndStores(t *testing.T) {
 	next := &fakeReleaseClient{release: fresh}
 	cache := &fakeReleaseCache{}
 
-	client := NewCachedReleaseClient(next, cache, 5*time.Minute)
+	client := NewCachedReleaseClient(next, cache, 5*time.Minute, nil)
 	got, err := client.GetLatestRelease(context.Background(), "owner/repo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -78,6 +95,29 @@ func TestCachedReleaseClient_CacheMissFetchesAndStores(t *testing.T) {
 	}
 }
 
+func TestCachedReleaseClient_ForwardsContextAndRepo(t *testing.T) {
+	fresh := &Release{TagName: "v2.0.0"}
+	next := &fakeReleaseClient{release: fresh}
+	cache := &fakeReleaseCache{}
+	ctx := context.WithValue(context.Background(), releaseCacheContextKey{}, "marker")
+
+	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
+	if _, err := client.GetLatestRelease(ctx, "owner/repo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cache.getCtx != ctx || cache.getRepo != "owner/repo" {
+		t.Fatalf("cache get = (%v, %q), want original context and owner/repo", cache.getCtx, cache.getRepo)
+	}
+	if next.ctx != ctx || next.repo != "owner/repo" {
+		t.Fatalf("next get = (%v, %q), want original context and owner/repo", next.ctx, next.repo)
+	}
+	if cache.setCtx != ctx || cache.setRepo != "owner/repo" {
+		t.Fatalf("cache set = (%v, %q), want original context and owner/repo", cache.setCtx, cache.setRepo)
+	}
+}
+
+type releaseCacheContextKey struct{}
+
 func TestCachedReleaseClient_CacheErrorsDoNotHideFreshRelease(t *testing.T) {
 	fresh := &Release{TagName: "v2.0.0"}
 	next := &fakeReleaseClient{release: fresh}
@@ -86,7 +126,7 @@ func TestCachedReleaseClient_CacheErrorsDoNotHideFreshRelease(t *testing.T) {
 		setErr: errors.New("redis still unavailable"),
 	}
 
-	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL)
+	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
 	got, err := client.GetLatestRelease(context.Background(), "owner/repo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -97,6 +137,9 @@ func TestCachedReleaseClient_CacheErrorsDoNotHideFreshRelease(t *testing.T) {
 	if next.calls != 1 {
 		t.Fatalf("next calls = %d, want 1", next.calls)
 	}
+	if cache.set != fresh || cache.setRepo != "owner/repo" || cache.setTTL != ReleaseCacheTTL {
+		t.Fatalf("cache set = (%#v, %q, %s), want fresh owner/repo %s", cache.set, cache.setRepo, cache.setTTL, ReleaseCacheTTL)
+	}
 }
 
 func TestCachedReleaseClient_PropagatesFetchError(t *testing.T) {
@@ -104,9 +147,54 @@ func TestCachedReleaseClient_PropagatesFetchError(t *testing.T) {
 	next := &fakeReleaseClient{err: wantErr}
 	cache := &fakeReleaseCache{}
 
-	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL)
+	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
 	_, err := client.GetLatestRelease(context.Background(), "owner/repo")
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("got error %v, want %v", err, wantErr)
+	}
+	if cache.sets != 0 {
+		t.Fatalf("cache sets = %d, want 0", cache.sets)
+	}
+}
+
+func TestCachedReleaseClient_CacheReadErrorWithFetchErrorReturnsFetchError(t *testing.T) {
+	cacheErr := errors.New("redis unavailable")
+	wantErr := errors.New("github unavailable")
+	next := &fakeReleaseClient{err: wantErr}
+	cache := &fakeReleaseCache{getErr: cacheErr}
+
+	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
+	_, err := client.GetLatestRelease(context.Background(), "owner/repo")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("got error %v, want fetch error %v", err, wantErr)
+	}
+	if errors.Is(err, cacheErr) {
+		t.Fatalf("got error %v, want cache read error to be ignored", err)
+	}
+	if cache.sets != 0 {
+		t.Fatalf("cache sets = %d, want 0", cache.sets)
+	}
+}
+
+func TestCachedReleaseClient_CacheReadErrorIgnoresReturnedRelease(t *testing.T) {
+	cached := &Release{TagName: "v1.0.0"}
+	fresh := &Release{TagName: "v2.0.0"}
+	next := &fakeReleaseClient{release: fresh}
+	cache := &fakeReleaseCache{
+		release: cached,
+		ok:      true,
+		getErr:  errors.New("redis unavailable"),
+	}
+
+	client := NewCachedReleaseClient(next, cache, ReleaseCacheTTL, nil)
+	got, err := client.GetLatestRelease(context.Background(), "owner/repo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != fresh {
+		t.Fatalf("got %#v, want fresh release", got)
+	}
+	if next.calls != 1 {
+		t.Fatalf("next calls = %d, want 1", next.calls)
 	}
 }

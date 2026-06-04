@@ -3,7 +3,6 @@ package subscriptiongrpc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"math"
 
 	"google.golang.org/grpc"
@@ -14,12 +13,12 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
-func handleRateLimitError(ctx context.Context, rle *subscriptions.RateLimitError) error {
+func (s *SubscriptionService) handleRateLimitError(ctx context.Context, rle *subscriptions.RateLimitError) error {
 	secs := int(math.Ceil(rle.RetryAfter.Seconds()))
 
 	header := metadata.Pairs("Retry-After", fmt.Sprintf("%d", secs))
 	if err := grpc.SetHeader(ctx, header); err != nil {
-		slog.ErrorContext(ctx, "failed to set gRPC retry header", "error", err)
+		s.log.ErrorContext(ctx, "failed to set gRPC retry header", "error", err)
 	}
 
 	msg := fmt.Sprintf("service temporarily unavailable, retry after %ds", secs)

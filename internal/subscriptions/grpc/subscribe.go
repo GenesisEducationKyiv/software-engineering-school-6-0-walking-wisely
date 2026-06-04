@@ -3,7 +3,6 @@ package subscriptiongrpc
 import (
 	"context"
 	"errors"
-	"log/slog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,14 +22,14 @@ func (s *SubscriptionService) Subscribe(
 		Email: req.Email,
 		Repo:  req.Repo,
 	}); err != nil {
-		return nil, mapSubscribeError(ctx, req.Repo, err)
+		return nil, s.mapSubscribeError(ctx, req.Repo, err)
 	}
 
-	slog.Info("subscribe: subscription created", "repo", subscriptionapp.NormalizeRepo(req.Repo))
+	s.log.Info("subscribe: subscription created", "repo", subscriptionapp.NormalizeRepo(req.Repo))
 	return &pb.SubscribeResponse{}, nil
 }
 
-func mapSubscribeError(ctx context.Context, repo string, err error) error {
+func (s *SubscriptionService) mapSubscribeError(ctx context.Context, repo string, err error) error {
 	switch {
 	case errors.Is(err, subscriptions.ErrInvalidEmail):
 		return status.Error(codes.InvalidArgument, "invalid email format")
@@ -44,9 +43,9 @@ func mapSubscribeError(ctx context.Context, repo string, err error) error {
 
 	var rle *subscriptions.RateLimitError
 	if errors.As(err, &rle) {
-		return handleRateLimitError(ctx, rle)
+		return s.handleRateLimitError(ctx, rle)
 	}
 
-	slog.Error("subscribe: use case failed", "repo", subscriptionapp.NormalizeRepo(repo), "err", err)
+	s.log.Error("subscribe: use case failed", "repo", subscriptionapp.NormalizeRepo(repo), "err", err)
 	return status.Error(codes.Internal, "internal error")
 }

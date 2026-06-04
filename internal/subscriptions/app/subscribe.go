@@ -7,6 +7,7 @@ import (
 	"regexp"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -43,14 +44,15 @@ type SubscribeDeps struct {
 	EmailChan      chan<- mail.Message
 	EmailSecretKey string
 	BaseURL        string
+	Log            logger.Logger
 }
 
 // NewSubscribeService returns an application service for the subscribe workflow.
-func NewSubscribeService(deps SubscribeDeps) *SubscribeService {
+func NewSubscribeService(deps *SubscribeDeps) *SubscribeService {
 	return &SubscribeService{
 		repo:           deps.Repo,
 		github:         deps.Github,
-		notifier:       NewMailConfirmationNotifier(mail.NewChannelQueue(deps.EmailChan), deps.BaseURL),
+		notifier:       NewMailConfirmationNotifier(mail.NewChannelQueue(deps.EmailChan), deps.BaseURL, deps.Log),
 		emailSecretKey: deps.EmailSecretKey,
 	}
 }
@@ -73,11 +75,11 @@ func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) 
 		return err
 	}
 
-	confirmToken, err := subscriptions.GenerateToken(s.emailSecretKey)
+	confirmToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
 		return fmt.Errorf("generate confirm token: %w", err)
 	}
-	unsubToken, err := subscriptions.GenerateToken(s.emailSecretKey)
+	unsubToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
 		return fmt.Errorf("generate unsub token: %w", err)
 	}
