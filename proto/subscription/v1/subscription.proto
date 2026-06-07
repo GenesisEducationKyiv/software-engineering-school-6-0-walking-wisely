@@ -1,7 +1,7 @@
 syntax = "proto3";
 package subscription.v1;
 
-option go_package = "github.com/walking_wisely/genesis2026-github-release-api/gen/subscription/v1;subscriptionv1";
+option go_package = "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1;subscriptionv1";
 
 
 import "google/api/annotations.proto";
