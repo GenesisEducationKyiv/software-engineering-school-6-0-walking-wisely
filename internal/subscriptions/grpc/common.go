@@ -24,9 +24,10 @@ type GithubRepoValidator = subscriptionapp.GithubRepoValidator
 // ServiceDeps bundles the external dependencies injected into SubscriptionService.
 type ServiceDeps struct {
 	TokenRepo      SubscriptionTokenWorkflowRepo
+	TxManager      subscriptionapp.TransactionManager
 	ReadRepo       SubscriptionReadRepo
 	Github         GithubRepoValidator
-	Publisher      *events.Bus
+	Publisher      events.Publisher
 	EmailSecretKey string
 	Log            logger.Logger
 }
@@ -51,6 +52,7 @@ func NewSubscriptionService(deps *ServiceDeps) *SubscriptionService {
 	return &SubscriptionService{
 		subscribeUseCase: subscriptionapp.NewSubscribeService(&subscriptionapp.SubscribeDeps{
 			Repo:           deps.TokenRepo,
+			TxManager:      deps.TxManager,
 			Github:         deps.Github,
 			Publisher:      deps.Publisher,
 			EmailSecretKey: deps.EmailSecretKey,

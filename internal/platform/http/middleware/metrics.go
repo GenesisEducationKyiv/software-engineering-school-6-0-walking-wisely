@@ -14,6 +14,7 @@ import (
 type MetricsRecorder interface {
 	RecordHTTPRequest(ctx context.Context, method, path string, status int, duration time.Duration)
 	RegisterEmailChannelDepth(depth func() int) error
+	RegisterOutboxMetrics(snapshot func(context.Context) (pendingCount int64, oldestPendingAge float64, retryCount int64, failedCount int64, err error)) error
 }
 
 type OpenTelemetryRecorder struct {
@@ -64,6 +65,64 @@ func (r *OpenTelemetryRecorder) RegisterEmailChannelDepth(depth func() int) erro
 	}, gauge)
 	if err != nil {
 		return fmt.Errorf("register email channel depth callback: %w", err)
+	}
+
+	return nil
+}
+
+func (r *OpenTelemetryRecorder) RegisterOutboxMetrics(
+	snapshot func(context.Context) (pendingCount int64, oldestPendingAge float64, retryCount int64, failedCount int64, err error),
+) error {
+	pendingGauge, err := r.meter.Int64ObservableGauge(
+		"outbox_pending_count",
+		metric.WithDescription("Number of pending outbox events."),
+		metric.WithUnit("{event}"),
+	)
+	if err != nil {
+		return fmt.Errorf("create outbox pending count gauge: %w", err)
+	}
+
+	oldestAgeGauge, err := r.meter.Float64ObservableGauge(
+		"outbox_oldest_pending_age_seconds",
+		metric.WithDescription("Age in seconds of the oldest pending outbox event."),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return fmt.Errorf("create outbox oldest pending age gauge: %w", err)
+	}
+
+	retryGauge, err := r.meter.Int64ObservableGauge(
+		"outbox_retry_count",
+		metric.WithDescription("Number of outbox events currently scheduled for retry."),
+		metric.WithUnit("{event}"),
+	)
+	if err != nil {
+		return fmt.Errorf("create outbox retry count gauge: %w", err)
+	}
+
+	failedGauge, err := r.meter.Int64ObservableGauge(
+		"outbox_failed_count",
+		metric.WithDescription("Number of outbox events in failed state."),
+		metric.WithUnit("{event}"),
+	)
+	if err != nil {
+		return fmt.Errorf("create outbox failed count gauge: %w", err)
+	}
+
+	_, err = r.meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
+		pendingCount, oldestPendingAge, retryCount, failedCount, err := snapshot(ctx)
+		if err != nil {
+			return err
+		}
+
+		observer.ObserveInt64(pendingGauge, pendingCount)
+		observer.ObserveFloat64(oldestAgeGauge, oldestPendingAge)
+		observer.ObserveInt64(retryGauge, retryCount)
+		observer.ObserveInt64(failedGauge, failedCount)
+		return nil
+	}, pendingGauge, oldestAgeGauge, retryGauge, failedGauge)
+	if err != nil {
+		return fmt.Errorf("register outbox metrics callback: %w", err)
 	}
 
 	return nil

@@ -1,9 +1,12 @@
 package postgres
 
 import (
+	"context"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 )
 
 type repository struct {
@@ -16,6 +19,10 @@ func newRepository(db *pgxpool.Pool, log logger.Logger) repository {
 		log = logger.NoopLogger{}
 	}
 	return repository{db: db, log: log}
+}
+
+func (r repository) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+	return platformpostgres.WithinTransaction(ctx, r.db, fn)
 }
 
 // TokenRepo persists token-mediated subscription lifecycle changes.

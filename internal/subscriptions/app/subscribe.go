@@ -17,6 +17,10 @@ type SubscriptionWriter interface {
 	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) (subscriptionsdomain.SubscribeResult, error)
 }
 
+type TransactionManager interface {
+	WithinTransaction(ctx context.Context, fn func(context.Context) error) error
+}
+
 // GithubRepoValidator validates that a requested repository exists.
 type GithubRepoValidator interface {
 	ValidateRepo(ctx context.Context, repo string) error
@@ -31,16 +35,18 @@ type SubscribeCommand struct {
 // SubscribeService coordinates the subscribe use case.
 type SubscribeService struct {
 	repo           SubscriptionWriter
+	txManager      TransactionManager
 	github         GithubRepoValidator
-	publisher      *events.Bus
+	publisher      events.Publisher
 	emailSecretKey string
 }
 
 // SubscribeDeps bundles the dependencies needed by SubscribeService.
 type SubscribeDeps struct {
 	Repo           SubscriptionWriter
+	TxManager      TransactionManager
 	Github         GithubRepoValidator
-	Publisher      *events.Bus
+	Publisher      events.Publisher
 	EmailSecretKey string
 }
 
@@ -48,6 +54,7 @@ type SubscribeDeps struct {
 func NewSubscribeService(deps *SubscribeDeps) *SubscribeService {
 	return &SubscribeService{
 		repo:           deps.Repo,
+		txManager:      deps.TxManager,
 		github:         deps.Github,
 		publisher:      deps.Publisher,
 		emailSecretKey: deps.EmailSecretKey,
@@ -81,19 +88,43 @@ func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) 
 		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("generate unsub token: %w", err)
 	}
 
-	result, err := s.repo.Subscribe(ctx, email, repo, confirmToken, unsubToken)
-	if err != nil {
+	var result subscriptionsdomain.SubscribeResult
+	txManager := s.txManager
+	if txManager == nil {
+		result, err = s.repo.Subscribe(ctx, email, repo, confirmToken, unsubToken)
+		if err != nil {
+			return subscriptionsdomain.SubscribeResult{}, err
+		}
+	} else if err := txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
+		result, err = s.repo.Subscribe(txCtx, email, repo, confirmToken, unsubToken)
+		if err != nil {
+			return err
+		}
+		if s.publisher == nil {
+			return nil
+		}
+		if err := s.publisher.Publish(txCtx, NewSubscriptionRequested(
+			result.SubscriptionID,
+			email,
+			repo,
+			confirmToken,
+			unsubToken,
+		)); err != nil {
+			return fmt.Errorf("publish subscription requested: %w", err)
+		}
+		return nil
+	}); err != nil {
 		return subscriptionsdomain.SubscribeResult{}, err
 	}
 
-	if s.publisher != nil {
-		if err := s.publisher.Publish(ctx, SubscriptionRequested{
-			SubscriptionID: result.SubscriptionID,
-			Email:          email,
-			Repo:           repo,
-			ConfirmToken:   confirmToken,
-			UnsubToken:     unsubToken,
-		}); err != nil {
+	if txManager == nil && s.publisher != nil {
+		if err := s.publisher.Publish(ctx, NewSubscriptionRequested(
+			result.SubscriptionID,
+			email,
+			repo,
+			confirmToken,
+			unsubToken,
+		)); err != nil {
 			return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("publish subscription requested: %w", err)
 		}
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -18,23 +19,11 @@ func (r *TokenRepo) Subscribe(
 	ctx context.Context,
 	email, repo, confirmToken, unsubToken string,
 ) (result subscriptions.SubscribeResult, err error) {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return subscriptions.SubscribeResult{}, fmt.Errorf("begin tx: %w", err)
-	}
-
-	defer func() {
-		if err != nil {
-			rollbackErr := tx.Rollback(ctx)
-			if rollbackErr != nil {
-				r.log.Error("subscribe: failed to rollback transaction", "err", rollbackErr)
-			}
-		}
-	}()
+	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
 
 	var id string
 	var confirmed bool
-	err = tx.QueryRow(
+	err = exec.QueryRow(
 		ctx,
 		`SELECT id, confirmed FROM subscriptions WHERE email=$1 AND repo=$2 FOR UPDATE`,
 		email, repo,
@@ -46,7 +35,7 @@ func (r *TokenRepo) Subscribe(
 
 	case err == nil && !confirmed:
 		// Unconfirmed - refresh the confirm token so the new email works.
-		if _, err = tx.Exec(
+		if _, err = exec.Exec(
 			ctx,
 			`UPDATE subscriptions SET confirm_token=$1, updated_at=NOW() WHERE id=$2`,
 			confirmToken, id,
@@ -59,7 +48,7 @@ func (r *TokenRepo) Subscribe(
 		}
 
 	case errors.Is(err, pgx.ErrNoRows):
-		err = tx.QueryRow(
+		err = exec.QueryRow(
 			ctx,
 			`INSERT INTO subscriptions (email, repo, confirm_token, unsubscribe_token)
 			 VALUES ($1, $2, $3, $4)
@@ -77,10 +66,6 @@ func (r *TokenRepo) Subscribe(
 	default:
 		return subscriptions.SubscribeResult{}, fmt.Errorf("lock subscription row: %w", err)
 	}
-
-	if err = tx.Commit(ctx); err != nil {
-		return subscriptions.SubscribeResult{}, err
-	}
 	return result, nil
 }
 
@@ -88,20 +73,9 @@ func (r *TokenRepo) Subscribe(
 // confirmation email. Uses SELECT FOR UPDATE to guard against concurrent calls.
 // Returns the subscription ID on success for logging (never the email).
 func (r *TokenRepo) ConfirmByToken(ctx context.Context, token string) (id string, err error) {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return "", fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			rollbackErr := tx.Rollback(ctx)
-			if rollbackErr != nil {
-				r.log.Error("confirm: failed to rollback transaction", "err", rollbackErr)
-			}
-		}
-	}()
+	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
 
-	err = tx.QueryRow(
+	err = exec.QueryRow(
 		ctx,
 		`SELECT id FROM subscriptions WHERE confirm_token=$1 FOR UPDATE`,
 		token,
@@ -113,14 +87,14 @@ func (r *TokenRepo) ConfirmByToken(ctx context.Context, token string) (id string
 		return "", fmt.Errorf("lock confirm token row: %w", err)
 	}
 
-	if _, err = tx.Exec(
+	if _, err = exec.Exec(
 		ctx,
 		`UPDATE subscriptions SET confirmed=TRUE, updated_at=NOW() WHERE id=$1`, id,
 	); err != nil {
 		return "", fmt.Errorf("confirm subscription: %w", err)
 	}
 
-	return id, tx.Commit(ctx)
+	return id, nil
 }
 
 // UnsubscribeByToken deletes a subscription using the token embedded in every

@@ -6,47 +6,48 @@ import (
 	"time"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	"github.com/google/uuid"
 )
+
+type JobQueue interface {
+	ClaimPending(ctx context.Context, workerID string, batchSize int) ([]notificationpostgres.Job, error)
+	MarkSent(ctx context.Context, jobs []notificationpostgres.Job) error
+	MarkFailed(ctx context.Context, jobs []notificationpostgres.Job, maxAttempts int, cause error) error
+}
 
 func StartSender(
 	ctx context.Context,
 	sender mail.Sender,
-	emailChan <-chan mail.Message,
-	maxWait time.Duration,
+	jobs JobQueue,
+	pollInterval time.Duration,
 	log logger.Logger,
 ) {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
 
-	log.Info("sender started", "max_wait", maxWait)
-	ticker := time.NewTicker(maxWait)
+	if pollInterval <= 0 {
+		pollInterval = 200 * time.Millisecond
+	}
+
+	log.Info("sender started", "poll_interval", pollInterval)
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	batchSize := senderBatchSize(sender)
-	buf := make([]mail.Message, 0, batchSize)
+	workerID := uuid.NewString()
+	const maxAttempts = 5
 
 	for {
 		select {
-		case msg, ok := <-emailChan:
-			if !ok {
-				flushBuffer(ctx, sender, buf, batchSize, log)
-				log.Info("sender stopped (channel closed)")
-				return
-			}
-			buf = append(buf, msg)
-			if len(buf) >= batchSize {
-				buf = flushBuffer(ctx, sender, buf, batchSize, log)
-			}
 		case <-ticker.C:
-			buf = flushBuffer(ctx, sender, buf, batchSize, log)
+			if err := flushPending(ctx, sender, jobs, workerID, batchSize, maxAttempts, log); err != nil {
+				log.Error("sender: flush pending failed", "err", err)
+			}
 		case <-ctx.Done():
-			drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-			buf = drainEmailChannel(drainCtx, sender, emailChan, buf, batchSize, log)
-			flushBuffer(drainCtx, sender, buf, batchSize, log)
-			cancel()
 			log.Info("sender stopped")
 			return
 		}
@@ -61,66 +62,44 @@ func senderBatchSize(sender mail.Sender) int {
 	return batchSize
 }
 
-func flushBuffer(
+func flushPending(
 	flushCtx context.Context,
 	sender mail.Sender,
-	buf []mail.Message,
+	jobs JobQueue,
+	workerID string,
 	batchSize int,
+	maxAttempts int,
 	log logger.Logger,
-) []mail.Message {
+) error {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
-	if len(buf) == 0 {
-		return buf
+	claimed, err := jobs.ClaimPending(flushCtx, workerID, batchSize)
+	if err != nil {
+		return err
 	}
-	for _, chunk := range chunkMessages(buf, batchSize) {
-		if err := sender.SendBatch(flushCtx, chunk); err != nil {
-			logSendError(log, err, len(chunk))
-		} else {
-			log.Info("sender: batch sent", "batch_size", len(chunk))
-		}
+	if len(claimed) == 0 {
+		return nil
 	}
-	return make([]mail.Message, 0, batchSize)
-}
 
-func drainEmailChannel(
-	ctx context.Context,
-	sender mail.Sender,
-	emailChan <-chan mail.Message,
-	buf []mail.Message,
-	batchSize int,
-	log logger.Logger,
-) []mail.Message {
-	for {
-		select {
-		case msg, ok := <-emailChan:
-			if !ok {
-				return buf
-			}
-			buf = append(buf, msg)
-			if len(buf) >= batchSize {
-				buf = flushBuffer(ctx, sender, buf, batchSize, log)
-			}
-		default:
-			return buf
-		}
+	messages := make([]mail.Message, 0, len(claimed))
+	for _, job := range claimed {
+		messages = append(messages, job.Message())
 	}
-}
 
-func chunkMessages(messages []mail.Message, batchSize int) [][]mail.Message {
-	if batchSize < 1 {
-		batchSize = 1
-	}
-	chunks := make([][]mail.Message, 0, (len(messages)+batchSize-1)/batchSize)
-	for i := 0; i < len(messages); i += batchSize {
-		end := i + batchSize
-		if end > len(messages) {
-			end = len(messages)
+	if err := sender.SendBatch(flushCtx, messages); err != nil {
+		logSendError(log, err, len(messages))
+		if markErr := jobs.MarkFailed(flushCtx, claimed, maxAttempts, err); markErr != nil {
+			return markErr
 		}
-		chunks = append(chunks, messages[i:end])
+		return nil
 	}
-	return chunks
+
+	if err := jobs.MarkSent(flushCtx, claimed); err != nil {
+		return err
+	}
+	log.Info("sender: batch sent", "batch_size", len(messages))
+	return nil
 }
 
 func logSendError(log logger.Logger, err error, batchSize int) {

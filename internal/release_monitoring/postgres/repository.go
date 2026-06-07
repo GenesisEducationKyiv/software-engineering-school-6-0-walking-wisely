@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 )
 
@@ -22,8 +23,13 @@ func NewReleaseScanRepo(db *pgxpool.Pool, log logger.Logger) *ReleaseScanRepo {
 	return &ReleaseScanRepo{db: db, log: log}
 }
 
+func (r *ReleaseScanRepo) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+	return platformpostgres.WithinTransaction(ctx, r.db, fn)
+}
+
 func (r *ReleaseScanRepo) ListDistinctConfirmedRepos(ctx context.Context) ([]string, error) {
-	rows, err := r.db.Query(ctx, `SELECT DISTINCT repo FROM subscriptions WHERE confirmed=TRUE`)
+	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	rows, err := exec.Query(ctx, `SELECT DISTINCT repo FROM subscriptions WHERE confirmed=TRUE`)
 	if err != nil {
 		return nil, fmt.Errorf("list distinct repos: %w", err)
 	}
@@ -41,7 +47,8 @@ func (r *ReleaseScanRepo) ListDistinctConfirmedRepos(ctx context.Context) ([]str
 }
 
 func (r *ReleaseScanRepo) ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]releasemonitoringdomain.Subscriber, error) {
-	rows, err := r.db.Query(
+	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	rows, err := exec.Query(
 		ctx,
 		`SELECT id, email, repo, last_seen_tag, unsubscribe_token
 		 FROM subscriptions WHERE repo=$1 AND confirmed=TRUE`,
@@ -70,7 +77,8 @@ func (r *ReleaseScanRepo) ListConfirmedSubscribersForRepo(ctx context.Context, r
 }
 
 func (r *ReleaseScanRepo) UpdateLastSeenTag(ctx context.Context, repo, tag string) error {
-	if _, err := r.db.Exec(
+	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	if _, err := exec.Exec(
 		ctx,
 		`UPDATE subscriptions SET last_seen_tag=$2, updated_at=NOW()
 		 WHERE repo=$1 AND confirmed=TRUE`,

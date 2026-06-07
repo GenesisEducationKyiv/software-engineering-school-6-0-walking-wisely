@@ -23,13 +23,14 @@ import (
 	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github/redis"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
 	notificationworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
 	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
 	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
@@ -106,6 +107,9 @@ func run(appLogger platformlogger.Logger) error {
 	subTokenRepo := postgres.NewTokenRepo(db, appLogger)
 	subReadRepo := postgres.NewReadRepo(db, appLogger)
 	releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(db, appLogger)
+	outboxRepo := outbox.NewRepository(db)
+	outboxPublisher := outbox.NewPublisher(outboxRepo)
+	notificationJobRepo := notificationpostgres.NewRepository(db)
 	githubClient := github.NewClient(cfg.GithubToken, appLogger)
 	checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer checkCancel()
@@ -116,13 +120,18 @@ func run(appLogger platformlogger.Logger) error {
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, appLogger)
 
-	emailChan := make(chan mail.Message, cfg.EmailChannelSize)
-	if err := metricsRecorder.RegisterEmailChannelDepth(func() int { return len(emailChan) }); err != nil {
-		return fmt.Errorf("register email channel depth metric: %w", err)
-	}
 	bus := events.NewBus()
-	notificationHandlers := notificationapp.NewEventHandlers(mail.NewChannelQueue(emailChan), cfg.BaseURL, appLogger)
+	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.BaseURL, appLogger)
 	notificationHandlers.Register(bus)
+	if err := metricsRecorder.RegisterOutboxMetrics(func(ctx context.Context) (int64, float64, int64, int64, error) {
+		snapshot, err := outboxRepo.Metrics(ctx)
+		if err != nil {
+			return 0, 0, 0, 0, err
+		}
+		return snapshot.PendingCount, snapshot.OldestPendingAge, snapshot.RetryCount, snapshot.FailedCount, nil
+	}); err != nil {
+		return fmt.Errorf("register outbox metrics: %w", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -132,7 +141,8 @@ func run(appLogger platformlogger.Logger) error {
 	scannerService := releasemonitoringapp.NewScannerService(releasemonitoringapp.ScannerDeps{
 		Repo:      releaseScanRepo,
 		GitHub:    cachedGithubClient,
-		Publisher: bus,
+		TxManager: releaseScanRepo,
+		Publisher: outboxPublisher,
 		Log:       appLogger,
 	})
 
@@ -145,14 +155,21 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		notificationworker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait, appLogger)
+		outbox.StartDispatcher(ctx, outboxRepo, bus, 200*time.Millisecond, 32, 5, appLogger)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		notificationworker.StartSender(ctx, resendClient, notificationJobRepo, cfg.ResendMaxWait, appLogger)
 	}()
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      subTokenRepo,
+		TxManager:      subTokenRepo,
 		ReadRepo:       subReadRepo,
 		Github:         githubClient,
-		Publisher:      bus,
+		Publisher:      outboxPublisher,
 		EmailSecretKey: cfg.EmailSecretKey,
 		Log:            appLogger,
 	})

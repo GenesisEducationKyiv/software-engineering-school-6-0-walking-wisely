@@ -30,6 +30,10 @@ func (r *handlerMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
 	return nil
 }
 
+func (r *handlerMetricsRecorder) RegisterOutboxMetrics(func(context.Context) (int64, float64, int64, int64, error)) error {
+	return nil
+}
+
 type handlerLogCall struct {
 	level string
 	msg   string

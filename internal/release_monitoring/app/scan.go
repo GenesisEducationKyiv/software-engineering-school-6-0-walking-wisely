@@ -17,6 +17,10 @@ type ReleaseScanRepo interface {
 	UpdateLastSeenTag(ctx context.Context, repo, tag string) error
 }
 
+type TransactionManager interface {
+	WithinTransaction(ctx context.Context, fn func(context.Context) error) error
+}
+
 type ReleaseClient interface {
 	GetLatestRelease(ctx context.Context, repo string) (*releasemonitoringdomain.Release, error)
 }
@@ -24,14 +28,16 @@ type ReleaseClient interface {
 type ScannerService struct {
 	repo      ReleaseScanRepo
 	github    ReleaseClient
-	publisher *events.Bus
+	txManager TransactionManager
+	publisher events.Publisher
 	log       logger.Logger
 }
 
 type ScannerDeps struct {
 	Repo      ReleaseScanRepo
 	GitHub    ReleaseClient
-	Publisher *events.Bus
+	TxManager TransactionManager
+	Publisher events.Publisher
 	Log       logger.Logger
 }
 
@@ -43,6 +49,7 @@ func NewScannerService(deps ScannerDeps) *ScannerService {
 	return &ScannerService{
 		repo:      deps.Repo,
 		github:    deps.GitHub,
+		txManager: deps.TxManager,
 		publisher: deps.Publisher,
 		log:       log,
 	}
@@ -128,18 +135,34 @@ func (s *ScannerService) scanRepo(ctx context.Context, repo string) (int, error)
 		return 0, nil
 	}
 
-	if err := s.publisher.Publish(ctx, releasemonitoringdomain.ReleaseDetected{
-		Repo:        repo,
-		Release:     *release,
-		Subscribers: pending,
-	}); err != nil {
-		s.log.Error("scanner: publish release detected failed", "repo", repo, "err", err)
-		return 0, err
-	}
+	event := releasemonitoringdomain.NewReleaseDetected(repo, *release, pending)
 
-	if err := s.repo.UpdateLastSeenTag(ctx, repo, release.TagName); err != nil {
-		s.log.Error("scanner: update last seen tag failed", "repo", repo, "err", err)
-		return 0, err
+	if s.txManager != nil {
+		if err := s.txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
+			if s.publisher != nil {
+				if err := s.publisher.Publish(txCtx, event); err != nil {
+					return fmt.Errorf("publish release detected: %w", err)
+				}
+			}
+			if err := s.repo.UpdateLastSeenTag(txCtx, repo, release.TagName); err != nil {
+				return fmt.Errorf("update last seen tag: %w", err)
+			}
+			return nil
+		}); err != nil {
+			s.log.Error("scanner: persist release detection failed", "repo", repo, "err", err)
+			return 0, err
+		}
+	} else {
+		if s.publisher != nil {
+			if err := s.publisher.Publish(ctx, event); err != nil {
+				s.log.Error("scanner: publish release detected failed", "repo", repo, "err", err)
+				return 0, err
+			}
+		}
+		if err := s.repo.UpdateLastSeenTag(ctx, repo, release.TagName); err != nil {
+			s.log.Error("scanner: update last seen tag failed", "repo", repo, "err", err)
+			return 0, err
+		}
 	}
 
 	return len(pending), nil

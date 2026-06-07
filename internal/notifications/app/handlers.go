@@ -5,32 +5,37 @@ import (
 	"fmt"
 	"strings"
 
-	notificationsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
-// Queue accepts email messages for later delivery.
-type Queue interface {
-	Enqueue(msg mail.Message) bool
+const (
+	subscriptionRequestedHandler = "notifications.subscription_requested"
+	releaseDetectedHandler       = "notifications.release_detected"
+)
+
+// JobWriter persists durable notification jobs.
+type JobWriter interface {
+	RecordConfirmation(ctx context.Context, handlerName, eventID, subscriptionID, to, subject, html, confirmToken string) error
+	RecordReleaseNotifications(ctx context.Context, handlerName, eventID, releaseTag string, jobs []notificationpostgres.ReleaseNotificationJob) error
 }
 
-// EventHandlers react to cross-domain events by enqueueing email work.
+// EventHandlers react to cross-domain events by creating durable notification jobs.
 type EventHandlers struct {
-	queue   Queue
+	jobs    JobWriter
 	baseURL string
 	log     logger.Logger
 }
 
-// NewEventHandlers returns notification handlers backed by the given queue.
-func NewEventHandlers(queue Queue, baseURL string, log logger.Logger) *EventHandlers {
+// NewEventHandlers returns notification handlers backed by durable job storage.
+func NewEventHandlers(jobs JobWriter, baseURL string, log logger.Logger) *EventHandlers {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
-	return &EventHandlers{queue: queue, baseURL: strings.TrimRight(baseURL, "/"), log: log}
+	return &EventHandlers{jobs: jobs, baseURL: strings.TrimRight(baseURL, "/"), log: log}
 }
 
 // Register attaches all notification handlers to the given bus.
@@ -40,45 +45,41 @@ func (h *EventHandlers) Register(bus *events.Bus) {
 }
 
 // OnSubscriptionRequested turns a subscription request into a confirmation email.
-func (h *EventHandlers) OnSubscriptionRequested(_ context.Context, event events.Event) error {
+func (h *EventHandlers) OnSubscriptionRequested(ctx context.Context, event events.Event) error {
 	requested, ok := event.(subscriptionapp.SubscriptionRequested)
 	if !ok {
 		return fmt.Errorf("unexpected event type %T", event)
 	}
 
-	notification := notificationsdomain.ConfirmationNotification{
-		SubscriptionID: requested.SubscriptionID,
-		Email:          requested.Email,
-		Repo:           requested.Repo,
-		ConfirmToken:   requested.ConfirmToken,
-		UnsubToken:     requested.UnsubToken,
-	}
-
-	confirmURL := fmt.Sprintf("%s/api/confirm/%s", h.baseURL, notification.ConfirmToken)
-	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", h.baseURL, notification.UnsubToken)
-
-	if ok := h.queue.Enqueue(mail.Message{
-		To:      notification.Email,
-		Subject: fmt.Sprintf("Confirm your subscription to %s releases", notification.Repo),
-		HTML: fmt.Sprintf(`<p>You requested release notifications for <strong>%s</strong>.</p>
+	confirmURL := fmt.Sprintf("%s/api/confirm/%s", h.baseURL, requested.ConfirmToken)
+	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", h.baseURL, requested.UnsubToken)
+	subject := fmt.Sprintf("Confirm your subscription to %s releases", requested.Repo)
+	html := fmt.Sprintf(`<p>You requested release notifications for <strong>%s</strong>.</p>
 <p><a href="%s">Confirm subscription</a></p>
 <p><small>Didn't request this? <a href="%s">Unsubscribe</a></small></p>`,
-			notification.Repo, confirmURL, unsubURL),
-	}); !ok {
-		h.log.Warn("subscribe: email channel full, confirmation email dropped",
-			"subscription_id", notification.SubscriptionID,
-			"repo", notification.Repo)
-		return nil
+		requested.Repo, confirmURL, unsubURL)
+
+	if err := h.jobs.RecordConfirmation(
+		ctx,
+		subscriptionRequestedHandler,
+		requested.EventID(),
+		requested.SubscriptionID,
+		requested.Email,
+		subject,
+		html,
+		requested.ConfirmToken,
+	); err != nil {
+		return fmt.Errorf("record confirmation job: %w", err)
 	}
 
-	h.log.Info("subscribe: confirmation email enqueued",
-		"subscription_id", notification.SubscriptionID,
-		"repo", notification.Repo)
+	h.log.Info("subscribe: confirmation job recorded",
+		"subscription_id", requested.SubscriptionID,
+		"repo", requested.Repo)
 	return nil
 }
 
 // OnReleaseDetected fans a detected release out to all subscribers.
-func (h *EventHandlers) OnReleaseDetected(_ context.Context, event events.Event) error {
+func (h *EventHandlers) OnReleaseDetected(ctx context.Context, event events.Event) error {
 	detected, ok := event.(releasemonitoringdomain.ReleaseDetected)
 	if !ok {
 		return fmt.Errorf("unexpected event type %T", event)
@@ -89,10 +90,12 @@ func (h *EventHandlers) OnReleaseDetected(_ context.Context, event events.Event)
 		releaseName = detected.Release.Name
 	}
 
+	jobs := make([]notificationpostgres.ReleaseNotificationJob, 0, len(detected.Subscribers))
 	for _, subscriber := range detected.Subscribers {
-		if ok := h.queue.Enqueue(mail.Message{
-			To:      subscriber.Email,
-			Subject: fmt.Sprintf("[%s] New release: %s", subscriber.Repo, detected.Release.TagName),
+		jobs = append(jobs, notificationpostgres.ReleaseNotificationJob{
+			SubscriptionID: subscriber.SubscriptionID,
+			To:             subscriber.Email,
+			Subject:        fmt.Sprintf("[%s] New release: %s", subscriber.Repo, detected.Release.TagName),
 			HTML: fmt.Sprintf(`<p>A new release of <strong>%s</strong> is available.</p>
 <p><strong>%s</strong></p>
 <p><a href="%s">View release on GitHub</a></p>
@@ -100,15 +103,20 @@ func (h *EventHandlers) OnReleaseDetected(_ context.Context, event events.Event)
 <p><small><a href="%s/api/unsubscribe/%s">Unsubscribe from %s notifications</a></small></p>`,
 				subscriber.Repo, releaseName, detected.Release.HTMLURL,
 				h.baseURL, subscriber.UnsubscribeToken, subscriber.Repo),
-		}); !ok {
-			h.log.Warn("scanner: email channel full, dropping notification",
-				"subscription_id", subscriber.SubscriptionID,
-				"repo", subscriber.Repo)
-			continue
-		}
+		})
 	}
 
-	h.log.Info("scanner: release notifications enqueued",
+	if err := h.jobs.RecordReleaseNotifications(
+		ctx,
+		releaseDetectedHandler,
+		detected.EventID(),
+		detected.Release.TagName,
+		jobs,
+	); err != nil {
+		return fmt.Errorf("record release jobs: %w", err)
+	}
+
+	h.log.Info("scanner: release notification jobs recorded",
 		"repo", detected.Repo,
 		"tag", detected.Release.TagName,
 		"notified", len(detected.Subscribers))
