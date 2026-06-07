@@ -21,7 +21,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
@@ -99,13 +101,14 @@ func newGatewayTestServer(
 
 	tokenRepo := postgres.NewTokenRepo(db, platformlogger.NoopLogger{})
 	readRepo := postgres.NewReadRepo(db, platformlogger.NoopLogger{})
+	bus := events.NewBus()
+	notificationapp.NewEventHandlers(mail.NewChannelQueue(emailChan), baseURL, platformlogger.NoopLogger{}).Register(bus)
 	service := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      tokenRepo,
 		ReadRepo:       readRepo,
 		Github:         gatewayTestGitHub{},
-		EmailChan:      emailChan,
+		Publisher:      bus,
 		EmailSecretKey: "test-secret",
-		BaseURL:        baseURL,
 		Log:            platformlogger.NoopLogger{},
 	})
 

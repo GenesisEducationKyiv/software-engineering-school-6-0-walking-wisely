@@ -11,8 +11,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 )
 
@@ -27,13 +29,22 @@ func newService(
 	readRepo subscriptiongrpc.SubscriptionReadRepo,
 	ch chan mail.Message,
 ) *subscriptiongrpc.SubscriptionService {
+	bus := events.NewBus()
+	bus.Subscribe(subscriptionapp.SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
+		requested := event.(subscriptionapp.SubscriptionRequested)
+		select {
+		case ch <- mail.Message{To: requested.Email}:
+		default:
+		}
+		return nil
+	})
+
 	return subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      tokenRepo,
 		ReadRepo:       readRepo,
 		Github:         gh,
-		EmailChan:      ch,
+		Publisher:      bus,
 		EmailSecretKey: "test-secret",
-		BaseURL:        "http://localhost",
 	})
 }
 

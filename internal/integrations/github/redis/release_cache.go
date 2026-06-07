@@ -10,7 +10,7 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github"
 )
 
 // GitHubReleaseCache stores latest GitHub release responses in Redis.

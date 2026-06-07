@@ -13,7 +13,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github"
 )
 
 func TestIntegration_GitHubReleaseCache_SetThenGetRelease(t *testing.T) {

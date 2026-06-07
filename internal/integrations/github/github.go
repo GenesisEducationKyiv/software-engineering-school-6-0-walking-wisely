@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/releases"
+	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // Release holds the fields we care about from a GitHub release object.
-type Release = releases.Release
+type Release = releasemonitoringdomain.Release
 
 // Client wraps the GitHub REST API and maps responses to domain errors.
 type Client struct {

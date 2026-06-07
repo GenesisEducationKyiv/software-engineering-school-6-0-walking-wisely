@@ -6,16 +6,15 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 var repoPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`)
 
 // SubscriptionWriter persists token-mediated subscription lifecycle changes.
 type SubscriptionWriter interface {
-	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) (subscriptions.SubscribeResult, error)
+	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) (subscriptionsdomain.SubscribeResult, error)
 }
 
 // GithubRepoValidator validates that a requested repository exists.
@@ -33,7 +32,7 @@ type SubscribeCommand struct {
 type SubscribeService struct {
 	repo           SubscriptionWriter
 	github         GithubRepoValidator
-	notifier       ConfirmationNotifier
+	publisher      *events.Bus
 	emailSecretKey string
 }
 
@@ -41,10 +40,8 @@ type SubscribeService struct {
 type SubscribeDeps struct {
 	Repo           SubscriptionWriter
 	Github         GithubRepoValidator
-	EmailChan      chan<- mail.Message
+	Publisher      *events.Bus
 	EmailSecretKey string
-	BaseURL        string
-	Log            logger.Logger
 }
 
 // NewSubscribeService returns an application service for the subscribe workflow.
@@ -52,50 +49,54 @@ func NewSubscribeService(deps *SubscribeDeps) *SubscribeService {
 	return &SubscribeService{
 		repo:           deps.Repo,
 		github:         deps.Github,
-		notifier:       NewMailConfirmationNotifier(mail.NewChannelQueue(deps.EmailChan), deps.BaseURL, deps.Log),
+		publisher:      deps.Publisher,
 		emailSecretKey: deps.EmailSecretKey,
 	}
 }
 
 // Subscribe validates the command, verifies the repo, persists the subscription,
 // and requests a confirmation email.
-func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) (subscriptions.SubscribeResult, error) {
+func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) (subscriptionsdomain.SubscribeResult, error) {
 	email := NormalizeEmail(cmd.Email)
 	repo := NormalizeRepo(cmd.Repo)
 
 	if !IsValidEmail(email) {
-		return subscriptions.SubscribeResult{}, subscriptions.ErrInvalidEmail
+		return subscriptionsdomain.SubscribeResult{}, subscriptionsdomain.ErrInvalidEmail
 	}
 
 	if !IsValidRepo(repo) {
-		return subscriptions.SubscribeResult{}, subscriptions.ErrInvalidRepo
+		return subscriptionsdomain.SubscribeResult{}, subscriptionsdomain.ErrInvalidRepo
 	}
 
 	if err := s.github.ValidateRepo(ctx, repo); err != nil {
-		return subscriptions.SubscribeResult{}, err
+		return subscriptionsdomain.SubscribeResult{}, err
 	}
 
 	confirmToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
-		return subscriptions.SubscribeResult{}, fmt.Errorf("generate confirm token: %w", err)
+		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("generate confirm token: %w", err)
 	}
 	unsubToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
-		return subscriptions.SubscribeResult{}, fmt.Errorf("generate unsub token: %w", err)
+		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("generate unsub token: %w", err)
 	}
 
 	result, err := s.repo.Subscribe(ctx, email, repo, confirmToken, unsubToken)
 	if err != nil {
-		return subscriptions.SubscribeResult{}, err
+		return subscriptionsdomain.SubscribeResult{}, err
 	}
 
-	s.notifier.NotifyConfirmation(Confirmation{
-		SubscriptionID: result.SubscriptionID,
-		Email:          email,
-		Repo:           repo,
-		ConfirmToken:   confirmToken,
-		UnsubToken:     unsubToken,
-	})
+	if s.publisher != nil {
+		if err := s.publisher.Publish(ctx, SubscriptionRequested{
+			SubscriptionID: result.SubscriptionID,
+			Email:          email,
+			Repo:           repo,
+			ConfirmToken:   confirmToken,
+			UnsubToken:     unsubToken,
+		}); err != nil {
+			return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("publish subscription requested: %w", err)
+		}
+	}
 
 	return result, nil
 }

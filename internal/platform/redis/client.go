@@ -10,17 +10,17 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
+	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 // NewClient creates a Redis client and pings it, using retry defaults read from the environment.
 func NewClient(redisURL string, log logger.Logger) (*goredis.Client, error) {
-	return NewClientWithRetry(redisURL, config.RedisRetryConfigFromEnv(), log)
+	return NewClientWithRetry(redisURL, platformconfig.RedisRetryConfigFromEnv(), log)
 }
 
 // NewClientWithRetry creates a Redis client and pings it, retrying on transient failures according to retry.
-func NewClientWithRetry(redisURL string, retry config.RetryConfig, log logger.Logger) (*goredis.Client, error) {
+func NewClientWithRetry(redisURL string, retry platformconfig.RetryConfig, log logger.Logger) (*goredis.Client, error) {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
@@ -39,7 +39,7 @@ func NewClientWithRetry(redisURL string, retry config.RetryConfig, log logger.Lo
 	}, time.Sleep)
 }
 
-func validateRedisRetryConfig(retry config.RetryConfig) error {
+func validateRedisRetryConfig(retry platformconfig.RetryConfig) error {
 	if retry.MaxAttempts <= 0 {
 		return errors.New("redis retry max attempts must be positive")
 	}
@@ -68,7 +68,7 @@ func openAndPingRedisClient(opts *goredis.Options) (*goredis.Client, error) {
 }
 
 func newClientWithRetry(
-	retry config.RetryConfig,
+	retry platformconfig.RetryConfig,
 	log logger.Logger,
 	openAndPing func() (*goredis.Client, error),
 	sleep func(time.Duration),

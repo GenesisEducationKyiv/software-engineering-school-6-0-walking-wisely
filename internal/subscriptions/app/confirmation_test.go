@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 )
 
 type recordingConfirmationLogger struct {

@@ -19,19 +19,24 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
-	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github/redis"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github"
+	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github/redis"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
+	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	notificationworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
+	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
+	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
+	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
+	releasemonitoringworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/worker"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/worker"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
@@ -49,7 +54,7 @@ func main() {
 }
 
 func run(appLogger platformlogger.Logger) error {
-	cfg, err := config.LoadAppConfig()
+	cfg, err := platformconfig.LoadAppConfig()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -100,7 +105,7 @@ func run(appLogger platformlogger.Logger) error {
 
 	subTokenRepo := postgres.NewTokenRepo(db, appLogger)
 	subReadRepo := postgres.NewReadRepo(db, appLogger)
-	releaseScanRepo := postgres.NewReleaseScanRepo(db, appLogger)
+	releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(db, appLogger)
 	githubClient := github.NewClient(cfg.GithubToken, appLogger)
 	checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer checkCancel()
@@ -115,37 +120,40 @@ func run(appLogger platformlogger.Logger) error {
 	if err := metricsRecorder.RegisterEmailChannelDepth(func() int { return len(emailChan) }); err != nil {
 		return fmt.Errorf("register email channel depth metric: %w", err)
 	}
+	bus := events.NewBus()
+	notificationHandlers := notificationapp.NewEventHandlers(mail.NewChannelQueue(emailChan), cfg.BaseURL, appLogger)
+	notificationHandlers.Register(bus)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	var wg sync.WaitGroup
 
+	scannerService := releasemonitoringapp.NewScannerService(releasemonitoringapp.ScannerDeps{
+		Repo:      releaseScanRepo,
+		GitHub:    cachedGithubClient,
+		Publisher: bus,
+		Log:       appLogger,
+	})
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.StartScanner(ctx, worker.ScannerDeps{
-			Repo:      releaseScanRepo,
-			GitHub:    cachedGithubClient,
-			EmailChan: emailChan,
-			BaseURL:   cfg.BaseURL,
-			Log:       appLogger,
-		}, cfg.ScannerInterval)
+		releasemonitoringworker.StartScanner(ctx, scannerService, cfg.ScannerInterval, appLogger)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait, appLogger)
+		notificationworker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait, appLogger)
 	}()
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      subTokenRepo,
 		ReadRepo:       subReadRepo,
 		Github:         githubClient,
-		EmailChan:      emailChan,
+		Publisher:      bus,
 		EmailSecretKey: cfg.EmailSecretKey,
-		BaseURL:        cfg.BaseURL,
 		Log:            appLogger,
 	})
 

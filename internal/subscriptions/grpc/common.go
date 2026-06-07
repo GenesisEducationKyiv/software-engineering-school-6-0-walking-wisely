@@ -3,7 +3,7 @@ package subscriptiongrpc
 
 import (
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
@@ -26,9 +26,8 @@ type ServiceDeps struct {
 	TokenRepo      SubscriptionTokenWorkflowRepo
 	ReadRepo       SubscriptionReadRepo
 	Github         GithubRepoValidator
-	EmailChan      chan<- mail.Message
+	Publisher      *events.Bus
 	EmailSecretKey string
-	BaseURL        string
 	Log            logger.Logger
 }
 
@@ -53,10 +52,8 @@ func NewSubscriptionService(deps *ServiceDeps) *SubscriptionService {
 		subscribeUseCase: subscriptionapp.NewSubscribeService(&subscriptionapp.SubscribeDeps{
 			Repo:           deps.TokenRepo,
 			Github:         deps.Github,
-			EmailChan:      deps.EmailChan,
+			Publisher:      deps.Publisher,
 			EmailSecretKey: deps.EmailSecretKey,
-			BaseURL:        deps.BaseURL,
-			Log:            log,
 		}),
 		confirmUseCase:     subscriptionapp.NewConfirmService(deps.TokenRepo),
 		unsubscribeUseCase: subscriptionapp.NewUnsubscribeService(deps.TokenRepo),

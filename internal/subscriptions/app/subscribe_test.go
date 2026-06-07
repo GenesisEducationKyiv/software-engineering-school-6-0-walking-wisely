@@ -7,7 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
@@ -65,12 +66,26 @@ func newSubscribeService(
 	repo SubscriptionWriter,
 	ch chan mail.Message,
 ) *SubscribeService {
+	bus := events.NewBus()
+	bus.Subscribe(SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
+		requested := event.(SubscriptionRequested)
+		select {
+		case ch <- mail.Message{
+			To: requested.Email,
+			HTML: "http://localhost/api/confirm/" + requested.ConfirmToken +
+				" http://localhost/api/unsubscribe/" + requested.UnsubToken +
+				" " + requested.Repo,
+		}:
+		default:
+		}
+		return nil
+	})
+
 	return NewSubscribeService(&SubscribeDeps{
 		Repo:           repo,
 		Github:         gh,
-		EmailChan:      ch,
+		Publisher:      bus,
 		EmailSecretKey: "test-secret",
-		BaseURL:        "http://localhost",
 	})
 }
 

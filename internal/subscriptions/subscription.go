@@ -1,32 +1,14 @@
 package subscriptions
 
-import (
-	"time"
+import subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+
+type (
+	Subscription    = subscriptionsdomain.Subscription
+	SubscribeAction = subscriptionsdomain.SubscribeAction
+	SubscribeResult = subscriptionsdomain.SubscribeResult
 )
-
-// Subscription represents a single email → repo notification subscription.
-type Subscription struct {
-	ID               string
-	Email            string
-	Repo             string
-	Confirmed        bool
-	ConfirmToken     string
-	UnsubscribeToken string
-	LastSeenTag      *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-}
-
-// SubscribeAction describes the safe, non-PII outcome of a subscribe request.
-type SubscribeAction string
 
 const (
-	SubscribeActionCreated               SubscribeAction = "created"
-	SubscribeActionConfirmationRefreshed SubscribeAction = "confirmation_refreshed"
+	SubscribeActionCreated               = subscriptionsdomain.SubscribeActionCreated
+	SubscribeActionConfirmationRefreshed = subscriptionsdomain.SubscribeActionConfirmationRefreshed
 )
-
-// SubscribeResult identifies the subscription row affected by a subscribe request.
-type SubscribeResult struct {
-	SubscriptionID string
-	Action         SubscribeAction
-}
