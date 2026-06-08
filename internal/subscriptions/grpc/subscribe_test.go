@@ -42,6 +42,7 @@ func newService(
 	return subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      tokenRepo,
 		ReadRepo:       readRepo,
+		TxManager:      fakeTxManager{},
 		Github:         gh,
 		Publisher:      bus,
 		EmailSecretKey: "test-secret",

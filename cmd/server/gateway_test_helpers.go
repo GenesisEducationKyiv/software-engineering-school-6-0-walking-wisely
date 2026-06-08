@@ -21,10 +21,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 )
@@ -48,6 +48,10 @@ func (gatewayTestMetricsRecorder) RecordHTTPRequest(context.Context, string, str
 }
 
 func (gatewayTestMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
+	return nil
+}
+
+func (gatewayTestMetricsRecorder) RegisterOutboxMetrics(func(context.Context) (int64, float64, int64, int64, error)) error {
 	return nil
 }
 
@@ -102,10 +106,25 @@ func newGatewayTestServer(
 	tokenRepo := postgres.NewTokenRepo(db, platformlogger.NoopLogger{})
 	readRepo := postgres.NewReadRepo(db, platformlogger.NoopLogger{})
 	bus := events.NewBus()
-	notificationapp.NewEventHandlers(mail.NewChannelQueue(emailChan), baseURL, platformlogger.NoopLogger{}).Register(bus)
+	bus.Subscribe(subscriptionapp.SubscriptionRequested{}.EventName(), func(_ context.Context, ev events.Event) error {
+		req, ok := ev.(subscriptionapp.SubscriptionRequested)
+		if !ok {
+			return nil
+		}
+		select {
+		case emailChan <- mail.Message{
+			To:      req.Email,
+			Subject: "Confirm your subscription to " + req.Repo + " releases",
+			HTML:    baseURL + "/api/confirm/" + req.ConfirmToken + " " + baseURL + "/api/unsubscribe/" + req.UnsubToken,
+		}:
+		default:
+		}
+		return nil
+	})
 	service := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      tokenRepo,
 		ReadRepo:       readRepo,
+		TxManager:      tokenRepo,
 		Github:         gatewayTestGitHub{},
 		Publisher:      bus,
 		EmailSecretKey: "test-secret",

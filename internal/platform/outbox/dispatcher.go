@@ -69,7 +69,9 @@ func dispatchBatch(
 	for _, record := range records {
 		event, err := events.Decode(record.EventType, record.PayloadJSON)
 		if err != nil {
-			_ = repo.MarkFailed(ctx, record.ID, record.AttemptCount+1, maxAttempts, err)
+			if markErr := repo.MarkFailed(ctx, record.ID, record.AttemptCount+1, maxAttempts, err); markErr != nil {
+				log.Error("outbox mark failed after decode error", "event_id", record.ID, "err", markErr)
+			}
 			log.Error("outbox decode failed", "event_type", record.EventType, "event_id", record.ID, "err", err)
 			continue
 		}

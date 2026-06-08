@@ -50,6 +50,11 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) Append(ctx context.Context, event events.DurableEvent) error {
+	eventID, err := uuid.Parse(event.EventID())
+	if err != nil {
+		return fmt.Errorf("parse event id %q: %w", event.EventID(), err)
+	}
+
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal event payload: %w", err)
@@ -62,7 +67,7 @@ func (r *Repository) Append(ctx context.Context, event events.DurableEvent) erro
 		 (id, event_type, aggregate_type, aggregate_id, payload_json, occurred_at, available_at, status, attempt_count, idempotency_key)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9)
 		 ON CONFLICT (idempotency_key) DO NOTHING`,
-		uuid.MustParse(event.EventID()),
+		eventID,
 		event.EventName(),
 		event.AggregateType(),
 		event.AggregateID(),

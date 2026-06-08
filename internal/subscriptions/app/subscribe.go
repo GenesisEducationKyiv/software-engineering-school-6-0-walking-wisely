@@ -88,14 +88,12 @@ func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) 
 		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("generate unsub token: %w", err)
 	}
 
+	if s.txManager == nil {
+		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("subscribe: transaction manager is required")
+	}
+
 	var result subscriptionsdomain.SubscribeResult
-	txManager := s.txManager
-	if txManager == nil {
-		result, err = s.repo.Subscribe(ctx, email, repo, confirmToken, unsubToken)
-		if err != nil {
-			return subscriptionsdomain.SubscribeResult{}, err
-		}
-	} else if err := txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
+	if err := s.txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
 		result, err = s.repo.Subscribe(txCtx, email, repo, confirmToken, unsubToken)
 		if err != nil {
 			return err
@@ -115,18 +113,6 @@ func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) 
 		return nil
 	}); err != nil {
 		return subscriptionsdomain.SubscribeResult{}, err
-	}
-
-	if txManager == nil && s.publisher != nil {
-		if err := s.publisher.Publish(ctx, NewSubscriptionRequested(
-			result.SubscriptionID,
-			email,
-			repo,
-			confirmToken,
-			unsubToken,
-		)); err != nil {
-			return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("publish subscription requested: %w", err)
-		}
 	}
 
 	return result, nil

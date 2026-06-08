@@ -47,6 +47,12 @@ func (f *fakeSubscriptionRepo) Subscribe(
 	return f.result, f.subscribeErr
 }
 
+type fakeTxManager struct{}
+
+func (fakeTxManager) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 type fakeGithubClient struct {
 	validateRepoErr error
 	calls           int
@@ -83,6 +89,7 @@ func newSubscribeService(
 
 	return NewSubscribeService(&SubscribeDeps{
 		Repo:           repo,
+		TxManager:      fakeTxManager{},
 		Github:         gh,
 		Publisher:      bus,
 		EmailSecretKey: "test-secret",

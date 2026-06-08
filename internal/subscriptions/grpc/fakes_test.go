@@ -40,6 +40,13 @@ func (f *fakeSubscriptionRepo) ListByEmail(_ context.Context, _ string) ([]subsc
 	return f.listByEmailResult, f.listByEmailErr
 }
 
+// fakeTxManager runs fn directly without a real transaction.
+type fakeTxManager struct{}
+
+func (fakeTxManager) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 // fakeGithubClient implements RepositoryValidator with a configurable error.
 type fakeGithubClient struct {
 	validateRepoErr error
