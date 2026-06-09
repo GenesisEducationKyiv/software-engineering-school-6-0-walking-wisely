@@ -57,4 +57,5 @@ test-integration:
 	go test -count=1 -tags=integration -run '^TestIntegration_' ./...
 
 test-e2e:
+	go test -count=1 -tags=e2e -run '^TestE2E_' ./cmd/server
 	go test -count=1 -tags=e2e -run '^TestIndexPageSubscriptionFlow$$' ./cmd/server
