@@ -90,9 +90,7 @@ func integrationContext(t *testing.T) (context.Context, context.CancelFunc) {
 func truncateSubscriptions(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 
-	if _, err := pool.Exec(ctx, `TRUNCATE subscriptions`); err != nil {
-		t.Fatalf("truncate subscriptions: %v", err)
-	}
+	truncateAsyncDeliveryState(t, ctx, pool)
 }
 
 type subscriptionSeed struct {

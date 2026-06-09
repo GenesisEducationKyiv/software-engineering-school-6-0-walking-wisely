@@ -79,7 +79,7 @@ func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
 		assertOutboxCount(t, ctx, repos.pool, "subscriptions.subscription_requested", 0)
 	})
 
-	t.Run("retrying same unconfirmed subscription keeps one logical row and one outbox event", func(t *testing.T) {
+	t.Run("retrying same unconfirmed subscription keeps one logical row and records refreshed confirmation event", func(t *testing.T) {
 		truncateAsyncDeliveryState(t, ctx, repos.pool)
 
 		service := subscriptionapp.NewSubscribeService(&subscriptionapp.SubscribeDeps{
@@ -113,7 +113,7 @@ func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
 		}
 
 		assertSubscriptionCount(t, ctx, repos.pool, "user@example.com", "owner/repo", 1)
-		assertOutboxCount(t, ctx, repos.pool, "subscriptions.subscription_requested", 1)
+		assertOutboxCount(t, ctx, repos.pool, "subscriptions.subscription_requested", 2)
 	})
 }
 
