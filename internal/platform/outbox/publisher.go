@@ -7,8 +7,12 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 )
 
+type publisherRepository interface {
+	Append(ctx context.Context, event events.DurableEvent) error
+}
+
 type Publisher struct {
-	repo *Repository
+	repo publisherRepository
 }
 
 func NewPublisher(repo *Repository) *Publisher {

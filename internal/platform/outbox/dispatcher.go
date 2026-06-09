@@ -11,6 +11,13 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
+// dispatchRepository is the subset of Repository used by the dispatcher loop.
+type dispatchRepository interface {
+	ClaimPending(ctx context.Context, workerID string, batchSize int) ([]Record, error)
+	MarkFailed(ctx context.Context, id string, attemptCount int, maxAttempts int, cause error) error
+	MarkDelivered(ctx context.Context, id string) error
+}
+
 func StartDispatcher(
 	ctx context.Context,
 	repo *Repository,
@@ -54,7 +61,7 @@ func StartDispatcher(
 
 func dispatchBatch(
 	ctx context.Context,
-	repo *Repository,
+	repo dispatchRepository,
 	bus events.Publisher,
 	workerID string,
 	batchSize int,
