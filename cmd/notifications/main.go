@@ -70,12 +70,19 @@ func run(log platformlogger.Logger) error {
 	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.BaseURL, log)
 	notificationHandlers.Register(bus)
 
-	consumer := streams.NewConsumer(
+	consumer := streams.NewConsumerWithOptions(
 		redisClient,
 		cfg.StreamKey,
 		cfg.StreamGroup,
 		uuid.NewString(),
-		int64(cfg.StreamBatchSize),
+		streams.ConsumerOptions{
+			BatchSize:     int64(cfg.StreamBatchSize),
+			ReclaimAfter:  cfg.StreamReclaimAfter,
+			ReclaimTick:   cfg.StreamReclaimTick,
+			AckTimeout:    cfg.StreamAckTimeout,
+			MaxDeliveries: int64(cfg.StreamMaxDeliveries),
+			DLQStreamKey:  cfg.StreamDLQKey,
+		},
 		log,
 	)
 

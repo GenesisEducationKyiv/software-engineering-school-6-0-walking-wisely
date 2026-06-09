@@ -132,6 +132,27 @@ func TestPublisher_MultipleEventsAllWritten(t *testing.T) {
 	}
 }
 
+func TestPublisher_ConfigurableMaxLen(t *testing.T) {
+	client := newRedisClient(t)
+	pub := streams.NewPublisherWithOptions(client, "test-stream", streams.PublisherOptions{
+		MaxLen: 2,
+	})
+
+	for i := 0; i < 5; i++ {
+		if err := pub.Publish(context.Background(), testEvent{Value: fmt.Sprintf("v%d", i)}); err != nil {
+			t.Fatalf("Publish %d: %v", i, err)
+		}
+	}
+
+	n, err := client.XLen(context.Background(), "test-stream").Result()
+	if err != nil {
+		t.Fatalf("XLEN: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("stream length = %d, want 2", n)
+	}
+}
+
 // ── Consumer tests ─────────────────────────────────────────────────────────────
 
 func TestConsumer_DeliveredToHandler(t *testing.T) {
@@ -295,6 +316,82 @@ func TestConsumer_HandlerErrorLeavesMessagePending(t *testing.T) {
 	}
 	if pending.Count == 0 {
 		t.Error("expected message to remain pending after handler error")
+	}
+}
+
+func TestConsumer_HandlerErrorMovesToDLQAfterMaxDeliveries(t *testing.T) {
+	client := newRedisClient(t)
+	pub := streams.NewPublisher(client, "test-stream")
+
+	if err := pub.Publish(context.Background(), testEvent{Value: "poison"}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	var calls atomic.Int32
+	bus := fakeBus(func(_ context.Context, _ events.Event) error {
+		calls.Add(1)
+		return fmt.Errorf("poison message")
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	consumer := streams.NewConsumerWithOptions(
+		client,
+		"test-stream",
+		"grp",
+		"c1",
+		streams.ConsumerOptions{
+			BatchSize:     32,
+			ReclaimAfter:  100 * time.Millisecond,
+			ReclaimTick:   100 * time.Millisecond,
+			AckTimeout:    time.Second,
+			MaxDeliveries: 2,
+			DLQStreamKey:  "test-stream.dlq",
+		},
+		nil,
+	)
+	done := make(chan struct{})
+	go func() { defer close(done); _ = consumer.Run(ctx, bus) }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		n, err := client.XLen(context.Background(), "test-stream.dlq").Result()
+		if err != nil {
+			t.Fatalf("XLEN dlq: %v", err)
+		}
+		if n == 1 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	cancel()
+	<-done
+
+	if calls.Load() < 2 {
+		t.Fatalf("handler calls = %d, want at least 2", calls.Load())
+	}
+
+	dlqMsgs, err := client.XRange(context.Background(), "test-stream.dlq", "-", "+").Result()
+	if err != nil {
+		t.Fatalf("XRANGE dlq: %v", err)
+	}
+	if len(dlqMsgs) != 1 {
+		t.Fatalf("dlq length = %d, want 1", len(dlqMsgs))
+	}
+	if got := fmt.Sprint(dlqMsgs[0].Values["original_stream"]); got != "test-stream" {
+		t.Errorf("dlq original_stream = %q, want test-stream", got)
+	}
+	if got := fmt.Sprint(dlqMsgs[0].Values["event_type"]); got != "test.streams.event" {
+		t.Errorf("dlq event_type = %q, want test.streams.event", got)
+	}
+
+	pending, err := client.XPending(context.Background(), "test-stream", "grp").Result()
+	if err != nil {
+		t.Fatalf("XPENDING: %v", err)
+	}
+	if pending.Count != 0 {
+		t.Errorf("pending count = %d after DLQ, want 0", pending.Count)
 	}
 }
 

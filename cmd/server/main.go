@@ -118,7 +118,10 @@ func run(appLogger platformlogger.Logger) error {
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 
-	streamPublisher := streams.NewPublisher(redisClient, cfg.StreamKey)
+	streamPublisher := streams.NewPublisherWithOptions(redisClient, cfg.StreamKey, streams.PublisherOptions{
+		MaxLen:     cfg.StreamMaxLen,
+		ApproxTrim: true,
+	})
 
 	if err := metricsRecorder.RegisterOutboxMetrics(func(ctx context.Context) (int64, float64, int64, int64, error) {
 		snapshot, err := outboxRepo.Metrics(ctx)

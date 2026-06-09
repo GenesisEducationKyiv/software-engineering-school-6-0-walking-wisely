@@ -17,6 +17,7 @@ type AppConfig struct {
 	EmailSecretKey  string
 	GithubToken     string // optional - raises GitHub API rate limit
 	StreamKey       string // Redis Stream key for publishing domain events
+	StreamMaxLen    int64  // Redis Stream retention max length; 0 disables trimming
 	LogLevel        string
 	ServiceName     string
 	Environment     string
@@ -33,6 +34,7 @@ func LoadAppConfig() (*AppConfig, error) {
 		EmailSecretKey:  os.Getenv("EMAIL_SECRET_KEY"),
 		GithubToken:     os.Getenv("GITHUB_TOKEN"),
 		StreamKey:       envOrDefault("STREAM_KEY", "events"),
+		StreamMaxLen:    parseNonNegativeInt64OrDefault("STREAM_MAX_LEN", 100_000),
 		LogLevel:        envOrDefault("LOG_LEVEL", "info"),
 		ServiceName:     envOrDefault("SERVICE_NAME", "github-release-notifier"),
 		Environment:     envOrDefault("ENVIRONMENT", "local"),
@@ -77,6 +79,15 @@ func parseDurationOrDefault(key string, def time.Duration) time.Duration {
 func parseIntOrDefault(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
+
+func parseNonNegativeInt64OrDefault(key string, def int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
 			return n
 		}
 	}

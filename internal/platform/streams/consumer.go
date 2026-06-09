@@ -2,6 +2,8 @@ package streams
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -15,6 +17,7 @@ const (
 	reclaimAfter  = 5 * time.Minute
 	reclaimTick   = 5 * time.Minute
 	errorBackoff  = 500 * time.Millisecond
+	ackTimeout    = 5 * time.Second
 )
 
 // Consumer reads domain events from a Redis Stream using a consumer group and
@@ -23,12 +26,26 @@ const (
 // Idle messages (claimed but not ACKed within reclaimAfter) are reclaimed
 // periodically to handle crashes without external intervention.
 type Consumer struct {
-	client     *goredis.Client
-	streamKey  string
-	group      string
-	consumerID string
-	batchSize  int64
-	log        logger.Logger
+	client        *goredis.Client
+	streamKey     string
+	group         string
+	consumerID    string
+	batchSize     int64
+	reclaimAfter  time.Duration
+	reclaimTick   time.Duration
+	ackTimeout    time.Duration
+	maxDeliveries int64
+	dlqStreamKey  string
+	log           logger.Logger
+}
+
+type ConsumerOptions struct {
+	BatchSize     int64
+	ReclaimAfter  time.Duration
+	ReclaimTick   time.Duration
+	AckTimeout    time.Duration
+	MaxDeliveries int64
+	DLQStreamKey  string
 }
 
 func NewConsumer(
@@ -37,19 +54,44 @@ func NewConsumer(
 	batchSize int64,
 	log logger.Logger,
 ) *Consumer {
+	return NewConsumerWithOptions(client, streamKey, group, consumerID, ConsumerOptions{
+		BatchSize: batchSize,
+	}, log)
+}
+
+func NewConsumerWithOptions(
+	client *goredis.Client,
+	streamKey, group, consumerID string,
+	opts ConsumerOptions,
+	log logger.Logger,
+) *Consumer {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
-	if batchSize < 1 {
-		batchSize = 32
+	if opts.BatchSize < 1 {
+		opts.BatchSize = 32
+	}
+	if opts.ReclaimAfter <= 0 {
+		opts.ReclaimAfter = reclaimAfter
+	}
+	if opts.ReclaimTick <= 0 {
+		opts.ReclaimTick = reclaimTick
+	}
+	if opts.AckTimeout <= 0 {
+		opts.AckTimeout = ackTimeout
 	}
 	return &Consumer{
-		client:     client,
-		streamKey:  streamKey,
-		group:      group,
-		consumerID: consumerID,
-		batchSize:  batchSize,
-		log:        log,
+		client:        client,
+		streamKey:     streamKey,
+		group:         group,
+		consumerID:    consumerID,
+		batchSize:     opts.BatchSize,
+		reclaimAfter:  opts.ReclaimAfter,
+		reclaimTick:   opts.ReclaimTick,
+		ackTimeout:    opts.AckTimeout,
+		maxDeliveries: opts.MaxDeliveries,
+		dlqStreamKey:  opts.DLQStreamKey,
+		log:           log,
 	}
 }
 
@@ -67,7 +109,7 @@ func (c *Consumer) Run(ctx context.Context, bus events.Publisher) error {
 		"consumer", c.consumerID,
 	)
 
-	reclaimTicker := time.NewTicker(reclaimTick)
+	reclaimTicker := time.NewTicker(c.reclaimTick)
 	defer reclaimTicker.Stop()
 
 	for {
@@ -97,7 +139,7 @@ func (c *Consumer) Run(ctx context.Context, bus events.Publisher) error {
 
 func (c *Consumer) ensureGroup(ctx context.Context) error {
 	err := c.client.XGroupCreateMkStream(ctx, c.streamKey, c.group, "0").Err()
-	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
 		return err
 	}
 	return nil
@@ -131,7 +173,7 @@ func (c *Consumer) reclaimIdle(ctx context.Context, bus events.Publisher) {
 		Stream:   c.streamKey,
 		Group:    c.group,
 		Consumer: c.consumerID,
-		MinIdle:  reclaimAfter,
+		MinIdle:  c.reclaimAfter,
 		Start:    "0-0",
 		Count:    c.batchSize,
 	}).Result()
@@ -165,6 +207,7 @@ func (c *Consumer) dispatch(ctx context.Context, bus events.Publisher, msg gored
 	if err := bus.Publish(ctx, event); err != nil {
 		c.log.Error("stream consumer handler failed, message will be redelivered",
 			"event_type", eventType, "msg_id", msg.ID, "err", err)
+		c.moveToDLQIfExhausted(ctx, msg, eventType, err)
 		return
 	}
 
@@ -172,7 +215,81 @@ func (c *Consumer) dispatch(ctx context.Context, bus events.Publisher, msg gored
 }
 
 func (c *Consumer) ack(ctx context.Context, msgID string) {
-	if err := c.client.XAck(ctx, c.streamKey, c.group, msgID).Err(); err != nil && ctx.Err() == nil {
+	ackCtx := ctx
+	cancel := func() {}
+	if ctx.Err() != nil {
+		ackCtx, cancel = context.WithTimeout(context.Background(), c.ackTimeout)
+	} else {
+		ackCtx, cancel = context.WithTimeout(ctx, c.ackTimeout)
+	}
+	defer cancel()
+
+	if err := c.client.XAck(ackCtx, c.streamKey, c.group, msgID).Err(); err != nil && ackCtx.Err() == nil {
 		c.log.Error("stream consumer ack failed", "msg_id", msgID, "err", err)
 	}
+}
+
+func (c *Consumer) moveToDLQIfExhausted(ctx context.Context, msg goredis.XMessage, eventType string, cause error) {
+	if c.maxDeliveries < 1 || c.dlqStreamKey == "" {
+		return
+	}
+
+	deliveries, err := c.deliveryCount(ctx, msg.ID)
+	if err != nil {
+		if ctx.Err() == nil {
+			c.log.Error("stream consumer delivery count lookup failed", "msg_id", msg.ID, "err", err)
+		}
+		return
+	}
+	if deliveries < c.maxDeliveries {
+		return
+	}
+
+	dlqCtx, cancel := context.WithTimeout(context.Background(), c.ackTimeout)
+	defer cancel()
+
+	if err := c.client.XAdd(dlqCtx, &goredis.XAddArgs{
+		Stream: c.dlqStreamKey,
+		ID:     "*",
+		Values: map[string]any{
+			"original_stream":  c.streamKey,
+			"original_group":   c.group,
+			"original_id":      msg.ID,
+			"event_type":       eventType,
+			"payload":          fmt.Sprint(msg.Values["payload"]),
+			"deliveries":       deliveries,
+			"error":            cause.Error(),
+			"dead_lettered_at": time.Now().UTC().Format(time.RFC3339Nano),
+		},
+	}).Err(); err != nil {
+		c.log.Error("stream consumer dlq write failed", "msg_id", msg.ID, "dlq_stream", c.dlqStreamKey, "err", err)
+		return
+	}
+
+	c.ack(dlqCtx, msg.ID)
+	c.log.Error(
+		"stream consumer moved message to dlq",
+		"event_type", eventType,
+		"msg_id", msg.ID,
+		"dlq_stream", c.dlqStreamKey,
+		"deliveries", deliveries,
+		"err", cause,
+	)
+}
+
+func (c *Consumer) deliveryCount(ctx context.Context, msgID string) (int64, error) {
+	pending, err := c.client.XPendingExt(ctx, &goredis.XPendingExtArgs{
+		Stream: c.streamKey,
+		Group:  c.group,
+		Start:  msgID,
+		End:    msgID,
+		Count:  1,
+	}).Result()
+	if err != nil {
+		return 0, err
+	}
+	if len(pending) == 0 {
+		return 0, nil
+	}
+	return pending[0].RetryCount, nil
 }

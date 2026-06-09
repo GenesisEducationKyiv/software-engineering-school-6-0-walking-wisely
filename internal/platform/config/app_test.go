@@ -25,6 +25,7 @@ func clearOptionalAppEnv(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "")
 	t.Setenv("SCANNER_INTERVAL", "")
 	t.Setenv("STREAM_KEY", "")
+	t.Setenv("STREAM_MAX_LEN", "")
 }
 
 func TestLoadAppConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
@@ -60,6 +61,9 @@ func TestLoadAppConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
 	if cfg.StreamKey != "events" {
 		t.Fatalf("StreamKey = %q, want events", cfg.StreamKey)
 	}
+	if cfg.StreamMaxLen != 100_000 {
+		t.Fatalf("StreamMaxLen = %d, want 100000", cfg.StreamMaxLen)
+	}
 }
 
 func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
@@ -73,6 +77,7 @@ func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "prod")
 	t.Setenv("SCANNER_INTERVAL", "10m")
 	t.Setenv("STREAM_KEY", "my-events")
+	t.Setenv("STREAM_MAX_LEN", "250000")
 
 	cfg, err := LoadAppConfig()
 	if err != nil {
@@ -103,6 +108,9 @@ func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
 	if cfg.StreamKey != "my-events" {
 		t.Fatalf("StreamKey = %q, want my-events", cfg.StreamKey)
 	}
+	if cfg.StreamMaxLen != 250_000 {
+		t.Fatalf("StreamMaxLen = %d, want 250000", cfg.StreamMaxLen)
+	}
 }
 
 func TestLoadAppConfig_MissingRequiredEnvReturnsError(t *testing.T) {
@@ -131,6 +139,7 @@ func TestLoadAppConfig_InvalidOptionalValuesFallBackToDefaults(t *testing.T) {
 	setRequiredAppEnv(t)
 
 	t.Setenv("SCANNER_INTERVAL", "soon")
+	t.Setenv("STREAM_MAX_LEN", "many")
 
 	cfg, err := LoadAppConfig()
 	if err != nil {
@@ -139,6 +148,9 @@ func TestLoadAppConfig_InvalidOptionalValuesFallBackToDefaults(t *testing.T) {
 
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
+	}
+	if cfg.StreamMaxLen != 100_000 {
+		t.Fatalf("StreamMaxLen = %d, want 100000", cfg.StreamMaxLen)
 	}
 }
 
@@ -146,6 +158,7 @@ func TestLoadAppConfig_NonPositiveOptionalValuesFallBackToDefaults(t *testing.T)
 	setRequiredAppEnv(t)
 
 	t.Setenv("SCANNER_INTERVAL", "-1s")
+	t.Setenv("STREAM_MAX_LEN", "-1")
 
 	cfg, err := LoadAppConfig()
 	if err != nil {
@@ -154,5 +167,24 @@ func TestLoadAppConfig_NonPositiveOptionalValuesFallBackToDefaults(t *testing.T)
 
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
+	}
+	if cfg.StreamMaxLen != 100_000 {
+		t.Fatalf("StreamMaxLen = %d, want 100000", cfg.StreamMaxLen)
+	}
+}
+
+func TestLoadAppConfig_ZeroStreamMaxLenDisablesTrimming(t *testing.T) {
+	setRequiredAppEnv(t)
+	clearOptionalAppEnv(t)
+
+	t.Setenv("STREAM_MAX_LEN", "0")
+
+	cfg, err := LoadAppConfig()
+	if err != nil {
+		t.Fatalf("LoadAppConfig returned error: %v", err)
+	}
+
+	if cfg.StreamMaxLen != 0 {
+		t.Fatalf("StreamMaxLen = %d, want 0", cfg.StreamMaxLen)
 	}
 }
