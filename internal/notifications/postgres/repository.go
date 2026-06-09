@@ -2,12 +2,10 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
@@ -109,17 +107,23 @@ type ReleaseNotificationJob struct {
 func (r *Repository) recordDelivery(ctx context.Context, handlerName, eventID string, fn func(context.Context) error) error {
 	return platformpostgres.WithinTransaction(ctx, r.db, func(txCtx context.Context) error {
 		exec := platformpostgres.ExecutorFromContext(txCtx, r.db)
-		_, err := exec.Exec(
+
+		// ON CONFLICT DO NOTHING avoids putting the transaction into an error
+		// state (which a plain INSERT violation would do in Postgres), so we can
+		// safely check the row count to detect duplicate deliveries.
+		tag, err := exec.Exec(
 			txCtx,
-			`INSERT INTO event_deliveries (handler_name, event_id) VALUES ($1, $2::uuid)`,
+			`INSERT INTO event_deliveries (handler_name, event_id)
+			 VALUES ($1, $2::uuid)
+			 ON CONFLICT DO NOTHING`,
 			handlerName,
 			eventID,
 		)
 		if err != nil {
-			if isUniqueViolation(err) {
-				return nil
-			}
 			return fmt.Errorf("insert event delivery: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return nil // already delivered — idempotent no-op
 		}
 
 		if err := fn(txCtx); err != nil {
@@ -226,11 +230,6 @@ func (j Job) Message() mail.Message {
 		Subject: j.Subject,
 		HTML:    j.HTML,
 	}
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func max(a, b int) int {

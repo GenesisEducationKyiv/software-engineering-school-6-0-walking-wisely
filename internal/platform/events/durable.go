@@ -69,11 +69,13 @@ func Decode(eventType string, payload []byte) (Event, error) {
 		return nil, fmt.Errorf("unmarshal %s: %w", eventType, err)
 	}
 
-	if event, ok := value.Interface().(Event); ok {
+	// Prefer the value type so callers can type-assert to the concrete struct.
+	// Fall back to the pointer type for event types that define pointer receivers.
+	if event, ok := value.Elem().Interface().(Event); ok {
 		return event, nil
 	}
 
-	event, ok := value.Elem().Interface().(Event)
+	event, ok := value.Interface().(Event)
 	if !ok {
 		return nil, fmt.Errorf("decoded value for %s does not implement Event", eventType)
 	}
