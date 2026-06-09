@@ -200,7 +200,7 @@ func (r *Repository) MarkFailed(ctx context.Context, jobs []Job, maxAttempts int
 		if attempts >= maxAttempts {
 			status = StatusFailed
 		}
-		backoff := time.Duration(1<<max(attempts-1, 0)) * time.Second
+		backoff := time.Duration(1<<maxInt(attempts-1, 0)) * time.Second
 		if _, err := r.db.Exec(
 			ctx,
 			`UPDATE notification_jobs
@@ -224,7 +224,7 @@ func (r *Repository) MarkFailed(ctx context.Context, jobs []Job, maxAttempts int
 	return nil
 }
 
-func (j Job) Message() mail.Message {
+func (j *Job) Message() mail.Message {
 	return mail.Message{
 		To:      j.To,
 		Subject: j.Subject,
@@ -232,7 +232,7 @@ func (j Job) Message() mail.Message {
 	}
 }
 
-func max(a, b int) int {
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}

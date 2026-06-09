@@ -170,9 +170,11 @@ func (l *recordingSenderLogger) Debug(string, ...any) {}
 func (l *recordingSenderLogger) Info(msg string, args ...any) {
 	l.infos = append(l.infos, recordedSenderLog{msg: msg, args: append([]any(nil), args...)})
 }
+
 func (l *recordingSenderLogger) Warn(msg string, args ...any) {
 	l.warnings = append(l.warnings, recordedSenderLog{msg: msg, args: append([]any(nil), args...)})
 }
+
 func (l *recordingSenderLogger) Error(msg string, args ...any) {
 	l.errors = append(l.errors, recordedSenderLog{msg: msg, args: append([]any(nil), args...)})
 }

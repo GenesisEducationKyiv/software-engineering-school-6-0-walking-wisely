@@ -5,11 +5,12 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
-	"github.com/google/uuid"
 )
 
 type JobQueue interface {
@@ -83,8 +84,8 @@ func flushPending(
 	}
 
 	messages := make([]mail.Message, 0, len(claimed))
-	for _, job := range claimed {
-		messages = append(messages, job.Message())
+	for i := range claimed {
+		messages = append(messages, claimed[i].Message())
 	}
 
 	if err := sender.SendBatch(flushCtx, messages); err != nil {
