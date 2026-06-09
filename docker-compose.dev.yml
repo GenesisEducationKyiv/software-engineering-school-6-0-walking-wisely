@@ -106,6 +106,7 @@ services:
       ENVIRONMENT: local
       STREAM_KEY: ${STREAM_KEY:-events}
       STREAM_GROUP: ${STREAM_GROUP:-notifications}
+      STREAM_BATCH_SIZE: ${STREAM_BATCH_SIZE:-32}
       HTTP_PORT: "8081"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]

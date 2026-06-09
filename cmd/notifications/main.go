@@ -75,7 +75,7 @@ func run(log platformlogger.Logger) error {
 		cfg.StreamKey,
 		cfg.StreamGroup,
 		uuid.NewString(),
-		32,
+		int64(cfg.StreamBatchSize),
 		log,
 	)
 
