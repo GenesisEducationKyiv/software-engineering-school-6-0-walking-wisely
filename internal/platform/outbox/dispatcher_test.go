@@ -93,8 +93,10 @@ func (l *recordingLogger) hasMessage(msg string) bool {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func makeTestRecord(id, eventType string) Record {
-	payload, _ := json.Marshal(dispatchTestEvent{
+func makeTestRecord(t *testing.T, id, eventType string) Record {
+	t.Helper()
+
+	payload, err := json.Marshal(dispatchTestEvent{
 		Metadata: events.Metadata{
 			ID:    id,
 			At:    time.Now().UTC(),
@@ -102,6 +104,10 @@ func makeTestRecord(id, eventType string) Record {
 			IdKey: "key-" + id,
 		},
 	})
+	if err != nil {
+		t.Fatalf("marshal dispatch test event: %v", err)
+	}
+
 	return Record{
 		ID:           id,
 		EventType:    eventType,
@@ -115,7 +121,7 @@ func makeTestRecord(id, eventType string) Record {
 func TestDispatchBatchHappyPath(t *testing.T) {
 	// Arrange
 	id := "00000000-0000-0000-0000-000000000001"
-	repo := &fakeDispatchRepo{records: []Record{makeTestRecord(id, "outbox.dispatch_test_event")}}
+	repo := &fakeDispatchRepo{records: []Record{makeTestRecord(t, id, "outbox.dispatch_test_event")}}
 	bus := &fakeBus{}
 	log := &recordingLogger{}
 
@@ -229,7 +235,7 @@ func TestDispatchBatchDecodeErrorMarkFailedErrorIsLogged(t *testing.T) {
 func TestDispatchBatchPublishError(t *testing.T) {
 	// Arrange
 	id := "00000000-0000-0000-0000-000000000001"
-	repo := &fakeDispatchRepo{records: []Record{makeTestRecord(id, "outbox.dispatch_test_event")}}
+	repo := &fakeDispatchRepo{records: []Record{makeTestRecord(t, id, "outbox.dispatch_test_event")}}
 	bus := &fakeBus{publishErr: errors.New("bus error")}
 	log := &recordingLogger{}
 
@@ -263,8 +269,8 @@ func TestDispatchBatchMarkFailedErrorAfterPublishFailureIsLogged(t *testing.T) {
 	id2 := "00000000-0000-0000-0000-000000000002"
 	repo := &fakeDispatchRepo{
 		records: []Record{
-			makeTestRecord(id1, "outbox.dispatch_test_event"),
-			makeTestRecord(id2, "outbox.dispatch_test_event"),
+			makeTestRecord(t, id1, "outbox.dispatch_test_event"),
+			makeTestRecord(t, id2, "outbox.dispatch_test_event"),
 		},
 		markFailedErr: errors.New("mark failed error"),
 	}
@@ -290,7 +296,7 @@ func TestDispatchBatchMarkDeliveredErrorReturnsError(t *testing.T) {
 	// Arrange
 	id := "00000000-0000-0000-0000-000000000001"
 	repo := &fakeDispatchRepo{
-		records:          []Record{makeTestRecord(id, "outbox.dispatch_test_event")},
+		records:          []Record{makeTestRecord(t, id, "outbox.dispatch_test_event")},
 		markDeliveredErr: errors.New("delivered error"),
 	}
 	bus := &fakeBus{}

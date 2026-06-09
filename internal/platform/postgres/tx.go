@@ -53,7 +53,7 @@ func WithinTransaction(ctx context.Context, pool *pgxpool.Pool, fn func(context.
 		}
 	}()
 
-	if err = fn(WithTx(ctx, tx)); err != nil {
+	if err := fn(WithTx(ctx, tx)); err != nil {
 		return err
 	}
 

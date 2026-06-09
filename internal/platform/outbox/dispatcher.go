@@ -14,7 +14,7 @@ import (
 // dispatchRepository is the subset of Repository used by the dispatcher loop.
 type dispatchRepository interface {
 	ClaimPending(ctx context.Context, workerID string, batchSize int) ([]Record, error)
-	MarkFailed(ctx context.Context, id string, attemptCount int, maxAttempts int, cause error) error
+	MarkFailed(ctx context.Context, id string, attemptCount, maxAttempts int, cause error) error
 	MarkDelivered(ctx context.Context, id string) error
 }
 
@@ -73,7 +73,8 @@ func dispatchBatch(
 		return err
 	}
 
-	for _, record := range records {
+	for i := range records {
+		record := &records[i]
 		event, err := events.Decode(record.EventType, record.PayloadJSON)
 		if err != nil {
 			if markErr := repo.MarkFailed(ctx, record.ID, record.AttemptCount+1, maxAttempts, err); markErr != nil {

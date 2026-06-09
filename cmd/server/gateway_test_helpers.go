@@ -23,6 +23,7 @@ import (
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
@@ -51,7 +52,7 @@ func (gatewayTestMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
 	return nil
 }
 
-func (gatewayTestMetricsRecorder) RegisterOutboxMetrics(func(context.Context) (int64, float64, int64, int64, error)) error {
+func (gatewayTestMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
 	return nil
 }
 

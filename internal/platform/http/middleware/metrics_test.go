@@ -40,7 +40,7 @@ func (f *fakeMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
 	return nil
 }
 
-func (f *fakeMetricsRecorder) RegisterOutboxMetrics(func(context.Context) (int64, float64, int64, int64, error)) error {
+func (f *fakeMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
 	return nil
 }
 

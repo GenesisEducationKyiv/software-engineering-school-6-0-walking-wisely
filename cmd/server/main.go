@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -138,7 +139,7 @@ func run(appLogger platformlogger.Logger) error {
 
 	var wg sync.WaitGroup
 
-	scannerService := releasemonitoringapp.NewScannerService(releasemonitoringapp.ScannerDeps{
+	scannerService := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
 		Repo:      releaseScanRepo,
 		GitHub:    cachedGithubClient,
 		TxManager: releaseScanRepo,
@@ -182,7 +183,7 @@ func run(appLogger platformlogger.Logger) error {
 	go func() {
 		defer wg.Done()
 		appLogger.Info("gRPC server listening", "port", grpcPort)
-		if err := grpcServer.Serve(lis); err != nil && err != grpc.ErrServerStopped {
+		if err := grpcServer.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			appLogger.Error("gRPC server error", "err", err)
 			cancel()
 		}

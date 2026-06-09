@@ -14,8 +14,16 @@ import (
 type MetricsRecorder interface {
 	RecordHTTPRequest(ctx context.Context, method, path string, status int, duration time.Duration)
 	RegisterEmailChannelDepth(depth func() int) error
-	RegisterOutboxMetrics(snapshot func(context.Context) (pendingCount int64, oldestPendingAge float64, retryCount int64, failedCount int64, err error)) error
+	RegisterOutboxMetrics(snapshot OutboxMetricsSnapshotFunc) error
 }
+
+type OutboxMetricsSnapshotFunc func(context.Context) (
+	pendingCount int64,
+	oldestPendingAge float64,
+	retryCount int64,
+	failedCount int64,
+	err error,
+)
 
 type OpenTelemetryRecorder struct {
 	meter               metric.Meter
@@ -71,7 +79,7 @@ func (r *OpenTelemetryRecorder) RegisterEmailChannelDepth(depth func() int) erro
 }
 
 func (r *OpenTelemetryRecorder) RegisterOutboxMetrics(
-	snapshot func(context.Context) (pendingCount int64, oldestPendingAge float64, retryCount int64, failedCount int64, err error),
+	snapshot OutboxMetricsSnapshotFunc,
 ) error {
 	pendingGauge, err := r.meter.Int64ObservableGauge(
 		"outbox_pending_count",

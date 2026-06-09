@@ -2,6 +2,7 @@ package streams
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -154,7 +155,7 @@ func (c *Consumer) readBatch(ctx context.Context, bus events.Publisher) error {
 		Block:    blockDuration,
 	}).Result()
 	if err != nil {
-		if err == goredis.Nil {
+		if errors.Is(err, goredis.Nil) {
 			return nil // block timeout, no new messages
 		}
 		return err
@@ -215,13 +216,11 @@ func (c *Consumer) dispatch(ctx context.Context, bus events.Publisher, msg gored
 }
 
 func (c *Consumer) ack(ctx context.Context, msgID string) {
-	ackCtx := ctx
-	cancel := func() {}
+	baseCtx := ctx
 	if ctx.Err() != nil {
-		ackCtx, cancel = context.WithTimeout(context.Background(), c.ackTimeout)
-	} else {
-		ackCtx, cancel = context.WithTimeout(ctx, c.ackTimeout)
+		baseCtx = context.WithoutCancel(ctx)
 	}
+	ackCtx, cancel := context.WithTimeout(baseCtx, c.ackTimeout)
 	defer cancel()
 
 	if err := c.client.XAck(ackCtx, c.streamKey, c.group, msgID).Err(); err != nil && ackCtx.Err() == nil {
@@ -245,7 +244,7 @@ func (c *Consumer) moveToDLQIfExhausted(ctx context.Context, msg goredis.XMessag
 		return
 	}
 
-	dlqCtx, cancel := context.WithTimeout(context.Background(), c.ackTimeout)
+	dlqCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.ackTimeout)
 	defer cancel()
 
 	if err := c.client.XAdd(dlqCtx, &goredis.XAddArgs{

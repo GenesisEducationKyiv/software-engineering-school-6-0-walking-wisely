@@ -155,12 +155,12 @@ func (r *Repository) MarkDelivered(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *Repository) MarkFailed(ctx context.Context, id string, attemptCount int, maxAttempts int, cause error) error {
+func (r *Repository) MarkFailed(ctx context.Context, id string, attemptCount, maxAttempts int, cause error) error {
 	status := StatusPending
 	if attemptCount >= maxAttempts {
 		status = StatusFailed
 	}
-	backoff := time.Duration(1<<max(attemptCount-1, 0)) * time.Second
+	backoff := time.Duration(1<<maxInt(attemptCount-1, 0)) * time.Second
 
 	if _, err := r.db.Exec(
 		ctx,
@@ -201,7 +201,7 @@ func (r *Repository) Metrics(ctx context.Context) (MetricsSnapshot, error) {
 	return snapshot, nil
 }
 
-func max(a, b int) int {
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
