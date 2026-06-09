@@ -296,12 +296,15 @@ func TestUpdateLastSeenTagInsideTransactionRollback(t *testing.T) {
 
 	// Act — update inside a transaction that is rolled back.
 	errDeliberate := errors.New("deliberate rollback")
-	_ = repo.WithinTransaction(ctx, func(txCtx context.Context) error {
+	err := repo.WithinTransaction(ctx, func(txCtx context.Context) error {
 		if err := repo.UpdateLastSeenTag(txCtx, "owner/repo", "v3.0.0"); err != nil {
 			t.Fatalf("UpdateLastSeenTag inside tx: %v", err)
 		}
 		return errDeliberate
 	})
+	if err != errDeliberate {
+		t.Fatalf("WithinTransaction returned %v, want %v", err, errDeliberate)
+	}
 
 	// Assert — tag must be unchanged because the transaction was rolled back.
 	tag := readLastSeenTag(t, ctx, pool, subID)

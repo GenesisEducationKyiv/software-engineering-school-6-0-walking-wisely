@@ -281,6 +281,18 @@ func TestRecordReleaseNotificationsIdempotent(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("notification_jobs count = %d, want 1 (idempotent)", count)
 	}
+
+	var deliveryCount int
+	if err := pool.QueryRow(
+		ctx,
+		`SELECT COUNT(*) FROM event_deliveries WHERE handler_name='handler.release' AND event_id=$1::uuid`,
+		eventID,
+	).Scan(&deliveryCount); err != nil {
+		t.Fatalf("query event_deliveries: %v", err)
+	}
+	if deliveryCount != 1 {
+		t.Fatalf("event_deliveries count = %d, want 1 (idempotent)", deliveryCount)
+	}
 }
 
 // ── ClaimPending ──────────────────────────────────────────────────────────────
@@ -494,10 +506,26 @@ func TestMarkFailedAtMaxMovesToFailed(t *testing.T) {
 		t.Fatalf("MarkFailed returned error: %v", err)
 	}
 	var status string
-	if err := pool.QueryRow(ctx, `SELECT status FROM notification_jobs`).Scan(&status); err != nil {
+	var lastError *string
+	var lockedAt *time.Time
+	var lockedBy *string
+	if err := pool.QueryRow(
+		ctx,
+		`SELECT status, last_error, locked_at, locked_by FROM notification_jobs WHERE id=$1::uuid`,
+		jobs[0].ID,
+	).Scan(&status, &lastError, &lockedAt, &lockedBy); err != nil {
 		t.Fatalf("query notification_jobs: %v", err)
 	}
 	if status != StatusFailed {
 		t.Errorf("status = %q, want failed", status)
+	}
+	if lastError == nil || *lastError != "permanent error" {
+		t.Errorf("last_error = %v, want \"permanent error\"", lastError)
+	}
+	if lockedAt != nil {
+		t.Errorf("locked_at should be NULL after MarkFailed at max, got %v", lockedAt)
+	}
+	if lockedBy != nil {
+		t.Errorf("locked_by should be NULL after MarkFailed at max, got %v", lockedBy)
 	}
 }
