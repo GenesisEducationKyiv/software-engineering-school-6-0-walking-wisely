@@ -31,7 +31,7 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 		})
 		releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(repos.pool, logger.NoopLogger{})
 
-		service := releasemonitoringapp.NewScannerService(releasemonitoringapp.ScannerDeps{
+		service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
 			Repo:      releaseScanRepo,
 			GitHub:    stubReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3", Name: "Release 1.2.3"}},
 			TxManager: releaseScanRepo,
@@ -63,7 +63,7 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 		})
 		releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(repos.pool, logger.NoopLogger{})
 
-		service := releasemonitoringapp.NewScannerService(releasemonitoringapp.ScannerDeps{
+		service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
 			Repo:      releaseScanRepo,
 			GitHub:    stubReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"}},
 			TxManager: releaseScanRepo,
@@ -89,7 +89,7 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 		})
 		releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(repos.pool, logger.NoopLogger{})
 
-		service := releasemonitoringapp.NewScannerService(releasemonitoringapp.ScannerDeps{
+		service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
 			Repo:      releaseScanRepo,
 			GitHub:    stubReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"}},
 			TxManager: releaseScanRepo,

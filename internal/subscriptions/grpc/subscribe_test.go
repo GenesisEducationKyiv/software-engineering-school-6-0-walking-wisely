@@ -3,6 +3,7 @@ package subscriptiongrpc_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -31,7 +32,10 @@ func newService(
 ) *subscriptiongrpc.SubscriptionService {
 	bus := events.NewBus()
 	bus.Subscribe(subscriptionapp.SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
-		requested := event.(subscriptionapp.SubscriptionRequested)
+		requested, ok := event.(subscriptionapp.SubscriptionRequested)
+		if !ok {
+			return fmt.Errorf("event type = %T, want %T", event, subscriptionapp.SubscriptionRequested{})
+		}
 		select {
 		case ch <- mail.Message{To: requested.Email}:
 		default:

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -122,9 +121,11 @@ func (l *recordingScannerLogger) Debug(string, ...any) {}
 func (l *recordingScannerLogger) Info(msg string, args ...any) {
 	l.infos = append(l.infos, recordedScannerLog{msg: msg, args: append([]any(nil), args...)})
 }
+
 func (l *recordingScannerLogger) Warn(msg string, args ...any) {
 	l.warnings = append(l.warnings, recordedScannerLog{msg: msg, args: append([]any(nil), args...)})
 }
+
 func (l *recordingScannerLogger) Error(msg string, args ...any) {
 	l.errors = append(l.errors, recordedScannerLog{msg: msg, args: append([]any(nil), args...)})
 }
@@ -136,33 +137,8 @@ func strPtr(s string) *string {
 
 type scannerContextKey struct{}
 
-type cancelOnListRepo struct {
-	cancel context.CancelFunc
-	calls  int
-	mu     sync.Mutex
-	called chan struct{}
-	once   sync.Once
-}
-
-func (r *cancelOnListRepo) ListDistinctConfirmedRepos(context.Context) ([]string, error) {
-	r.mu.Lock()
-	r.calls++
-	r.mu.Unlock()
-	r.cancel()
-	r.once.Do(func() { close(r.called) })
-	return nil, nil
-}
-
-func (r *cancelOnListRepo) ListConfirmedSubscribersForRepo(context.Context, string) ([]releasemonitoringdomain.Subscriber, error) {
-	return nil, nil
-}
-
-func (r *cancelOnListRepo) UpdateLastSeenTag(context.Context, string, string) error {
-	return nil
-}
-
 func newScannerService(repo *fakeReleaseScanRepo, client *fakeReleaseClient, txManager *fakeTxManager, publisher events.Publisher, log *recordingScannerLogger) *ScannerService {
-	return NewScannerService(ScannerDeps{
+	return NewScannerService(&ScannerDeps{
 		Repo:      repo,
 		GitHub:    client,
 		TxManager: txManager,

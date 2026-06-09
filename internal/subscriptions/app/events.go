@@ -22,10 +22,13 @@ func (SubscriptionRequested) EventName() string {
 	return "subscriptions.subscription_requested"
 }
 
-func (e SubscriptionRequested) AggregateType() string {
+func (SubscriptionRequested) AggregateType() string {
 	return "subscription"
 }
 
+// Keep a value receiver so decoded events can still be asserted as SubscriptionRequested.
+//
+//nolint:gocritic // Durable event decoding intentionally preserves value event types.
 func (e SubscriptionRequested) AggregateID() string {
 	return e.SubscriptionID
 }

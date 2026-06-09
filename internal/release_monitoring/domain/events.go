@@ -20,10 +20,13 @@ func (ReleaseDetected) EventName() string {
 	return "release_monitoring.release_detected"
 }
 
-func (e ReleaseDetected) AggregateType() string {
+func (ReleaseDetected) AggregateType() string {
 	return "repository_release"
 }
 
+// Keep a value receiver so decoded events can still be asserted as ReleaseDetected.
+//
+//nolint:gocritic // Durable event decoding intentionally preserves value event types.
 func (e ReleaseDetected) AggregateID() string {
 	return e.Repo
 }

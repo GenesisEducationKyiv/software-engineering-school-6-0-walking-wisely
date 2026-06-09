@@ -41,7 +41,7 @@ type ScannerDeps struct {
 	Log       logger.Logger
 }
 
-func NewScannerService(deps ScannerDeps) *ScannerService {
+func NewScannerService(deps *ScannerDeps) *ScannerService {
 	log := deps.Log
 	if log == nil {
 		log = logger.NoopLogger{}

@@ -185,7 +185,7 @@ func buildCrossServiceStack(
 		Log:            platformlogger.NoopLogger{},
 	})
 
-	scannerSvc := releasemonitoringapp.NewScannerService(releasemonitoringapp.ScannerDeps{
+	scannerSvc := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
 		Repo:      releaseScanRepo,
 		GitHub:    gh,
 		TxManager: releaseScanRepo,

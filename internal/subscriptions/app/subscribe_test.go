@@ -3,6 +3,7 @@ package subscriptionapp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +75,10 @@ func newSubscribeService(
 ) *SubscribeService {
 	bus := events.NewBus()
 	bus.Subscribe(SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
-		requested := event.(SubscriptionRequested)
+		requested, ok := event.(SubscriptionRequested)
+		if !ok {
+			return fmt.Errorf("event type = %T, want %T", event, SubscriptionRequested{})
+		}
 		select {
 		case ch <- mail.Message{
 			To: requested.Email,

@@ -49,7 +49,7 @@ func TestStartScannerRunsUntilContextCancelled(t *testing.T) {
 		cancel: cancel,
 		called: make(chan struct{}),
 	}
-	service := releasemonitoringapp.NewScannerService(releasemonitoringapp.ScannerDeps{
+	service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
 		Repo:   repo,
 		GitHub: noopReleaseClient{},
 		Log:    logger.NoopLogger{},
