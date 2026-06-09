@@ -4,47 +4,38 @@ package config
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 )
 
-// AppConfig holds all environment-driven configuration for the application.
+// AppConfig holds all environment-driven configuration for the API service.
 type AppConfig struct {
-	RestPort         string
-	GrpcPort         string
-	DatabaseURL      string
-	RedisURL         string
-	ResendAPIKey     string
-	EmailSecretKey   string
-	GithubToken      string // optional - raises GitHub API rate limit
-	BaseURL          string // used to build confirm/unsubscribe links in emails
-	FromEmail        string
-	LogLevel         string
-	ServiceName      string
-	Environment      string
-	ScannerInterval  time.Duration
-	ResendMaxWait    time.Duration
-	EmailChannelSize int
+	RestPort        string
+	GrpcPort        string
+	DatabaseURL     string
+	RedisURL        string
+	EmailSecretKey  string
+	GithubToken     string // optional - raises GitHub API rate limit
+	StreamKey       string // Redis Stream key for publishing domain events
+	LogLevel        string
+	ServiceName     string
+	Environment     string
+	ScannerInterval time.Duration
 }
 
 // LoadAppConfig reads all configuration from environment variables and returns a validated AppConfig.
 func LoadAppConfig() (*AppConfig, error) {
 	cfg := &AppConfig{
-		RestPort:         envOrDefault("REST_PORT", "8080"),
-		GrpcPort:         envOrDefault("GRPC_PORT", "9090"),
-		DatabaseURL:      os.Getenv("DATABASE_URL"),
-		RedisURL:         os.Getenv("REDIS_URL"),
-		ResendAPIKey:     os.Getenv("RESEND_API_KEY"),
-		EmailSecretKey:   os.Getenv("EMAIL_SECRET_KEY"),
-		GithubToken:      os.Getenv("GITHUB_TOKEN"),
-		BaseURL:          os.Getenv("BASE_URL"),
-		FromEmail:        os.Getenv("FROM_EMAIL"),
-		LogLevel:         envOrDefault("LOG_LEVEL", "info"),
-		ServiceName:      envOrDefault("SERVICE_NAME", "github-release-notifier"),
-		Environment:      envOrDefault("ENVIRONMENT", "local"),
-		ScannerInterval:  parseDurationOrDefault("SCANNER_INTERVAL", 5*time.Minute),
-		ResendMaxWait:    parseDurationOrDefault("RESEND_MAX_WAIT", 200*time.Millisecond),
-		EmailChannelSize: parseIntOrDefault("EMAIL_CHANNEL_SIZE", 1000),
+		RestPort:        envOrDefault("REST_PORT", "8080"),
+		GrpcPort:        envOrDefault("GRPC_PORT", "9090"),
+		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		RedisURL:        os.Getenv("REDIS_URL"),
+		EmailSecretKey:  os.Getenv("EMAIL_SECRET_KEY"),
+		GithubToken:     os.Getenv("GITHUB_TOKEN"),
+		StreamKey:       envOrDefault("STREAM_KEY", "events"),
+		LogLevel:        envOrDefault("LOG_LEVEL", "info"),
+		ServiceName:     envOrDefault("SERVICE_NAME", "github-release-notifier"),
+		Environment:     envOrDefault("ENVIRONMENT", "local"),
+		ScannerInterval: parseDurationOrDefault("SCANNER_INTERVAL", 5*time.Minute),
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -56,10 +47,7 @@ func (c *AppConfig) validate() error {
 	required := []struct{ key, val string }{
 		{"DATABASE_URL", c.DatabaseURL},
 		{"REDIS_URL", c.RedisURL},
-		{"RESEND_API_KEY", c.ResendAPIKey},
 		{"EMAIL_SECRET_KEY", c.EmailSecretKey},
-		{"BASE_URL", c.BaseURL},
-		{"FROM_EMAIL", c.FromEmail},
 	}
 	for _, r := range required {
 		if r.val == "" {
@@ -80,15 +68,6 @@ func parseDurationOrDefault(key string, def time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			return d
-		}
-	}
-	return def
-}
-
-func parseIntOrDefault(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
 		}
 	}
 	return def
