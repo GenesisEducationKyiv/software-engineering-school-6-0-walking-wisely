@@ -114,8 +114,8 @@ func (l *recordingScannerLogger) Error(string, ...any) {}
 
 func (l *recordingScannerLogger) ErrorContext(context.Context, string, ...any) {}
 
-func newScannerDeps(repo *fakeReleaseScanRepo, client *fakeReleaseClient, ch chan mail.Message) ScannerDeps {
-	return ScannerDeps{
+func newScannerDeps(repo *fakeReleaseScanRepo, client *fakeReleaseClient, ch chan mail.Message) *ScannerDeps {
+	return &ScannerDeps{
 		Repo:      repo,
 		GitHub:    client,
 		EmailChan: ch,
@@ -345,7 +345,7 @@ func TestStartScannerRunsUntilContextCancelled(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		StartScanner(ctx, ScannerDeps{
+		StartScanner(ctx, &ScannerDeps{
 			Repo:      repo,
 			GitHub:    client,
 			EmailChan: ch,

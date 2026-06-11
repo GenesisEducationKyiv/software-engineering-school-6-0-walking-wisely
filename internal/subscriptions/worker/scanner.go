@@ -45,7 +45,7 @@ type ScannerDeps struct {
 // Each tick it queries the set of watched repos, fetches the latest release for
 // each (via the cached GitHub client), and enqueues notification emails for any
 // subscriber whose last_seen_tag differs from the current release.
-func StartScanner(ctx context.Context, deps ScannerDeps, interval time.Duration) {
+func StartScanner(ctx context.Context, deps *ScannerDeps, interval time.Duration) {
 	log := scannerLogger(deps)
 	log.Info("scanner started", "interval", interval)
 	ticker := time.NewTicker(interval)
@@ -62,7 +62,7 @@ func StartScanner(ctx context.Context, deps ScannerDeps, interval time.Duration)
 	}
 }
 
-func runScan(ctx context.Context, deps ScannerDeps) {
+func runScan(ctx context.Context, deps *ScannerDeps) {
 	log := scannerLogger(deps)
 	start := time.Now()
 	repos, err := deps.Repo.ListDistinctConfirmedRepos(ctx)
@@ -137,7 +137,7 @@ type scanRepoResult struct {
 	notificationsDropped  int
 }
 
-func scanRepo(ctx context.Context, deps ScannerDeps, repo string) scanRepoResult {
+func scanRepo(ctx context.Context, deps *ScannerDeps, repo string) scanRepoResult {
 	log := scannerLogger(deps)
 	result := scanRepoResult{checked: true}
 	release, err := deps.GitHub.GetLatestRelease(ctx, repo)
@@ -198,7 +198,10 @@ func scanRepo(ctx context.Context, deps ScannerDeps, repo string) scanRepoResult
 	return result
 }
 
-func scannerLogger(deps ScannerDeps) logger.Logger {
+func scannerLogger(deps *ScannerDeps) logger.Logger {
+	if deps == nil {
+		return logger.NoopLogger{}
+	}
 	if deps.Log == nil {
 		return logger.NoopLogger{}
 	}

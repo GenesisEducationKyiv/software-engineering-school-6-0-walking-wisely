@@ -89,7 +89,7 @@ func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) 
 		return subscriptions.SubscribeResult{}, err
 	}
 
-	s.notifier.NotifyConfirmation(Confirmation{
+	s.notifier.NotifyConfirmation(&Confirmation{
 		SubscriptionID: result.SubscriptionID,
 		Email:          email,
 		Repo:           repo,

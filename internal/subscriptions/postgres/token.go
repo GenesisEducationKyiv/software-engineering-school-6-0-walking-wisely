@@ -78,7 +78,7 @@ func (r *TokenRepo) Subscribe(
 		return subscriptions.SubscribeResult{}, fmt.Errorf("lock subscription row: %w", err)
 	}
 
-	if err = tx.Commit(ctx); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return subscriptions.SubscribeResult{}, err
 	}
 	return result, nil
