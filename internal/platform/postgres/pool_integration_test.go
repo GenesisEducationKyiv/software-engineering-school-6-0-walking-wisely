@@ -43,7 +43,7 @@ func TestIntegration_InitDBWithRetry_ConnectsToPostgres(t *testing.T) {
 		t.Fatalf("build postgres connection string: %v", err)
 	}
 
-	pool, err := InitDBWithRetry(databaseURL, config.RetryConfig{
+	pool, err := NewDBWithRetry(databaseURL, config.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -66,7 +66,7 @@ func TestIntegration_InitDBWithRetry_ReturnsErrorWhenPostgresUnavailable(t *test
 	hostPort := freeTCPPort(t)
 	databaseURL := fmt.Sprintf("postgres://app:secret@127.0.0.1:%d/app?sslmode=disable&connect_timeout=1", hostPort)
 
-	pool, err := InitDBWithRetry(databaseURL, config.RetryConfig{
+	pool, err := NewDBWithRetry(databaseURL, config.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
