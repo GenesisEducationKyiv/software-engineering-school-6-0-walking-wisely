@@ -30,6 +30,14 @@ func (r *handlerMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
 	return nil
 }
 
+func (r *handlerMetricsRecorder) RegisterGitHubAvailability(func() bool) error {
+	return nil
+}
+
+func (r *handlerMetricsRecorder) RegisterGitHubRateLimitRemaining(func() int) error {
+	return nil
+}
+
 type handlerLogCall struct {
 	level string
 	msg   string

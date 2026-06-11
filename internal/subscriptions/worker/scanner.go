@@ -25,13 +25,20 @@ type ReleaseClient interface {
 	GetLatestRelease(ctx context.Context, repo string) (*releases.Release, error)
 }
 
+// GitHubAvailability reports whether release polling should call GitHub.
+type GitHubAvailability interface {
+	Available() bool
+	RateLimitRemaining() int
+}
+
 // ScannerDeps bundles the scanner's external dependencies.
 type ScannerDeps struct {
-	Repo      ReleaseScanRepo
-	GitHub    ReleaseClient
-	EmailChan chan<- mail.Message
-	BaseURL   string
-	Log       logger.Logger
+	Repo               ReleaseScanRepo
+	GitHub             ReleaseClient
+	GitHubAvailability GitHubAvailability
+	EmailChan          chan<- mail.Message
+	BaseURL            string
+	Log                logger.Logger
 }
 
 // StartScanner runs the release-scan loop on a fixed ticker until ctx is cancelled.
@@ -68,6 +75,20 @@ func runScan(ctx context.Context, deps ScannerDeps) {
 			"repos_total", 0,
 			"repos_checked", 0,
 			"repos_failed", 0,
+			"notifications_enqueued", 0,
+			"notifications_dropped", 0,
+			"duration_ms", time.Since(start).Milliseconds())
+		return
+	}
+
+	if deps.GitHubAvailability != nil && !deps.GitHubAvailability.Available() {
+		log.Warn("scanner: github unavailable, skipping scan",
+			"repos_total", len(repos),
+			"github_rate_limit_remaining", deps.GitHubAvailability.RateLimitRemaining())
+		log.Info("scanner: scan complete",
+			"repos_total", len(repos),
+			"repos_checked", 0,
+			"repos_failed", len(repos),
 			"notifications_enqueued", 0,
 			"notifications_dropped", 0,
 			"duration_ms", time.Since(start).Milliseconds())

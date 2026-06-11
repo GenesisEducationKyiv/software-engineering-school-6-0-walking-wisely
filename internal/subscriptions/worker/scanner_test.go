@@ -80,6 +80,19 @@ func (f *fakeReleaseClient) GetLatestRelease(ctx context.Context, repo string) (
 	return f.release, f.err
 }
 
+type fakeGitHubAvailability struct {
+	available          bool
+	rateLimitRemaining int
+}
+
+func (f fakeGitHubAvailability) Available() bool {
+	return f.available
+}
+
+func (f fakeGitHubAvailability) RateLimitRemaining() int {
+	return f.rateLimitRemaining
+}
+
 type recordingScannerLogger struct {
 	warnings []recordedScannerLog
 }
@@ -263,6 +276,40 @@ func TestRunScanListReposErrorStopsScan(t *testing.T) {
 	}
 	if repo.listSubsCalls != 0 || repo.updateCalls != 0 || len(ch) != 0 {
 		t.Fatalf("unexpected work: listSubs=%d update=%d emails=%d", repo.listSubsCalls, repo.updateCalls, len(ch))
+	}
+}
+
+func TestRunScanSkipsGitHubCallsWhenUnavailable(t *testing.T) {
+	repo := &fakeReleaseScanRepo{
+		repos: []string{"owner/repo", "owner/other"},
+		subscribers: map[string][]subscriptions.Subscription{
+			"owner/repo":  {{ID: "sub-1", Email: "user@example.com", Repo: "owner/repo"}},
+			"owner/other": {{ID: "sub-2", Email: "user@example.com", Repo: "owner/other"}},
+		},
+	}
+	client := &fakeReleaseClient{release: &releases.Release{TagName: "v1"}}
+	ch := make(chan mail.Message, 2)
+	log := &recordingScannerLogger{}
+	deps := newScannerDeps(repo, client, ch)
+	deps.GitHubAvailability = fakeGitHubAvailability{available: false, rateLimitRemaining: 0}
+	deps.Log = log
+
+	runScan(context.Background(), deps)
+
+	if repo.listReposCalls != 1 {
+		t.Fatalf("list repos calls = %d, want 1", repo.listReposCalls)
+	}
+	if client.calls != 0 {
+		t.Fatalf("release client calls = %d, want 0", client.calls)
+	}
+	if repo.listSubsCalls != 0 || repo.updateCalls != 0 || len(ch) != 0 {
+		t.Fatalf("unexpected work: listSubs=%d update=%d emails=%d", repo.listSubsCalls, repo.updateCalls, len(ch))
+	}
+	if len(log.warnings) != 1 {
+		t.Fatalf("warnings = %d, want 1", len(log.warnings))
+	}
+	if log.warnings[0].msg != "scanner: github unavailable, skipping scan" {
+		t.Fatalf("warning message = %q", log.warnings[0].msg)
 	}
 }
 

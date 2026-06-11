@@ -40,6 +40,14 @@ func (f *fakeMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
 	return nil
 }
 
+func (f *fakeMetricsRecorder) RegisterGitHubAvailability(func() bool) error {
+	return nil
+}
+
+func (f *fakeMetricsRecorder) RegisterGitHubRateLimitRemaining(func() int) error {
+	return nil
+}
+
 func TestMetricsRecordsHTTPRequest(t *testing.T) {
 	recorder := &fakeMetricsRecorder{}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +112,7 @@ func TestMetricsRecordsOKWhenHandlerDoesNotWriteHeader(t *testing.T) {
 	}
 }
 
-func TestOpenTelemetryRecorderRecordsHTTPMetricsAndEmailDepth(t *testing.T) {
+func TestOpenTelemetryRecorderRecordsHTTPMetricsAndObservableGauges(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	recorder, err := middleware.NewOpenTelemetryRecorder(provider.Meter("middleware-test"))
@@ -115,6 +123,12 @@ func TestOpenTelemetryRecorderRecordsHTTPMetricsAndEmailDepth(t *testing.T) {
 	depth := 7
 	if err := recorder.RegisterEmailChannelDepth(func() int { return depth }); err != nil {
 		t.Fatalf("register email channel depth: %v", err)
+	}
+	if err := recorder.RegisterGitHubAvailability(func() bool { return true }); err != nil {
+		t.Fatalf("register github availability: %v", err)
+	}
+	if err := recorder.RegisterGitHubRateLimitRemaining(func() int { return 42 }); err != nil {
+		t.Fatalf("register github rate limit remaining: %v", err)
 	}
 
 	recorder.RecordHTTPRequest(context.Background(), http.MethodPatch, "/subscriptions/123", http.StatusAccepted, 1500*time.Millisecond)
@@ -185,6 +199,38 @@ func TestOpenTelemetryRecorderRecordsHTTPMetricsAndEmailDepth(t *testing.T) {
 	}
 	if emailDepth.DataPoints[0].Value != int64(depth) {
 		t.Errorf("expected gauge value %d, got %d", depth, emailDepth.DataPoints[0].Value)
+	}
+
+	githubAvailableMetric := findMetric(t, metrics, "github_available")
+	if githubAvailableMetric.Unit != "{state}" {
+		t.Errorf("unexpected github availability gauge unit: %q", githubAvailableMetric.Unit)
+	}
+
+	githubAvailable, ok := githubAvailableMetric.Data.(metricdata.Gauge[int64])
+	if !ok {
+		t.Fatalf("expected github_available to be an int64 gauge, got %T", githubAvailableMetric.Data)
+	}
+	if len(githubAvailable.DataPoints) != 1 {
+		t.Fatalf("expected 1 github availability gauge data point, got %d", len(githubAvailable.DataPoints))
+	}
+	if githubAvailable.DataPoints[0].Value != 1 {
+		t.Errorf("expected github availability value 1, got %d", githubAvailable.DataPoints[0].Value)
+	}
+
+	githubRateLimitMetric := findMetric(t, metrics, "github_rate_limit_remaining")
+	if githubRateLimitMetric.Unit != "{request}" {
+		t.Errorf("unexpected github rate limit gauge unit: %q", githubRateLimitMetric.Unit)
+	}
+
+	githubRateLimit, ok := githubRateLimitMetric.Data.(metricdata.Gauge[int64])
+	if !ok {
+		t.Fatalf("expected github_rate_limit_remaining to be an int64 gauge, got %T", githubRateLimitMetric.Data)
+	}
+	if len(githubRateLimit.DataPoints) != 1 {
+		t.Fatalf("expected 1 github rate limit gauge data point, got %d", len(githubRateLimit.DataPoints))
+	}
+	if githubRateLimit.DataPoints[0].Value != 42 {
+		t.Errorf("expected github rate limit value 42, got %d", githubRateLimit.DataPoints[0].Value)
 	}
 }
 

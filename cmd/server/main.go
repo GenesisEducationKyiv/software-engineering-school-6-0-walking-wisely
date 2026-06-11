@@ -102,11 +102,10 @@ func run(appLogger platformlogger.Logger) error {
 	subReadRepo := postgres.NewReadRepo(db, appLogger)
 	releaseScanRepo := postgres.NewReleaseScanRepo(db, appLogger)
 	githubClient := github.NewClient(cfg.GithubToken, appLogger)
+	githubAvailability := github.NewAvailabilityState()
 	checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer checkCancel()
-	if err := githubClient.CheckAvailability(checkCtx); err != nil {
-		appLogger.Warn("github availability check failed", "err", err)
-	}
+	github.UpdateAvailability(checkCtx, githubClient, githubAvailability, appLogger)
+	checkCancel()
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, appLogger)
@@ -114,6 +113,12 @@ func run(appLogger platformlogger.Logger) error {
 	emailChan := make(chan mail.Message, cfg.EmailChannelSize)
 	if err := metricsRecorder.RegisterEmailChannelDepth(func() int { return len(emailChan) }); err != nil {
 		return fmt.Errorf("register email channel depth metric: %w", err)
+	}
+	if err := metricsRecorder.RegisterGitHubAvailability(githubAvailability.Available); err != nil {
+		return fmt.Errorf("register github availability metric: %w", err)
+	}
+	if err := metricsRecorder.RegisterGitHubRateLimitRemaining(githubAvailability.RateLimitRemaining); err != nil {
+		return fmt.Errorf("register github rate limit remaining metric: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -124,12 +129,25 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		github.StartAvailabilityMonitor(
+			ctx,
+			githubClient,
+			githubAvailability,
+			appLogger,
+			github.DefaultAvailabilityCheckInterval,
+		)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		worker.StartScanner(ctx, worker.ScannerDeps{
-			Repo:      releaseScanRepo,
-			GitHub:    cachedGithubClient,
-			EmailChan: emailChan,
-			BaseURL:   cfg.BaseURL,
-			Log:       appLogger,
+			Repo:               releaseScanRepo,
+			GitHub:             cachedGithubClient,
+			GitHubAvailability: githubAvailability,
+			EmailChan:          emailChan,
+			BaseURL:            cfg.BaseURL,
+			Log:                appLogger,
 		}, cfg.ScannerInterval)
 	}()
 
