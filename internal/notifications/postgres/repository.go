@@ -17,6 +17,8 @@ const (
 	StatusProcessing = "processing"
 	StatusSent       = "sent"
 	StatusFailed     = "failed"
+
+	DefaultReleaseNotificationInsertBatchSize = 500
 )
 
 type Job struct {
@@ -29,11 +31,16 @@ type Job struct {
 }
 
 type Repository struct {
-	db *pgxpool.Pool
+	db                             *pgxpool.Pool
+	releaseNotificationInsertBatch int
 }
 
-func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db}
+func NewRepository(db *pgxpool.Pool, releaseNotificationInsertBatch ...int) *Repository {
+	batchSize := DefaultReleaseNotificationInsertBatchSize
+	if len(releaseNotificationInsertBatch) > 0 && releaseNotificationInsertBatch[0] > 0 {
+		batchSize = releaseNotificationInsertBatch[0]
+	}
+	return &Repository{db: db, releaseNotificationInsertBatch: batchSize}
 }
 
 func (r *Repository) RecordConfirmation(
@@ -75,22 +82,14 @@ func (r *Repository) RecordReleaseNotifications(
 	jobs []ReleaseNotificationJob,
 ) error {
 	return r.recordDelivery(ctx, handlerName, eventID, func(txCtx context.Context) error {
-		exec := platformpostgres.ExecutorFromContext(txCtx, r.db)
-		for _, job := range jobs {
-			if _, err := exec.Exec(
-				txCtx,
-				`INSERT INTO notification_jobs
-				 (job_type, subscription_id, event_id, to_email, subject, html_body, release_tag)
-				 VALUES ('release_notification', $1::uuid, $2::uuid, $3, $4, $5, $6)
-				 ON CONFLICT DO NOTHING`,
-				job.SubscriptionID,
-				eventID,
-				job.To,
-				job.Subject,
-				job.HTML,
-				releaseTag,
-			); err != nil {
-				return fmt.Errorf("insert release job: %w", err)
+		batchSize := r.releaseNotificationInsertBatch
+		if batchSize <= 0 {
+			batchSize = DefaultReleaseNotificationInsertBatchSize
+		}
+		for start := 0; start < len(jobs); start += batchSize {
+			end := minInt(start+batchSize, len(jobs))
+			if err := r.insertReleaseNotificationBatch(txCtx, eventID, releaseTag, jobs[start:end]); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -102,6 +101,47 @@ type ReleaseNotificationJob struct {
 	To             string
 	Subject        string
 	HTML           string
+}
+
+func (r *Repository) insertReleaseNotificationBatch(ctx context.Context, eventID, releaseTag string, jobs []ReleaseNotificationJob) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+
+	subscriptionIDs := make([]uuid.UUID, 0, len(jobs))
+	emails := make([]string, 0, len(jobs))
+	subjects := make([]string, 0, len(jobs))
+	htmlBodies := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		subscriptionID, err := uuid.Parse(job.SubscriptionID)
+		if err != nil {
+			return fmt.Errorf("parse release notification subscription id: %w", err)
+		}
+		subscriptionIDs = append(subscriptionIDs, subscriptionID)
+		emails = append(emails, job.To)
+		subjects = append(subjects, job.Subject)
+		htmlBodies = append(htmlBodies, job.HTML)
+	}
+
+	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	if _, err := exec.Exec(
+		ctx,
+		`INSERT INTO notification_jobs
+		 (job_type, subscription_id, event_id, to_email, subject, html_body, release_tag)
+		 SELECT 'release_notification', subscription_id, $2::uuid, to_email, subject, html_body, $3
+		 FROM unnest($1::uuid[], $4::text[], $5::text[], $6::text[])
+		      AS jobs(subscription_id, to_email, subject, html_body)
+		 ON CONFLICT DO NOTHING`,
+		subscriptionIDs,
+		eventID,
+		releaseTag,
+		emails,
+		subjects,
+		htmlBodies,
+	); err != nil {
+		return fmt.Errorf("insert release job batch: %w", err)
+	}
+	return nil
 }
 
 func (r *Repository) recordDelivery(ctx context.Context, handlerName, eventID string, fn func(context.Context) error) error {
@@ -248,6 +288,13 @@ func (j *Job) Message() mail.Message {
 
 func maxInt(a, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a, b int) int {
+	if a < b {
 		return a
 	}
 	return b

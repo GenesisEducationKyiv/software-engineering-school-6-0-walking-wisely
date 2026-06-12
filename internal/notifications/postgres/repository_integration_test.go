@@ -253,6 +253,40 @@ func TestRecordReleaseNotificationsHappyPath(t *testing.T) {
 	}
 }
 
+func TestRecordReleaseNotificationsInsertsAcrossBatchBoundary(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := integrationContext(t)
+	defer cancel()
+
+	repo, pool := newNotificationTestDB(t, ctx)
+	repo = NewRepository(pool, 2)
+	truncateNotificationTables(t, ctx, pool)
+
+	eventID := uuid.NewString()
+	jobs := make([]ReleaseNotificationJob, 0, 5)
+	for i := 0; i < 5; i++ {
+		subID := insertSubscription(t, ctx, pool)
+		jobs = append(jobs, ReleaseNotificationJob{
+			SubscriptionID: subID,
+			To:             "subscriber@example.com",
+			Subject:        "Release v2",
+			HTML:           "<p>v2</p>",
+		})
+	}
+
+	if err := repo.RecordReleaseNotifications(ctx, "handler.release", eventID, "v2.0.0", jobs); err != nil {
+		t.Fatalf("RecordReleaseNotifications returned error: %v", err)
+	}
+
+	var jobCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM notification_jobs WHERE job_type='release_notification'`).Scan(&jobCount); err != nil {
+		t.Fatalf("query notification_jobs: %v", err)
+	}
+	if jobCount != len(jobs) {
+		t.Fatalf("notification_jobs count = %d, want %d", jobCount, len(jobs))
+	}
+}
+
 func TestRecordReleaseNotificationsIdempotent(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := integrationContext(t)

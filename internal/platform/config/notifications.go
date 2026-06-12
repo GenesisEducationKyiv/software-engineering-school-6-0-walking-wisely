@@ -26,6 +26,7 @@ type NotificationsConfig struct {
 	ServiceName         string
 	Environment         string
 	ResendMaxWait       time.Duration
+	JobInsertBatchSize  int
 	JobCleanupInterval  time.Duration
 	JobRetention        time.Duration
 }
@@ -51,6 +52,7 @@ func LoadNotificationsConfig() (*NotificationsConfig, error) {
 		ServiceName:         envOrDefault("SERVICE_NAME", "notifications"),
 		Environment:         envOrDefault("ENVIRONMENT", "local"),
 		ResendMaxWait:       parseDurationOrDefault("RESEND_MAX_WAIT", 200*time.Millisecond),
+		JobInsertBatchSize:  parseIntOrDefault("NOTIFICATION_JOB_INSERT_BATCH_SIZE", 500),
 		JobCleanupInterval:  parseDurationOrDefault("NOTIFICATION_JOB_CLEANUP_INTERVAL", 30*time.Minute),
 		JobRetention:        parseDurationOrDefault("NOTIFICATION_JOB_RETENTION", 7*24*time.Hour),
 	}

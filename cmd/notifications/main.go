@@ -63,7 +63,7 @@ func run(log platformlogger.Logger) error {
 		}
 	}()
 
-	notificationJobRepo := notificationpostgres.NewRepository(db)
+	notificationJobRepo := notificationpostgres.NewRepository(db, cfg.JobInsertBatchSize)
 	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, log)
 
 	bus := events.NewBus()
