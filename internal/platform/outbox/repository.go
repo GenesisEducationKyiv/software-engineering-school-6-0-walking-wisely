@@ -184,6 +184,20 @@ func (r *Repository) MarkFailed(ctx context.Context, id string, attemptCount, ma
 	return nil
 }
 
+func (r *Repository) DeleteDeliveredBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	tag, err := r.db.Exec(
+		ctx,
+		`DELETE FROM outbox_events
+		 WHERE status = 'delivered'
+		   AND updated_at < $1`,
+		cutoff,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete delivered outbox events: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (r *Repository) Metrics(ctx context.Context) (MetricsSnapshot, error) {
 	var snapshot MetricsSnapshot
 	err := r.db.QueryRow(

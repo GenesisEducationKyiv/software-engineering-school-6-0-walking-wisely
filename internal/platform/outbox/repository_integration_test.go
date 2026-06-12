@@ -245,6 +245,90 @@ func TestRepositoryMarkFailedMovesToFailedAfterMaxAttempts(t *testing.T) {
 	}
 }
 
+func TestRepositoryDeleteDeliveredBefore(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	repo, pool := newTestRepository(t, ctx)
+	truncateOutboxEvents(t, ctx, pool)
+
+	old := time.Now().UTC().Add(-8 * 24 * time.Hour)
+	fresh := time.Now().UTC().Add(-6 * 24 * time.Hour)
+	cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour)
+
+	insertOutboxRow(t, ctx, pool, outboxSeed{
+		ID:             "00000000-0000-0000-0000-000000000001",
+		EventType:      "event.delivered.old",
+		AggregateType:  "subscription",
+		AggregateID:    "sub-1",
+		PayloadJSON:    `{"kind":"old-delivered"}`,
+		OccurredAt:     old,
+		AvailableAt:    old,
+		Status:         StatusDelivered,
+		IdempotencyKey: "key-old-delivered",
+	})
+	setOutboxUpdatedAt(t, ctx, pool, "00000000-0000-0000-0000-000000000001", old)
+
+	insertOutboxRow(t, ctx, pool, outboxSeed{
+		ID:             "00000000-0000-0000-0000-000000000002",
+		EventType:      "event.delivered.fresh",
+		AggregateType:  "subscription",
+		AggregateID:    "sub-2",
+		PayloadJSON:    `{"kind":"fresh-delivered"}`,
+		OccurredAt:     fresh,
+		AvailableAt:    fresh,
+		Status:         StatusDelivered,
+		IdempotencyKey: "key-fresh-delivered",
+	})
+	setOutboxUpdatedAt(t, ctx, pool, "00000000-0000-0000-0000-000000000002", fresh)
+
+	insertOutboxRow(t, ctx, pool, outboxSeed{
+		ID:             "00000000-0000-0000-0000-000000000003",
+		EventType:      "event.pending.old",
+		AggregateType:  "subscription",
+		AggregateID:    "sub-3",
+		PayloadJSON:    `{"kind":"old-pending"}`,
+		OccurredAt:     old,
+		AvailableAt:    old,
+		Status:         StatusPending,
+		IdempotencyKey: "key-old-pending",
+	})
+	setOutboxUpdatedAt(t, ctx, pool, "00000000-0000-0000-0000-000000000003", old)
+
+	insertOutboxRow(t, ctx, pool, outboxSeed{
+		ID:             "00000000-0000-0000-0000-000000000004",
+		EventType:      "event.failed.old",
+		AggregateType:  "subscription",
+		AggregateID:    "sub-4",
+		PayloadJSON:    `{"kind":"old-failed"}`,
+		OccurredAt:     old,
+		AvailableAt:    old,
+		Status:         StatusFailed,
+		IdempotencyKey: "key-old-failed",
+	})
+	setOutboxUpdatedAt(t, ctx, pool, "00000000-0000-0000-0000-000000000004", old)
+
+	deleted, err := repo.DeleteDeliveredBefore(ctx, cutoff)
+	if err != nil {
+		t.Fatalf("DeleteDeliveredBefore returned error: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted rows = %d, want 1", deleted)
+	}
+
+	gotIDs := loadOutboxIDs(t, ctx, pool)
+	wantIDs := []string{
+		"00000000-0000-0000-0000-000000000002",
+		"00000000-0000-0000-0000-000000000003",
+		"00000000-0000-0000-0000-000000000004",
+	}
+	if !slices.Equal(gotIDs, wantIDs) {
+		t.Fatalf("remaining ids = %#v, want %#v", gotIDs, wantIDs)
+	}
+}
+
 func newTestRepository(t *testing.T, ctx context.Context) (*Repository, *pgxpool.Pool) {
 	t.Helper()
 
@@ -359,6 +443,37 @@ func truncateOutboxEvents(t *testing.T, ctx context.Context, pool *pgxpool.Pool)
 	if _, err := pool.Exec(ctx, `TRUNCATE outbox_events`); err != nil {
 		t.Fatalf("truncate outbox events: %v", err)
 	}
+}
+
+func setOutboxUpdatedAt(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id string, updatedAt time.Time) {
+	t.Helper()
+
+	if _, err := pool.Exec(ctx, `UPDATE outbox_events SET updated_at=$2 WHERE id=$1::uuid`, id, updatedAt); err != nil {
+		t.Fatalf("set outbox updated_at: %v", err)
+	}
+}
+
+func loadOutboxIDs(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []string {
+	t.Helper()
+
+	rows, err := pool.Query(ctx, `SELECT id::text FROM outbox_events ORDER BY id`)
+	if err != nil {
+		t.Fatalf("load outbox ids: %v", err)
+	}
+	defer rows.Close()
+
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan outbox id: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate outbox ids: %v", err)
+	}
+	return ids
 }
 
 func ptrString(value string) *string {

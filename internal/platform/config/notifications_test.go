@@ -32,6 +32,8 @@ func clearOptionalNotificationsEnv(t *testing.T) {
 	t.Setenv("SERVICE_NAME", "")
 	t.Setenv("ENVIRONMENT", "")
 	t.Setenv("RESEND_MAX_WAIT", "")
+	t.Setenv("NOTIFICATION_JOB_CLEANUP_INTERVAL", "")
+	t.Setenv("NOTIFICATION_JOB_RETENTION", "")
 }
 
 func TestLoadNotificationsConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
@@ -73,6 +75,12 @@ func TestLoadNotificationsConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
 	if cfg.ResendMaxWait != 200*time.Millisecond {
 		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.ResendMaxWait)
 	}
+	if cfg.JobCleanupInterval != 30*time.Minute {
+		t.Fatalf("JobCleanupInterval = %s, want 30m", cfg.JobCleanupInterval)
+	}
+	if cfg.JobRetention != 7*24*time.Hour {
+		t.Fatalf("JobRetention = %s, want 168h", cfg.JobRetention)
+	}
 }
 
 func TestLoadNotificationsConfig_UsesEnvOverrides(t *testing.T) {
@@ -91,6 +99,8 @@ func TestLoadNotificationsConfig_UsesEnvOverrides(t *testing.T) {
 	t.Setenv("SERVICE_NAME", "emails")
 	t.Setenv("ENVIRONMENT", "prod")
 	t.Setenv("RESEND_MAX_WAIT", "500ms")
+	t.Setenv("NOTIFICATION_JOB_CLEANUP_INTERVAL", "15m")
+	t.Setenv("NOTIFICATION_JOB_RETENTION", "48h")
 
 	cfg, err := LoadNotificationsConfig()
 	if err != nil {
@@ -136,6 +146,12 @@ func TestLoadNotificationsConfig_UsesEnvOverrides(t *testing.T) {
 	if cfg.ResendMaxWait != 500*time.Millisecond {
 		t.Fatalf("ResendMaxWait = %s, want 500ms", cfg.ResendMaxWait)
 	}
+	if cfg.JobCleanupInterval != 15*time.Minute {
+		t.Fatalf("JobCleanupInterval = %s, want 15m", cfg.JobCleanupInterval)
+	}
+	if cfg.JobRetention != 48*time.Hour {
+		t.Fatalf("JobRetention = %s, want 48h", cfg.JobRetention)
+	}
 }
 
 func TestLoadNotificationsConfig_MissingRequiredEnvReturnsError(t *testing.T) {
@@ -171,6 +187,8 @@ func TestLoadNotificationsConfig_InvalidOptionalValuesFallBackToDefaults(t *test
 	t.Setenv("STREAM_ACK_TIMEOUT", "fast")
 	t.Setenv("STREAM_MAX_DELIVERIES", "many")
 	t.Setenv("RESEND_MAX_WAIT", "soon")
+	t.Setenv("NOTIFICATION_JOB_CLEANUP_INTERVAL", "often")
+	t.Setenv("NOTIFICATION_JOB_RETENTION", "long")
 
 	cfg, err := LoadNotificationsConfig()
 	if err != nil {
@@ -194,6 +212,12 @@ func TestLoadNotificationsConfig_InvalidOptionalValuesFallBackToDefaults(t *test
 	}
 	if cfg.ResendMaxWait != 200*time.Millisecond {
 		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.ResendMaxWait)
+	}
+	if cfg.JobCleanupInterval != 30*time.Minute {
+		t.Fatalf("JobCleanupInterval = %s, want 30m", cfg.JobCleanupInterval)
+	}
+	if cfg.JobRetention != 7*24*time.Hour {
+		t.Fatalf("JobRetention = %s, want 168h", cfg.JobRetention)
 	}
 }
 
@@ -222,6 +246,8 @@ func TestLoadNotificationsConfig_NonPositiveOptionalValuesFallBackToDefaults(t *
 	t.Setenv("STREAM_ACK_TIMEOUT", "0s")
 	t.Setenv("STREAM_MAX_DELIVERIES", "0")
 	t.Setenv("RESEND_MAX_WAIT", "-1s")
+	t.Setenv("NOTIFICATION_JOB_CLEANUP_INTERVAL", "0s")
+	t.Setenv("NOTIFICATION_JOB_RETENTION", "-1h")
 
 	cfg, err := LoadNotificationsConfig()
 	if err != nil {
@@ -245,5 +271,11 @@ func TestLoadNotificationsConfig_NonPositiveOptionalValuesFallBackToDefaults(t *
 	}
 	if cfg.ResendMaxWait != 200*time.Millisecond {
 		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.ResendMaxWait)
+	}
+	if cfg.JobCleanupInterval != 30*time.Minute {
+		t.Fatalf("JobCleanupInterval = %s, want 30m", cfg.JobCleanupInterval)
+	}
+	if cfg.JobRetention != 7*24*time.Hour {
+		t.Fatalf("JobRetention = %s, want 168h", cfg.JobRetention)
 	}
 }

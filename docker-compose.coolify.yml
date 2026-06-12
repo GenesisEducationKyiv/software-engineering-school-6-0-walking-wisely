@@ -53,6 +53,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       SERVICE_NAME: ${SERVICE_NAME:-github-release-notifier}
       ENVIRONMENT: ${ENVIRONMENT:-prod}
+      OUTBOX_CLEANUP_INTERVAL: ${OUTBOX_CLEANUP_INTERVAL:-30m}
+      OUTBOX_RETENTION: ${OUTBOX_RETENTION:-168h}
     labels:
       co.elastic.logs/enabled: "true"
 

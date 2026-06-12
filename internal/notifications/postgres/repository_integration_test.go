@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -528,4 +529,93 @@ func TestMarkFailedAtMaxMovesToFailed(t *testing.T) {
 	if lockedBy != nil {
 		t.Errorf("locked_by should be NULL after MarkFailed at max, got %v", lockedBy)
 	}
+}
+
+func TestDeleteSentBefore(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := integrationContext(t)
+	defer cancel()
+
+	repo, pool := newNotificationTestDB(t, ctx)
+	truncateNotificationTables(t, ctx, pool)
+
+	old := time.Now().UTC().Add(-8 * 24 * time.Hour)
+	fresh := time.Now().UTC().Add(-6 * 24 * time.Hour)
+	cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour)
+
+	oldSentID := insertNotificationJob(t, ctx, repo, pool, StatusSent)
+	setNotificationJobUpdatedAt(t, ctx, pool, oldSentID, old)
+
+	freshSentID := insertNotificationJob(t, ctx, repo, pool, StatusSent)
+	setNotificationJobUpdatedAt(t, ctx, pool, freshSentID, fresh)
+
+	oldPendingID := insertNotificationJob(t, ctx, repo, pool, StatusPending)
+	setNotificationJobUpdatedAt(t, ctx, pool, oldPendingID, old)
+
+	oldFailedID := insertNotificationJob(t, ctx, repo, pool, StatusFailed)
+	setNotificationJobUpdatedAt(t, ctx, pool, oldFailedID, old)
+
+	deleted, err := repo.DeleteSentBefore(ctx, cutoff)
+	if err != nil {
+		t.Fatalf("DeleteSentBefore returned error: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted rows = %d, want 1", deleted)
+	}
+
+	gotIDs := loadNotificationJobIDs(t, ctx, pool)
+	wantIDs := []string{freshSentID, oldPendingID, oldFailedID}
+	slices.Sort(wantIDs)
+	if !slices.Equal(gotIDs, wantIDs) {
+		t.Fatalf("remaining ids = %#v, want %#v", gotIDs, wantIDs)
+	}
+}
+
+func insertNotificationJob(t *testing.T, ctx context.Context, repo *Repository, pool *pgxpool.Pool, status string) string {
+	t.Helper()
+
+	subID := insertSubscription(t, ctx, pool)
+	if err := repo.RecordConfirmation(ctx, "handler."+uuid.NewString(), uuid.NewString(), subID, "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
+		t.Fatalf("RecordConfirmation: %v", err)
+	}
+
+	var id string
+	if err := pool.QueryRow(ctx, `SELECT id::text FROM notification_jobs WHERE subscription_id=$1::uuid`, subID).Scan(&id); err != nil {
+		t.Fatalf("load inserted notification job id: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE notification_jobs SET status=$2 WHERE id=$1::uuid`, id, status); err != nil {
+		t.Fatalf("set notification job status: %v", err)
+	}
+	return id
+}
+
+func setNotificationJobUpdatedAt(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id string, updatedAt time.Time) {
+	t.Helper()
+
+	if _, err := pool.Exec(ctx, `UPDATE notification_jobs SET updated_at=$2 WHERE id=$1::uuid`, id, updatedAt); err != nil {
+		t.Fatalf("set notification job updated_at: %v", err)
+	}
+}
+
+func loadNotificationJobIDs(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []string {
+	t.Helper()
+
+	rows, err := pool.Query(ctx, `SELECT id::text FROM notification_jobs ORDER BY id`)
+	if err != nil {
+		t.Fatalf("load notification job ids: %v", err)
+	}
+	defer rows.Close()
+
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan notification job id: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate notification job ids: %v", err)
+	}
+	return ids
 }

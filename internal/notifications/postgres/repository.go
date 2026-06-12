@@ -224,6 +224,20 @@ func (r *Repository) MarkFailed(ctx context.Context, jobs []Job, maxAttempts int
 	return nil
 }
 
+func (r *Repository) DeleteSentBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	tag, err := r.db.Exec(
+		ctx,
+		`DELETE FROM notification_jobs
+		 WHERE status = 'sent'
+		   AND updated_at < $1`,
+		cutoff,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete sent notification jobs: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (j *Job) Message() mail.Message {
 	return mail.Message{
 		To:      j.To,

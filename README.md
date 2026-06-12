@@ -220,7 +220,11 @@ All configuration is done through environment variables. See `.env.example` for 
 | `SERVICE_NAME` | `github-release-notifier` | Service name attached to every log entry |
 | `ENVIRONMENT` | `local` | Deployment environment attached to every log entry |
 | `SCANNER_INTERVAL` | `5m` | How often to check repos for new releases |
+| `OUTBOX_CLEANUP_INTERVAL` | `30m` | How often to delete delivered outbox rows past retention |
+| `OUTBOX_RETENTION` | `168h` | How long to keep delivered outbox rows |
 | `RESEND_MAX_WAIT` | `200ms` | Max time to buffer emails before flushing a batch |
+| `NOTIFICATION_JOB_CLEANUP_INTERVAL` | `30m` | How often to delete sent notification jobs past retention |
+| `NOTIFICATION_JOB_RETENTION` | `168h` | How long to keep sent notification jobs |
 | `EMAIL_CHANNEL_SIZE` | `1000` | Buffered channel size between scanner and sender |
 
 ---

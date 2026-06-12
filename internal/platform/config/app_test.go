@@ -24,6 +24,8 @@ func clearOptionalAppEnv(t *testing.T) {
 	t.Setenv("SERVICE_NAME", "")
 	t.Setenv("ENVIRONMENT", "")
 	t.Setenv("SCANNER_INTERVAL", "")
+	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "")
+	t.Setenv("OUTBOX_RETENTION", "")
 	t.Setenv("STREAM_KEY", "")
 	t.Setenv("STREAM_MAX_LEN", "")
 }
@@ -58,6 +60,12 @@ func TestLoadAppConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
 	}
+	if cfg.OutboxCleanupInterval != 30*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.OutboxCleanupInterval)
+	}
+	if cfg.OutboxRetention != 7*24*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 168h", cfg.OutboxRetention)
+	}
 	if cfg.StreamKey != "events" {
 		t.Fatalf("StreamKey = %q, want events", cfg.StreamKey)
 	}
@@ -76,6 +84,8 @@ func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
 	t.Setenv("SERVICE_NAME", "release-api")
 	t.Setenv("ENVIRONMENT", "prod")
 	t.Setenv("SCANNER_INTERVAL", "10m")
+	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "15m")
+	t.Setenv("OUTBOX_RETENTION", "48h")
 	t.Setenv("STREAM_KEY", "my-events")
 	t.Setenv("STREAM_MAX_LEN", "250000")
 
@@ -104,6 +114,12 @@ func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
 	}
 	if cfg.ScannerInterval != 10*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 10m", cfg.ScannerInterval)
+	}
+	if cfg.OutboxCleanupInterval != 15*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 15m", cfg.OutboxCleanupInterval)
+	}
+	if cfg.OutboxRetention != 48*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 48h", cfg.OutboxRetention)
 	}
 	if cfg.StreamKey != "my-events" {
 		t.Fatalf("StreamKey = %q, want my-events", cfg.StreamKey)
@@ -139,6 +155,8 @@ func TestLoadAppConfig_InvalidOptionalValuesFallBackToDefaults(t *testing.T) {
 	setRequiredAppEnv(t)
 
 	t.Setenv("SCANNER_INTERVAL", "soon")
+	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "often")
+	t.Setenv("OUTBOX_RETENTION", "long")
 	t.Setenv("STREAM_MAX_LEN", "many")
 
 	cfg, err := LoadAppConfig()
@@ -149,6 +167,12 @@ func TestLoadAppConfig_InvalidOptionalValuesFallBackToDefaults(t *testing.T) {
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
 	}
+	if cfg.OutboxCleanupInterval != 30*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.OutboxCleanupInterval)
+	}
+	if cfg.OutboxRetention != 7*24*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 168h", cfg.OutboxRetention)
+	}
 	if cfg.StreamMaxLen != 100_000 {
 		t.Fatalf("StreamMaxLen = %d, want 100000", cfg.StreamMaxLen)
 	}
@@ -158,6 +182,8 @@ func TestLoadAppConfig_NonPositiveOptionalValuesFallBackToDefaults(t *testing.T)
 	setRequiredAppEnv(t)
 
 	t.Setenv("SCANNER_INTERVAL", "-1s")
+	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "0s")
+	t.Setenv("OUTBOX_RETENTION", "-1h")
 	t.Setenv("STREAM_MAX_LEN", "-1")
 
 	cfg, err := LoadAppConfig()
@@ -167,6 +193,12 @@ func TestLoadAppConfig_NonPositiveOptionalValuesFallBackToDefaults(t *testing.T)
 
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
+	}
+	if cfg.OutboxCleanupInterval != 30*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.OutboxCleanupInterval)
+	}
+	if cfg.OutboxRetention != 7*24*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 168h", cfg.OutboxRetention)
 	}
 	if cfg.StreamMaxLen != 100_000 {
 		t.Fatalf("StreamMaxLen = %d, want 100000", cfg.StreamMaxLen)

@@ -26,6 +26,8 @@ type NotificationsConfig struct {
 	ServiceName         string
 	Environment         string
 	ResendMaxWait       time.Duration
+	JobCleanupInterval  time.Duration
+	JobRetention        time.Duration
 }
 
 // LoadNotificationsConfig reads configuration from environment variables.
@@ -49,6 +51,8 @@ func LoadNotificationsConfig() (*NotificationsConfig, error) {
 		ServiceName:         envOrDefault("SERVICE_NAME", "notifications"),
 		Environment:         envOrDefault("ENVIRONMENT", "local"),
 		ResendMaxWait:       parseDurationOrDefault("RESEND_MAX_WAIT", 200*time.Millisecond),
+		JobCleanupInterval:  parseDurationOrDefault("NOTIFICATION_JOB_CLEANUP_INTERVAL", 30*time.Minute),
+		JobRetention:        parseDurationOrDefault("NOTIFICATION_JOB_RETENTION", 7*24*time.Hour),
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err

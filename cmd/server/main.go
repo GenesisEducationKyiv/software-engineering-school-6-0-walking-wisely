@@ -159,6 +159,12 @@ func run(appLogger platformlogger.Logger) error {
 		outbox.StartDispatcher(ctx, outboxRepo, streamPublisher, 200*time.Millisecond, 32, 5, appLogger)
 	}()
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		outbox.StartCleanup(ctx, outboxRepo, cfg.OutboxCleanupInterval, cfg.OutboxRetention, appLogger)
+	}()
+
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      subTokenRepo,
 		TxManager:      subTokenRepo,

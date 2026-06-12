@@ -56,6 +56,8 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-prod}
       STREAM_KEY: ${STREAM_KEY:-events}
       STREAM_MAX_LEN: ${STREAM_MAX_LEN:-100000}
+      OUTBOX_CLEANUP_INTERVAL: ${OUTBOX_CLEANUP_INTERVAL:-30m}
+      OUTBOX_RETENTION: ${OUTBOX_RETENTION:-168h}
     labels:
       co.elastic.logs/enabled: "true"
 
@@ -86,6 +88,8 @@ services:
       STREAM_ACK_TIMEOUT: ${STREAM_ACK_TIMEOUT:-5s}
       STREAM_MAX_DELIVERIES: ${STREAM_MAX_DELIVERIES:-5}
       STREAM_DLQ_KEY: ${STREAM_DLQ_KEY:-events.dlq}
+      NOTIFICATION_JOB_CLEANUP_INTERVAL: ${NOTIFICATION_JOB_CLEANUP_INTERVAL:-30m}
+      NOTIFICATION_JOB_RETENTION: ${NOTIFICATION_JOB_RETENTION:-168h}
       HTTP_PORT: "8081"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]

@@ -106,6 +106,12 @@ func run(log platformlogger.Logger) error {
 		notificationworker.StartSender(ctx, resendClient, notificationJobRepo, cfg.ResendMaxWait, log)
 	}()
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		notificationworker.StartCleanup(ctx, notificationJobRepo, cfg.JobCleanupInterval, cfg.JobRetention, log)
+	}()
+
 	// Minimal health endpoint for container orchestration readiness probes.
 	healthSrv := &http.Server{
 		Addr:         ":" + cfg.HTTPPort,
