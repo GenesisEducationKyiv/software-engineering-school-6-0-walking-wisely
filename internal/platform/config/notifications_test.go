@@ -10,7 +10,7 @@ func setRequiredNotificationsEnv(t *testing.T) {
 	t.Helper()
 
 	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/app")
-	t.Setenv("REDIS_URL", "redis://localhost:6379")
+	t.Setenv("NATS_URL", "nats://localhost:4222")
 	t.Setenv("RESEND_API_KEY", "resend-key")
 	t.Setenv("FROM_EMAIL", "noreply@example.com")
 	t.Setenv("BASE_URL", "https://example.com")
@@ -20,14 +20,13 @@ func clearOptionalNotificationsEnv(t *testing.T) {
 	t.Helper()
 
 	t.Setenv("HTTP_PORT", "")
-	t.Setenv("STREAM_KEY", "")
-	t.Setenv("STREAM_GROUP", "")
-	t.Setenv("STREAM_BATCH_SIZE", "")
-	t.Setenv("STREAM_RECLAIM_AFTER", "")
-	t.Setenv("STREAM_RECLAIM_TICK", "")
-	t.Setenv("STREAM_ACK_TIMEOUT", "")
-	t.Setenv("STREAM_MAX_DELIVERIES", "")
-	t.Setenv("STREAM_DLQ_KEY", "")
+	t.Setenv("NATS_STREAM_NAME", "")
+	t.Setenv("NATS_SUBJECT_PREFIX", "")
+	t.Setenv("NATS_CONSUMER_NAME", "")
+	t.Setenv("NATS_BATCH_SIZE", "")
+	t.Setenv("NATS_ACK_WAIT", "")
+	t.Setenv("NATS_MAX_DELIVERIES", "")
+	t.Setenv("NATS_DLQ_SUBJECT", "")
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("SERVICE_NAME", "")
 	t.Setenv("ENVIRONMENT", "")
@@ -49,29 +48,26 @@ func TestLoadNotificationsConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
 	if cfg.HTTPPort != "8081" {
 		t.Fatalf("HTTPPort = %q, want 8081", cfg.HTTPPort)
 	}
-	if cfg.StreamKey != "events" {
-		t.Fatalf("StreamKey = %q, want events", cfg.StreamKey)
+	if cfg.NATSStreamName != "EVENTS" {
+		t.Fatalf("NATSStreamName = %q, want EVENTS", cfg.NATSStreamName)
 	}
-	if cfg.StreamGroup != "notifications" {
-		t.Fatalf("StreamGroup = %q, want notifications", cfg.StreamGroup)
+	if cfg.NATSSubjectPrefix != "events" {
+		t.Fatalf("NATSSubjectPrefix = %q, want events", cfg.NATSSubjectPrefix)
 	}
-	if cfg.StreamBatchSize != 32 {
-		t.Fatalf("StreamBatchSize = %d, want 32", cfg.StreamBatchSize)
+	if cfg.NATSConsumerName != "notifications" {
+		t.Fatalf("NATSConsumerName = %q, want notifications", cfg.NATSConsumerName)
 	}
-	if cfg.StreamReclaimAfter != 5*time.Minute {
-		t.Fatalf("StreamReclaimAfter = %s, want 5m", cfg.StreamReclaimAfter)
+	if cfg.NATSBatchSize != 32 {
+		t.Fatalf("NATSBatchSize = %d, want 32", cfg.NATSBatchSize)
 	}
-	if cfg.StreamReclaimTick != 5*time.Minute {
-		t.Fatalf("StreamReclaimTick = %s, want 5m", cfg.StreamReclaimTick)
+	if cfg.NATSAckWait != 5*time.Second {
+		t.Fatalf("NATSAckWait = %s, want 5s", cfg.NATSAckWait)
 	}
-	if cfg.StreamAckTimeout != 5*time.Second {
-		t.Fatalf("StreamAckTimeout = %s, want 5s", cfg.StreamAckTimeout)
+	if cfg.NATSMaxDeliveries != 5 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 5", cfg.NATSMaxDeliveries)
 	}
-	if cfg.StreamMaxDeliveries != 5 {
-		t.Fatalf("StreamMaxDeliveries = %d, want 5", cfg.StreamMaxDeliveries)
-	}
-	if cfg.StreamDLQKey != "events.dlq" {
-		t.Fatalf("StreamDLQKey = %q, want events.dlq", cfg.StreamDLQKey)
+	if cfg.NATSDLQSubject != "events_dlq.notifications" {
+		t.Fatalf("NATSDLQSubject = %q, want events_dlq.notifications", cfg.NATSDLQSubject)
 	}
 	if cfg.ResendMaxWait != 200*time.Millisecond {
 		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.ResendMaxWait)
@@ -91,14 +87,13 @@ func TestLoadNotificationsConfig_UsesEnvOverrides(t *testing.T) {
 	setRequiredNotificationsEnv(t)
 
 	t.Setenv("HTTP_PORT", "8082")
-	t.Setenv("STREAM_KEY", "domain-events")
-	t.Setenv("STREAM_GROUP", "email-workers")
-	t.Setenv("STREAM_BATCH_SIZE", "64")
-	t.Setenv("STREAM_RECLAIM_AFTER", "10m")
-	t.Setenv("STREAM_RECLAIM_TICK", "30s")
-	t.Setenv("STREAM_ACK_TIMEOUT", "2s")
-	t.Setenv("STREAM_MAX_DELIVERIES", "9")
-	t.Setenv("STREAM_DLQ_KEY", "domain-events.dlq")
+	t.Setenv("NATS_STREAM_NAME", "DOMAIN")
+	t.Setenv("NATS_SUBJECT_PREFIX", "domain_events")
+	t.Setenv("NATS_CONSUMER_NAME", "email-workers")
+	t.Setenv("NATS_BATCH_SIZE", "64")
+	t.Setenv("NATS_ACK_WAIT", "2s")
+	t.Setenv("NATS_MAX_DELIVERIES", "9")
+	t.Setenv("NATS_DLQ_SUBJECT", "domain_events_dlq.notifications")
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("SERVICE_NAME", "emails")
 	t.Setenv("ENVIRONMENT", "prod")
@@ -115,29 +110,26 @@ func TestLoadNotificationsConfig_UsesEnvOverrides(t *testing.T) {
 	if cfg.HTTPPort != "8082" {
 		t.Fatalf("HTTPPort = %q, want 8082", cfg.HTTPPort)
 	}
-	if cfg.StreamKey != "domain-events" {
-		t.Fatalf("StreamKey = %q, want domain-events", cfg.StreamKey)
+	if cfg.NATSStreamName != "DOMAIN" {
+		t.Fatalf("NATSStreamName = %q, want DOMAIN", cfg.NATSStreamName)
 	}
-	if cfg.StreamGroup != "email-workers" {
-		t.Fatalf("StreamGroup = %q, want email-workers", cfg.StreamGroup)
+	if cfg.NATSSubjectPrefix != "domain_events" {
+		t.Fatalf("NATSSubjectPrefix = %q, want domain_events", cfg.NATSSubjectPrefix)
 	}
-	if cfg.StreamBatchSize != 64 {
-		t.Fatalf("StreamBatchSize = %d, want 64", cfg.StreamBatchSize)
+	if cfg.NATSConsumerName != "email-workers" {
+		t.Fatalf("NATSConsumerName = %q, want email-workers", cfg.NATSConsumerName)
 	}
-	if cfg.StreamReclaimAfter != 10*time.Minute {
-		t.Fatalf("StreamReclaimAfter = %s, want 10m", cfg.StreamReclaimAfter)
+	if cfg.NATSBatchSize != 64 {
+		t.Fatalf("NATSBatchSize = %d, want 64", cfg.NATSBatchSize)
 	}
-	if cfg.StreamReclaimTick != 30*time.Second {
-		t.Fatalf("StreamReclaimTick = %s, want 30s", cfg.StreamReclaimTick)
+	if cfg.NATSAckWait != 2*time.Second {
+		t.Fatalf("NATSAckWait = %s, want 2s", cfg.NATSAckWait)
 	}
-	if cfg.StreamAckTimeout != 2*time.Second {
-		t.Fatalf("StreamAckTimeout = %s, want 2s", cfg.StreamAckTimeout)
+	if cfg.NATSMaxDeliveries != 9 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 9", cfg.NATSMaxDeliveries)
 	}
-	if cfg.StreamMaxDeliveries != 9 {
-		t.Fatalf("StreamMaxDeliveries = %d, want 9", cfg.StreamMaxDeliveries)
-	}
-	if cfg.StreamDLQKey != "domain-events.dlq" {
-		t.Fatalf("StreamDLQKey = %q, want domain-events.dlq", cfg.StreamDLQKey)
+	if cfg.NATSDLQSubject != "domain_events_dlq.notifications" {
+		t.Fatalf("NATSDLQSubject = %q, want domain_events_dlq.notifications", cfg.NATSDLQSubject)
 	}
 	if cfg.LogLevel != "debug" {
 		t.Fatalf("LogLevel = %q, want debug", cfg.LogLevel)
@@ -165,7 +157,7 @@ func TestLoadNotificationsConfig_UsesEnvOverrides(t *testing.T) {
 func TestLoadNotificationsConfig_MissingRequiredEnvReturnsError(t *testing.T) {
 	required := []string{
 		"DATABASE_URL",
-		"REDIS_URL",
+		"NATS_URL",
 		"RESEND_API_KEY",
 		"FROM_EMAIL",
 		"BASE_URL",
@@ -189,11 +181,9 @@ func TestLoadNotificationsConfig_MissingRequiredEnvReturnsError(t *testing.T) {
 func TestLoadNotificationsConfig_InvalidOptionalValuesFallBackToDefaults(t *testing.T) {
 	setRequiredNotificationsEnv(t)
 
-	t.Setenv("STREAM_BATCH_SIZE", "many")
-	t.Setenv("STREAM_RECLAIM_AFTER", "soon")
-	t.Setenv("STREAM_RECLAIM_TICK", "often")
-	t.Setenv("STREAM_ACK_TIMEOUT", "fast")
-	t.Setenv("STREAM_MAX_DELIVERIES", "many")
+	t.Setenv("NATS_BATCH_SIZE", "many")
+	t.Setenv("NATS_ACK_WAIT", "fast")
+	t.Setenv("NATS_MAX_DELIVERIES", "many")
 	t.Setenv("RESEND_MAX_WAIT", "soon")
 	t.Setenv("NOTIFICATION_JOB_INSERT_BATCH_SIZE", "many")
 	t.Setenv("NOTIFICATION_JOB_CLEANUP_INTERVAL", "often")
@@ -204,20 +194,14 @@ func TestLoadNotificationsConfig_InvalidOptionalValuesFallBackToDefaults(t *test
 		t.Fatalf("LoadNotificationsConfig returned error: %v", err)
 	}
 
-	if cfg.StreamBatchSize != 32 {
-		t.Fatalf("StreamBatchSize = %d, want 32", cfg.StreamBatchSize)
+	if cfg.NATSBatchSize != 32 {
+		t.Fatalf("NATSBatchSize = %d, want 32", cfg.NATSBatchSize)
 	}
-	if cfg.StreamReclaimAfter != 5*time.Minute {
-		t.Fatalf("StreamReclaimAfter = %s, want 5m", cfg.StreamReclaimAfter)
+	if cfg.NATSAckWait != 5*time.Second {
+		t.Fatalf("NATSAckWait = %s, want 5s", cfg.NATSAckWait)
 	}
-	if cfg.StreamReclaimTick != 5*time.Minute {
-		t.Fatalf("StreamReclaimTick = %s, want 5m", cfg.StreamReclaimTick)
-	}
-	if cfg.StreamAckTimeout != 5*time.Second {
-		t.Fatalf("StreamAckTimeout = %s, want 5s", cfg.StreamAckTimeout)
-	}
-	if cfg.StreamMaxDeliveries != 5 {
-		t.Fatalf("StreamMaxDeliveries = %d, want 5", cfg.StreamMaxDeliveries)
+	if cfg.NATSMaxDeliveries != 5 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 5", cfg.NATSMaxDeliveries)
 	}
 	if cfg.ResendMaxWait != 200*time.Millisecond {
 		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.ResendMaxWait)
@@ -237,26 +221,24 @@ func TestLoadNotificationsConfig_NegativeMaxDeliveriesFallsBackToDefault(t *test
 	setRequiredNotificationsEnv(t)
 	clearOptionalNotificationsEnv(t)
 
-	t.Setenv("STREAM_MAX_DELIVERIES", "-1")
+	t.Setenv("NATS_MAX_DELIVERIES", "-1")
 
 	cfg, err := LoadNotificationsConfig()
 	if err != nil {
 		t.Fatalf("LoadNotificationsConfig returned error: %v", err)
 	}
 
-	if cfg.StreamMaxDeliveries != 5 {
-		t.Fatalf("StreamMaxDeliveries = %d, want 5", cfg.StreamMaxDeliveries)
+	if cfg.NATSMaxDeliveries != 5 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 5", cfg.NATSMaxDeliveries)
 	}
 }
 
 func TestLoadNotificationsConfig_NonPositiveOptionalValuesFallBackToDefaults(t *testing.T) {
 	setRequiredNotificationsEnv(t)
 
-	t.Setenv("STREAM_BATCH_SIZE", "0")
-	t.Setenv("STREAM_RECLAIM_AFTER", "0s")
-	t.Setenv("STREAM_RECLAIM_TICK", "-1s")
-	t.Setenv("STREAM_ACK_TIMEOUT", "0s")
-	t.Setenv("STREAM_MAX_DELIVERIES", "0")
+	t.Setenv("NATS_BATCH_SIZE", "0")
+	t.Setenv("NATS_ACK_WAIT", "0s")
+	t.Setenv("NATS_MAX_DELIVERIES", "0")
 	t.Setenv("RESEND_MAX_WAIT", "-1s")
 	t.Setenv("NOTIFICATION_JOB_INSERT_BATCH_SIZE", "0")
 	t.Setenv("NOTIFICATION_JOB_CLEANUP_INTERVAL", "0s")
@@ -267,20 +249,14 @@ func TestLoadNotificationsConfig_NonPositiveOptionalValuesFallBackToDefaults(t *
 		t.Fatalf("LoadNotificationsConfig returned error: %v", err)
 	}
 
-	if cfg.StreamBatchSize != 32 {
-		t.Fatalf("StreamBatchSize = %d, want 32", cfg.StreamBatchSize)
+	if cfg.NATSBatchSize != 32 {
+		t.Fatalf("NATSBatchSize = %d, want 32", cfg.NATSBatchSize)
 	}
-	if cfg.StreamReclaimAfter != 5*time.Minute {
-		t.Fatalf("StreamReclaimAfter = %s, want 5m", cfg.StreamReclaimAfter)
+	if cfg.NATSAckWait != 5*time.Second {
+		t.Fatalf("NATSAckWait = %s, want 5s", cfg.NATSAckWait)
 	}
-	if cfg.StreamReclaimTick != 5*time.Minute {
-		t.Fatalf("StreamReclaimTick = %s, want 5m", cfg.StreamReclaimTick)
-	}
-	if cfg.StreamAckTimeout != 5*time.Second {
-		t.Fatalf("StreamAckTimeout = %s, want 5s", cfg.StreamAckTimeout)
-	}
-	if cfg.StreamMaxDeliveries != 0 {
-		t.Fatalf("StreamMaxDeliveries = %d, want 0", cfg.StreamMaxDeliveries)
+	if cfg.NATSMaxDeliveries != 0 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 0", cfg.NATSMaxDeliveries)
 	}
 	if cfg.ResendMaxWait != 200*time.Millisecond {
 		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.ResendMaxWait)

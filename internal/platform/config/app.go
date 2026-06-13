@@ -14,10 +14,11 @@ type AppConfig struct {
 	GrpcPort              string
 	DatabaseURL           string
 	RedisURL              string
+	NATSURL               string
 	EmailSecretKey        string
 	GithubToken           string // optional - raises GitHub API rate limit
-	StreamKey             string // Redis Stream key for publishing domain events
-	StreamMaxLen          int64  // Redis Stream retention max length; 0 disables trimming
+	NATSStreamName        string
+	NATSSubjectPrefix     string
 	LogLevel              string
 	ServiceName           string
 	Environment           string
@@ -33,10 +34,11 @@ func LoadAppConfig() (*AppConfig, error) {
 		GrpcPort:              envOrDefault("GRPC_PORT", "9090"),
 		DatabaseURL:           os.Getenv("DATABASE_URL"),
 		RedisURL:              os.Getenv("REDIS_URL"),
+		NATSURL:               os.Getenv("NATS_URL"),
 		EmailSecretKey:        os.Getenv("EMAIL_SECRET_KEY"),
 		GithubToken:           os.Getenv("GITHUB_TOKEN"),
-		StreamKey:             envOrDefault("STREAM_KEY", "events"),
-		StreamMaxLen:          parseNonNegativeInt64OrDefault("STREAM_MAX_LEN", 100_000),
+		NATSStreamName:        envOrDefault("NATS_STREAM_NAME", "EVENTS"),
+		NATSSubjectPrefix:     envOrDefault("NATS_SUBJECT_PREFIX", "events"),
 		LogLevel:              envOrDefault("LOG_LEVEL", "info"),
 		ServiceName:           envOrDefault("SERVICE_NAME", "github-release-notifier"),
 		Environment:           envOrDefault("ENVIRONMENT", "local"),
@@ -54,6 +56,7 @@ func (c *AppConfig) validate() error {
 	required := []struct{ key, val string }{
 		{"DATABASE_URL", c.DatabaseURL},
 		{"REDIS_URL", c.RedisURL},
+		{"NATS_URL", c.NATSURL},
 		{"EMAIL_SECRET_KEY", c.EmailSecretKey},
 	}
 	for _, r := range required {

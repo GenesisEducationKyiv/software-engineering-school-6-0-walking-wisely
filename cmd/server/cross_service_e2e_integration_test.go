@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	goredis "github.com/redis/go-redis/v9"
+	gonats "github.com/nats-io/nats.go"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
@@ -29,14 +29,18 @@ import (
 	notificationworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/streams"
 	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
 	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+
+	// Register event types so the outbox decoder and JetStream consumer can decode them.
+	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
+	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
 func init() {
@@ -110,69 +114,74 @@ func (g crossServiceFakeGitHub) GetLatestRelease(_ context.Context, _ string) (*
 	return g.release, nil
 }
 
-// ── Redis container helper ─────────────────────────────────────────────────────
+// ── NATS container helper ──────────────────────────────────────────────────────
 
-func newCrossServiceRedis(t *testing.T, ctx context.Context) *goredis.Client {
+func newCrossServiceNATS(t *testing.T, ctx context.Context) *gonats.Conn {
 	t.Helper()
 	testcontainers.SkipIfProviderIsNotHealthy(t)
 
 	container, err := testcontainers.Run(
 		ctx,
-		"redis:7-alpine",
-		testcontainers.WithExposedPorts("6379/tcp"),
-		testcontainers.WithWaitStrategy(wait.ForListeningPort("6379/tcp")),
+		"nats:2.11-alpine",
+		testcontainers.WithExposedPorts("4222/tcp"),
+		testcontainers.WithCmd("-js", "-sd", "/data"),
+		testcontainers.WithWaitStrategy(wait.ForListeningPort("4222/tcp")),
 	)
 	if err != nil {
-		t.Fatalf("start redis container: %v", err)
+		t.Fatalf("start nats container: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := container.Terminate(context.Background()); err != nil {
-			t.Logf("terminate redis container: %v", err)
+			t.Logf("terminate nats container: %v", err)
 		}
 	})
 
 	host, err := container.Host(ctx)
 	if err != nil {
-		t.Fatalf("get redis host: %v", err)
+		t.Fatalf("get nats host: %v", err)
 	}
-	port, err := container.MappedPort(ctx, "6379/tcp")
+	port, err := container.MappedPort(ctx, "4222/tcp")
 	if err != nil {
-		t.Fatalf("get redis port: %v", err)
+		t.Fatalf("get nats port: %v", err)
 	}
 
-	client := goredis.NewClient(&goredis.Options{Addr: fmt.Sprintf("%s:%s", host, port.Port())})
-	t.Cleanup(func() { _ = client.Close() })
-
-	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer pingCancel()
-	if err := client.Ping(pingCtx).Err(); err != nil {
-		t.Fatalf("ping redis: %v", err)
+	nc, err := gonats.Connect(fmt.Sprintf("nats://%s:%s", host, port.Port()), gonats.NoReconnect())
+	if err != nil {
+		t.Fatalf("connect nats: %v", err)
 	}
-	return client
+	t.Cleanup(nc.Close)
+	return nc
 }
 
 // ── full stack wiring ──────────────────────────────────────────────────────────
 
-// buildCrossServiceStack wires both microservices against shared Postgres + Redis
-// testcontainers. The stream key is passed in to isolate parallel test runs.
+// buildCrossServiceStack wires both microservices against shared Postgres + NATS
+// testcontainers. The subject prefix is passed in to isolate parallel test runs.
 // Returns the HTTP test server (API side), fake email sender (notifications side),
 // and the scanner service so tests can trigger scans directly.
 func buildCrossServiceStack(
 	t *testing.T,
 	ctx context.Context,
 	gh crossServiceFakeGitHub,
-	streamKey string,
+	subjectPrefix string,
 ) (httpServer *httptest.Server, sender *crossServiceFakeSender, scanner *releasemonitoringapp.ScannerService) {
 	t.Helper()
 
 	db := newGatewayTestDB(t, ctx)
-	redisClient := newCrossServiceRedis(t, ctx)
+	natsClient := newCrossServiceNATS(t, ctx)
 	const baseURL = "http://app.test"
 
-	// Shared outbox: subscriptions service writes here; dispatcher forwards to Redis.
+	// Shared outbox: subscriptions service writes here; dispatcher forwards to JetStream.
 	outboxRepo := outbox.NewRepository(db)
 	outboxPub := outbox.NewPublisher(outboxRepo)
-	streamPub := streams.NewPublisher(redisClient, streamKey)
+	streamName := "E2E_EVENTS_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	eventPub, err := platformnats.NewPublisher(natsClient, platformnats.PublisherOptions{
+		StreamName:    streamName,
+		SubjectPrefix: subjectPrefix,
+	})
+	if err != nil {
+		t.Fatalf("init jetstream publisher: %v", err)
+	}
 
 	// API — subscription service uses the transactional outbox as its publisher.
 	tokenRepo := postgres.NewTokenRepo(db, platformlogger.NoopLogger{})
@@ -197,8 +206,8 @@ func buildCrossServiceStack(
 		Log:       platformlogger.NoopLogger{},
 	})
 
-	// Outbox dispatcher runs continuously, forwarding DB records → Redis stream.
-	go outbox.StartDispatcher(ctx, outboxRepo, streamPub, 50*time.Millisecond, 32, 5, platformlogger.NoopLogger{})
+	// Outbox dispatcher runs continuously, forwarding DB records to JetStream.
+	go outbox.StartDispatcher(ctx, outboxRepo, eventPub, 50*time.Millisecond, 32, 5, platformlogger.NoopLogger{})
 
 	// Wire gRPC + HTTP gateway.
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -223,13 +232,24 @@ func buildCrossServiceStack(
 	srv := httptest.NewServer(newHTTPHandler(gwMux, http.NotFoundHandler(), gatewayTestMetricsRecorder{}, platformlogger.NoopLogger{}))
 	t.Cleanup(srv.Close)
 
-	// Notifications service — reads from Redis stream, records jobs, sends emails.
+	// Notifications service reads from JetStream, records jobs, and sends emails.
 	fakeSender := &crossServiceFakeSender{}
 	notifJobRepo := notificationpostgres.NewRepository(db)
 	bus := events.NewBus()
 	notificationapp.NewEventHandlers(notifJobRepo, baseURL, platformlogger.NoopLogger{}).Register(bus)
 
-	consumer := streams.NewConsumer(redisClient, streamKey, "notifications", uuid.NewString(), 32, platformlogger.NoopLogger{})
+	consumer, err := platformnats.NewConsumer(natsClient, &platformnats.ConsumerOptions{
+		StreamName:    streamName,
+		SubjectPrefix: subjectPrefix,
+		ConsumerName:  "notifications",
+		BatchSize:     32,
+		AckWait:       500 * time.Millisecond,
+		MaxDeliveries: 5,
+		DLQSubject:    "e2e_dlq.notifications." + strings.ReplaceAll(uuid.NewString(), "-", ""),
+	}, platformlogger.NoopLogger{})
+	if err != nil {
+		t.Fatalf("init jetstream consumer: %v", err)
+	}
 	go func() { _ = consumer.Run(ctx, bus) }()
 
 	go notificationworker.StartSender(ctx, fakeSender, notifJobRepo, 50*time.Millisecond, platformlogger.NoopLogger{})
@@ -241,7 +261,7 @@ func buildCrossServiceStack(
 
 // TestE2E_CrossService_SubscriptionConfirmationEmailDelivered verifies
 // that a POST /api/subscribe causes a confirmation email to land in the sender
-// after crossing the outbox → Redis stream → notifications consumer boundary.
+// after crossing the outbox → JetStream → notifications consumer boundary.
 func TestE2E_CrossService_SubscriptionConfirmationEmailDelivered(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -269,7 +289,7 @@ func TestE2E_CrossService_SubscriptionConfirmationEmailDelivered(t *testing.T) {
 // TestE2E_CrossService_ConfirmAndReceiveReleaseNotification covers:
 //  1. Subscribe → confirmation email delivered end-to-end.
 //  2. Confirm subscription via the API.
-//  3. Scanner detects new release → outbox → Redis stream → notification job → email sent.
+//  3. Scanner detects new release → outbox → JetStream → notification job → email sent.
 func TestE2E_CrossService_ConfirmAndReceiveReleaseNotification(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()

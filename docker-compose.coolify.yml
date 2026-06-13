@@ -34,6 +34,20 @@ services:
       timeout: 5s
       retries: 10
 
+  nats:
+    image: nats:2.11-alpine
+    restart: unless-stopped
+    command: ["-js", "-sd", "/data"]
+    ports:
+      - "4222"
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "nats-server", "--signal", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: .
@@ -47,14 +61,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      nats:
+        condition: service_healthy
     env_file:
       - .env.prod
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       SERVICE_NAME: ${SERVICE_NAME:-github-release-notifier}
       ENVIRONMENT: ${ENVIRONMENT:-prod}
-      STREAM_KEY: ${STREAM_KEY:-events}
-      STREAM_MAX_LEN: ${STREAM_MAX_LEN:-100000}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      NATS_STREAM_NAME: ${NATS_STREAM_NAME:-EVENTS}
+      NATS_SUBJECT_PREFIX: ${NATS_SUBJECT_PREFIX:-events}
       OUTBOX_CLEANUP_INTERVAL: ${OUTBOX_CLEANUP_INTERVAL:-30m}
       OUTBOX_RETENTION: ${OUTBOX_RETENTION:-168h}
     labels:
@@ -141,6 +158,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  nats_data:
   elasticsearch_data:
   filebeat_data:
   prometheus_data:

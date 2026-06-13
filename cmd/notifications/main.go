@@ -9,8 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
-
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
@@ -19,9 +17,12 @@ import (
 	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
-	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/streams"
+
+	// Register event types so the JetStream consumer can decode them.
+	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
+	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
 func main() {
@@ -54,15 +55,11 @@ func run(log platformlogger.Logger) error {
 	}
 	defer db.Close()
 
-	redisClient, err := platformredis.NewClient(cfg.RedisURL, log)
+	natsClient, err := platformnats.NewClient(cfg.NATSURL, cfg.ServiceName, log)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := redisClient.Close(); err != nil {
-			log.Error("close redis", "err", err)
-		}
-	}()
+	defer natsClient.Close()
 
 	notificationJobRepo := notificationpostgres.NewRepository(db, cfg.JobInsertBatchSize)
 	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, log)
@@ -71,21 +68,18 @@ func run(log platformlogger.Logger) error {
 	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.BaseURL, log)
 	notificationHandlers.Register(bus)
 
-	consumer := streams.NewConsumerWithOptions(
-		redisClient,
-		cfg.StreamKey,
-		cfg.StreamGroup,
-		uuid.NewString(),
-		streams.ConsumerOptions{
-			BatchSize:     int64(cfg.StreamBatchSize),
-			ReclaimAfter:  cfg.StreamReclaimAfter,
-			ReclaimTick:   cfg.StreamReclaimTick,
-			AckTimeout:    cfg.StreamAckTimeout,
-			MaxDeliveries: int64(cfg.StreamMaxDeliveries),
-			DLQStreamKey:  cfg.StreamDLQKey,
-		},
-		log,
-	)
+	consumer, err := platformnats.NewConsumer(natsClient, &platformnats.ConsumerOptions{
+		StreamName:    cfg.NATSStreamName,
+		SubjectPrefix: cfg.NATSSubjectPrefix,
+		ConsumerName:  cfg.NATSConsumerName,
+		BatchSize:     cfg.NATSBatchSize,
+		AckWait:       cfg.NATSAckWait,
+		MaxDeliveries: cfg.NATSMaxDeliveries,
+		DLQSubject:    cfg.NATSDLQSubject,
+	}, log)
+	if err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
