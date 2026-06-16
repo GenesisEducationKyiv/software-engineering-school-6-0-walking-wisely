@@ -85,8 +85,9 @@ func (c *Client) SendBatch(ctx context.Context, messages []mail.Message) error {
 	}
 	defer func() {
 		closeErr := resp.Body.Close()
-		if closeErr != nil {
+		if err != nil {
 			c.log.Warn("close resend response body", "err", closeErr)
+			err = closeErr
 		}
 	}()
 
@@ -97,7 +98,7 @@ func (c *Client) SendBatch(ctx context.Context, messages []mail.Message) error {
 
 	case http.StatusTooManyRequests:
 		retryAfter := parseResendRetryAfter(resp)
-		c.log.Debug("resend rate limited", "retry_after", retryAfter, "batch_size", len(messages))
+		c.log.Warn("resend rate limited", "retry_after", retryAfter, "batch_size", len(messages))
 		return &subscriptions.RateLimitError{Service: "Resend", RetryAfter: retryAfter}
 
 	default:

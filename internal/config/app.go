@@ -19,9 +19,6 @@ type AppConfig struct {
 	GithubToken      string // optional - raises GitHub API rate limit
 	BaseURL          string // used to build confirm/unsubscribe links in emails
 	FromEmail        string
-	LogLevel         string
-	ServiceName      string
-	Environment      string
 	ScannerInterval  time.Duration
 	ResendMaxWait    time.Duration
 	EmailChannelSize int
@@ -39,9 +36,6 @@ func LoadAppConfig() (*AppConfig, error) {
 		GithubToken:      os.Getenv("GITHUB_TOKEN"),
 		BaseURL:          os.Getenv("BASE_URL"),
 		FromEmail:        os.Getenv("FROM_EMAIL"),
-		LogLevel:         envOrDefault("LOG_LEVEL", "info"),
-		ServiceName:      envOrDefault("SERVICE_NAME", "github-release-notifier"),
-		Environment:      envOrDefault("ENVIRONMENT", "local"),
 		ScannerInterval:  parseDurationOrDefault("SCANNER_INTERVAL", 5*time.Minute),
 		ResendMaxWait:    parseDurationOrDefault("RESEND_MAX_WAIT", 200*time.Millisecond),
 		EmailChannelSize: parseIntOrDefault("EMAIL_CHANNEL_SIZE", 1000),

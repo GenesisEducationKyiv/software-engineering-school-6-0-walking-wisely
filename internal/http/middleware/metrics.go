@@ -14,8 +14,6 @@ import (
 type MetricsRecorder interface {
 	RecordHTTPRequest(ctx context.Context, method, path string, status int, duration time.Duration)
 	RegisterEmailChannelDepth(depth func() int) error
-	RegisterGitHubAvailability(available func() bool) error
-	RegisterGitHubRateLimitRemaining(remaining func() int) error
 }
 
 type OpenTelemetryRecorder struct {
@@ -27,7 +25,7 @@ type OpenTelemetryRecorder struct {
 func NewOpenTelemetryRecorder(meter metric.Meter) (*OpenTelemetryRecorder, error) {
 	httpRequestsTotal, err := meter.Int64Counter(
 		"http_requests_total",
-		metric.WithDescription("Total HTTP requests handled."),
+		metric.WithDescription("Total HTTP requests by method, path, and status."),
 		metric.WithUnit("{request}"),
 	)
 	if err != nil {
@@ -71,64 +69,23 @@ func (r *OpenTelemetryRecorder) RegisterEmailChannelDepth(depth func() int) erro
 	return nil
 }
 
-func (r *OpenTelemetryRecorder) RegisterGitHubAvailability(available func() bool) error {
-	gauge, err := r.meter.Int64ObservableGauge(
-		"github_available",
-		metric.WithDescription("Whether GitHub API is currently available to this service."),
-		metric.WithUnit("{state}"),
-	)
-	if err != nil {
-		return fmt.Errorf("create github availability gauge: %w", err)
-	}
-
-	_, err = r.meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
-		value := int64(0)
-		if available() {
-			value = 1
-		}
-		observer.ObserveInt64(gauge, value)
-		return nil
-	}, gauge)
-	if err != nil {
-		return fmt.Errorf("register github availability callback: %w", err)
-	}
-
-	return nil
-}
-
-func (r *OpenTelemetryRecorder) RegisterGitHubRateLimitRemaining(remaining func() int) error {
-	gauge, err := r.meter.Int64ObservableGauge(
-		"github_rate_limit_remaining",
-		metric.WithDescription("Remaining GitHub core API requests observed by the availability monitor."),
-		metric.WithUnit("{request}"),
-	)
-	if err != nil {
-		return fmt.Errorf("create github rate limit remaining gauge: %w", err)
-	}
-
-	_, err = r.meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
-		observer.ObserveInt64(gauge, int64(remaining()))
-		return nil
-	}, gauge)
-	if err != nil {
-		return fmt.Errorf("register github rate limit remaining callback: %w", err)
-	}
-
-	return nil
-}
-
 func (r *OpenTelemetryRecorder) RecordHTTPRequest(ctx context.Context, method, path string, status int, duration time.Duration) {
-	attrs := metric.WithAttributes(
-		attribute.String("method", method),
-		attribute.String("path", path),
-		attribute.String("status", strconv.Itoa(status)),
+	r.httpRequestsTotal.Add(
+		ctx,
+		1,
+		metric.WithAttributes(
+			attribute.String("method", method),
+			attribute.String("path", path),
+			attribute.String("status", strconv.Itoa(status)),
+		),
 	)
-
-	r.httpRequestsTotal.Add(ctx, 1, attrs)
 	r.httpRequestDuration.Record(
 		ctx,
 		duration.Seconds(),
-		attrs,
+		metric.WithAttributes(
+			attribute.String("method", method),
+			attribute.String("path", path),
+		),
 	)
 }
 

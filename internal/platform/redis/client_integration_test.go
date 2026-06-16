@@ -46,7 +46,7 @@ func TestIntegration_InitRedisWithRetry_ConnectsToRedis(t *testing.T) {
 	}
 	redisURL := "redis://" + net.JoinHostPort(host, port.Port()) + "/0"
 
-	client, err := NewClientWithRetry(redisURL, config.RetryConfig{
+	client, err := InitRedisWithRetry(redisURL, config.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -76,7 +76,7 @@ func TestIntegration_InitRedisWithRetry_ReturnsErrorWhenRedisUnavailable(t *test
 	hostPort := freeTCPPort(t)
 	redisURL := fmt.Sprintf("redis://127.0.0.1:%d/0", hostPort)
 
-	client, err := NewClientWithRetry(redisURL, config.RetryConfig{
+	client, err := InitRedisWithRetry(redisURL, config.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,

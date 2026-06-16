@@ -21,11 +21,8 @@ type fakeSubscriptionRepo struct {
 	listByEmailErr        error
 }
 
-func (f *fakeSubscriptionRepo) Subscribe(_ context.Context, _, _, _, _ string) (subscriptions.SubscribeResult, error) {
-	return subscriptions.SubscribeResult{
-		SubscriptionID: "sub-1",
-		Action:         subscriptions.SubscribeActionCreated,
-	}, f.subscribeErr
+func (f *fakeSubscriptionRepo) Subscribe(_ context.Context, _, _, _, _ string) error {
+	return f.subscribeErr
 }
 
 func (f *fakeSubscriptionRepo) ConfirmByToken(_ context.Context, _ string) (string, error) {
