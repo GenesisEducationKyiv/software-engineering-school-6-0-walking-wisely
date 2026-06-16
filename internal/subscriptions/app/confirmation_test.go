@@ -45,7 +45,7 @@ func TestConfirmationNotifier_EnqueueConfirmation(t *testing.T) {
 	log := &recordingConfirmationLogger{}
 	notifier := NewMailConfirmationNotifier(queue, "http://localhost", log)
 
-	notifier.NotifyConfirmation(&Confirmation{
+	notifier.NotifyConfirmation(Confirmation{
 		Email:        validEmail,
 		Repo:         validRepo,
 		ConfirmToken: "confirm-token",
@@ -82,7 +82,7 @@ func TestConfirmationNotifier_QueueFullDropsMessage(t *testing.T) {
 	log := &recordingConfirmationLogger{}
 	notifier := NewMailConfirmationNotifier(queue, "http://localhost", log)
 
-	notifier.NotifyConfirmation(&Confirmation{
+	notifier.NotifyConfirmation(Confirmation{
 		Email:        validEmail,
 		Repo:         validRepo,
 		ConfirmToken: "confirm-token",
@@ -115,7 +115,7 @@ func TestConfirmationNotifier_EnqueueConfirmation_TrimsTrailingBaseURLSlash(t *t
 	log := &recordingConfirmationLogger{}
 	notifier := NewMailConfirmationNotifier(queue, "http://localhost/", log)
 
-	notifier.NotifyConfirmation(&Confirmation{
+	notifier.NotifyConfirmation(Confirmation{
 		Email:        validEmail,
 		Repo:         validRepo,
 		ConfirmToken: "confirm-token",
@@ -148,7 +148,7 @@ func TestConfirmationNotifier_QueueFullWithNilLoggerDoesNotPanic(t *testing.T) {
 	queue := &fakeMailQueue{ok: false}
 	notifier := NewMailConfirmationNotifier(queue, "http://localhost", nil)
 
-	notifier.NotifyConfirmation(&Confirmation{
+	notifier.NotifyConfirmation(Confirmation{
 		Email:        validEmail,
 		Repo:         validRepo,
 		ConfirmToken: "confirm-token",

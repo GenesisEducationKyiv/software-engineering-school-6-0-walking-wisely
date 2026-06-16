@@ -23,9 +23,6 @@ func clearOptionalAppEnv(t *testing.T) {
 	t.Setenv("REST_PORT", "")
 	t.Setenv("GRPC_PORT", "")
 	t.Setenv("GITHUB_TOKEN", "")
-	t.Setenv("LOG_LEVEL", "")
-	t.Setenv("SERVICE_NAME", "")
-	t.Setenv("ENVIRONMENT", "")
 	t.Setenv("SCANNER_INTERVAL", "")
 	t.Setenv("RESEND_MAX_WAIT", "")
 	t.Setenv("EMAIL_CHANNEL_SIZE", "")
@@ -49,15 +46,6 @@ func TestLoadAppConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
 	if cfg.GithubToken != "" {
 		t.Fatalf("GithubToken = %q, want empty optional token", cfg.GithubToken)
 	}
-	if cfg.LogLevel != "info" {
-		t.Fatalf("LogLevel = %q, want info", cfg.LogLevel)
-	}
-	if cfg.ServiceName != "github-release-notifier" {
-		t.Fatalf("ServiceName = %q, want github-release-notifier", cfg.ServiceName)
-	}
-	if cfg.Environment != "local" {
-		t.Fatalf("Environment = %q, want local", cfg.Environment)
-	}
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
 	}
@@ -75,9 +63,6 @@ func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
 	t.Setenv("REST_PORT", "8081")
 	t.Setenv("GRPC_PORT", "9091")
 	t.Setenv("GITHUB_TOKEN", "github-token")
-	t.Setenv("LOG_LEVEL", "debug")
-	t.Setenv("SERVICE_NAME", "release-api")
-	t.Setenv("ENVIRONMENT", "prod")
 	t.Setenv("SCANNER_INTERVAL", "10m")
 	t.Setenv("RESEND_MAX_WAIT", "500ms")
 	t.Setenv("EMAIL_CHANNEL_SIZE", "250")
@@ -95,15 +80,6 @@ func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
 	}
 	if cfg.GithubToken != "github-token" {
 		t.Fatalf("GithubToken = %q, want github-token", cfg.GithubToken)
-	}
-	if cfg.LogLevel != "debug" {
-		t.Fatalf("LogLevel = %q, want debug", cfg.LogLevel)
-	}
-	if cfg.ServiceName != "release-api" {
-		t.Fatalf("ServiceName = %q, want release-api", cfg.ServiceName)
-	}
-	if cfg.Environment != "prod" {
-		t.Fatalf("Environment = %q, want prod", cfg.Environment)
 	}
 	if cfg.ScannerInterval != 10*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 10m", cfg.ScannerInterval)

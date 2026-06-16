@@ -39,6 +39,5 @@ func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetS
 		})
 	}
 
-	s.log.Info("subscriptions: listed", "subscriptions_count", len(resp))
 	return &pb.GetSubscriptionsResponse{Subscriptions: resp}, nil
 }

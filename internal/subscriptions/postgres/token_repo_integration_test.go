@@ -18,24 +18,18 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 	t.Run("inserts unconfirmed subscription", func(t *testing.T) {
 		truncateSubscriptions(t, ctx, repos.pool)
 
-		result, err := repos.token.Subscribe(ctx, "user@example.com", "owner/repo", "confirm-token", "unsub-token")
+		err := repos.token.Subscribe(ctx, "user@example.com", "owner/repo", "confirm-token", "unsub-token")
 		if err != nil {
 			t.Fatalf("Subscribe returned error: %v", err)
-		}
-		if result.Action != subscriptions.SubscribeActionCreated || result.SubscriptionID == "" {
-			t.Fatalf("Subscribe result = %+v, want created subscription id", result)
 		}
 
 		var got subscriptions.Subscription
 		err = repos.pool.QueryRow(ctx, `
-			SELECT id, email, repo, confirmed, confirm_token, unsubscribe_token
+			SELECT email, repo, confirmed, confirm_token, unsubscribe_token
 			FROM subscriptions
-		`).Scan(&got.ID, &got.Email, &got.Repo, &got.Confirmed, &got.ConfirmToken, &got.UnsubscribeToken)
+		`).Scan(&got.Email, &got.Repo, &got.Confirmed, &got.ConfirmToken, &got.UnsubscribeToken)
 		if err != nil {
 			t.Fatalf("query subscription: %v", err)
-		}
-		if got.ID != result.SubscriptionID {
-			t.Fatalf("subscription id = %q, want result id %q", got.ID, result.SubscriptionID)
 		}
 		if got.Email != "user@example.com" || got.Repo != "owner/repo" || got.Confirmed {
 			t.Fatalf("subscription = %#v, want unconfirmed user@example.com owner/repo", got)
@@ -56,12 +50,9 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 			CreatedAt:        createdAt,
 		})
 
-		result, err := repos.token.Subscribe(ctx, "user@example.com", "owner/repo", "new-confirm-token", "new-unsub-token")
+		err := repos.token.Subscribe(ctx, "user@example.com", "owner/repo", "new-confirm-token", "new-unsub-token")
 		if err != nil {
 			t.Fatalf("Subscribe returned error: %v", err)
-		}
-		if result.SubscriptionID != id || result.Action != subscriptions.SubscribeActionConfirmationRefreshed {
-			t.Fatalf("Subscribe result = %+v, want refreshed id %q", result, id)
 		}
 
 		var count int
@@ -98,7 +89,7 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 			CreatedAt:        createdAt,
 		})
 
-		_, err := repos.token.Subscribe(ctx, "user@example.com", "owner/repo", "new-confirm-token", "new-unsub-token")
+		err := repos.token.Subscribe(ctx, "user@example.com", "owner/repo", "new-confirm-token", "new-unsub-token")
 		if !errors.Is(err, subscriptions.ErrAlreadySubscribed) {
 			t.Fatalf("Subscribe error = %v, want ErrAlreadySubscribed", err)
 		}
@@ -137,7 +128,7 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 			UnsubscribeToken: "existing-unsub-token",
 		})
 
-		_, err := repos.token.Subscribe(
+		err := repos.token.Subscribe(
 			ctx,
 			"new@example.com",
 			"owner/new",
@@ -166,7 +157,7 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 			UnsubscribeToken: "duplicate-unsub-token",
 		})
 
-		_, err := repos.token.Subscribe(
+		err := repos.token.Subscribe(
 			ctx,
 			"new@example.com",
 			"owner/new",
@@ -203,7 +194,7 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 			UnsubscribeToken: "other-unsub-token",
 		})
 
-		_, err := repos.token.Subscribe(
+		err := repos.token.Subscribe(
 			ctx,
 			"user@example.com",
 			"owner/repo",
@@ -244,14 +235,13 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				_, err := repos.token.Subscribe(
+				errs <- repos.token.Subscribe(
 					ctx,
 					"concurrent@example.com",
 					"owner/repo",
 					fmt.Sprintf("confirm-token-%d", i),
 					fmt.Sprintf("unsub-token-%d", i),
 				)
-				errs <- err
 			}(i)
 		}
 		wg.Wait()

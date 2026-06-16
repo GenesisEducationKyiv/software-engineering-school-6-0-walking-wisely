@@ -3,15 +3,12 @@ package middleware
 
 import (
 	"net/http"
-	"regexp"
 	"time"
 )
 
 type Logger interface {
 	Info(msg string, args ...any)
 }
-
-var tokenLinkRouteRe = regexp.MustCompile(`/api/(confirm|unsubscribe)/[^/]+`)
 
 // statusRecorder wraps http.ResponseWriter to capture the written status code.
 type statusRecorder struct {
@@ -35,13 +32,9 @@ func Logging(h http.Handler, log Logger) http.Handler {
 		log.Info(
 			"http request", // #nosec G706 -- values are sanitized to strip control characters.
 			"method", sanitizeLogValue(r.Method),
-			"path", sanitizeLogValue(normalizeLogPath(r.URL.Path)),
+			"path", sanitizeLogValue(r.URL.Path),
 			"status", rec.status,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
 	})
-}
-
-func normalizeLogPath(path string) string {
-	return tokenLinkRouteRe.ReplaceAllString(path, "/api/$1/{token}")
 }

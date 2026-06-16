@@ -15,7 +15,7 @@ var repoPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`)
 
 // SubscriptionWriter persists token-mediated subscription lifecycle changes.
 type SubscriptionWriter interface {
-	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) (subscriptions.SubscribeResult, error)
+	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) error
 }
 
 // GithubRepoValidator validates that a requested repository exists.
@@ -59,43 +59,41 @@ func NewSubscribeService(deps *SubscribeDeps) *SubscribeService {
 
 // Subscribe validates the command, verifies the repo, persists the subscription,
 // and requests a confirmation email.
-func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) (subscriptions.SubscribeResult, error) {
+func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) error {
 	email := NormalizeEmail(cmd.Email)
 	repo := NormalizeRepo(cmd.Repo)
 
 	if !IsValidEmail(email) {
-		return subscriptions.SubscribeResult{}, subscriptions.ErrInvalidEmail
+		return subscriptions.ErrInvalidEmail
 	}
 
 	if !IsValidRepo(repo) {
-		return subscriptions.SubscribeResult{}, subscriptions.ErrInvalidRepo
+		return subscriptions.ErrInvalidRepo
 	}
 
 	if err := s.github.ValidateRepo(ctx, repo); err != nil {
-		return subscriptions.SubscribeResult{}, err
+		return err
 	}
 
 	confirmToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
-		return subscriptions.SubscribeResult{}, fmt.Errorf("generate confirm token: %w", err)
+		return fmt.Errorf("generate confirm token: %w", err)
 	}
 	unsubToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
-		return subscriptions.SubscribeResult{}, fmt.Errorf("generate unsub token: %w", err)
+		return fmt.Errorf("generate unsub token: %w", err)
 	}
 
-	result, err := s.repo.Subscribe(ctx, email, repo, confirmToken, unsubToken)
-	if err != nil {
-		return subscriptions.SubscribeResult{}, err
+	if err := s.repo.Subscribe(ctx, email, repo, confirmToken, unsubToken); err != nil {
+		return err
 	}
 
-	s.notifier.NotifyConfirmation(&Confirmation{
-		SubscriptionID: result.SubscriptionID,
-		Email:          email,
-		Repo:           repo,
-		ConfirmToken:   confirmToken,
-		UnsubToken:     unsubToken,
+	s.notifier.NotifyConfirmation(Confirmation{
+		Email:        email,
+		Repo:         repo,
+		ConfirmToken: confirmToken,
+		UnsubToken:   unsubToken,
 	})
 
-	return result, nil
+	return nil
 }

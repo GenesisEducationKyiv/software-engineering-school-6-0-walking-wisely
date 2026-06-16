@@ -18,7 +18,6 @@ const (
 
 type fakeSubscriptionRepo struct {
 	subscribeErr error
-	result       subscriptions.SubscribeResult
 	calls        int
 	ctx          context.Context
 	email        string
@@ -27,23 +26,14 @@ type fakeSubscriptionRepo struct {
 	unsubToken   string
 }
 
-func (f *fakeSubscriptionRepo) Subscribe(
-	ctx context.Context,
-	email, repo, confirmToken, unsubToken string,
-) (subscriptions.SubscribeResult, error) {
+func (f *fakeSubscriptionRepo) Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) error {
 	f.calls++
 	f.ctx = ctx
 	f.email = email
 	f.repo = repo
 	f.confirmToken = confirmToken
 	f.unsubToken = unsubToken
-	if f.result.SubscriptionID == "" {
-		f.result = subscriptions.SubscribeResult{
-			SubscriptionID: "sub-1",
-			Action:         subscriptions.SubscribeActionCreated,
-		}
-	}
-	return f.result, f.subscribeErr
+	return f.subscribeErr
 }
 
 type fakeGithubClient struct {
@@ -81,15 +71,12 @@ func TestSubscribe(t *testing.T) {
 	svc := newSubscribeService(gh, repo, ch)
 	ctx := context.WithValue(context.Background(), testContextKey{}, "request-123")
 
-	result, err := svc.Subscribe(ctx, SubscribeCommand{
+	err := svc.Subscribe(ctx, SubscribeCommand{
 		Email: "  User@Example.COM  ",
 		Repo:  "  owner/repo  ",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.SubscriptionID != "sub-1" || result.Action != subscriptions.SubscribeActionCreated {
-		t.Fatalf("result = %+v, want created sub-1", result)
 	}
 
 	if gh.calls != 1 {
@@ -166,7 +153,7 @@ func TestSubscribe_EmailValidation(t *testing.T) {
 			gh := &fakeGithubClient{}
 			svc := newSubscribeService(gh, repo, ch)
 
-			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
+			err := svc.Subscribe(context.Background(), SubscribeCommand{
 				Email: tc.email,
 				Repo:  validRepo,
 			})
@@ -213,7 +200,7 @@ func TestSubscribe_RepoValidation(t *testing.T) {
 			gh := &fakeGithubClient{}
 			svc := newSubscribeService(gh, repo, ch)
 
-			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
+			err := svc.Subscribe(context.Background(), SubscribeCommand{
 				Email: validEmail,
 				Repo:  tc.repo,
 			})
@@ -253,7 +240,7 @@ func TestSubscribe_GitHubErrors(t *testing.T) {
 			gh := &fakeGithubClient{validateRepoErr: tc.githubErr}
 			svc := newSubscribeService(gh, repo, ch)
 
-			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
+			err := svc.Subscribe(context.Background(), SubscribeCommand{
 				Email: validEmail,
 				Repo:  validRepo,
 			})
@@ -290,7 +277,7 @@ func TestSubscribe_TokenRepoErrors(t *testing.T) {
 			gh := &fakeGithubClient{}
 			svc := newSubscribeService(gh, repo, ch)
 
-			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
+			err := svc.Subscribe(context.Background(), SubscribeCommand{
 				Email: validEmail,
 				Repo:  validRepo,
 			})
@@ -327,7 +314,7 @@ func TestSubscribe_EmailChannel(t *testing.T) {
 			repo := &fakeSubscriptionRepo{}
 			svc := newSubscribeService(&fakeGithubClient{}, repo, ch)
 
-			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
+			err := svc.Subscribe(context.Background(), SubscribeCommand{
 				Email: validEmail,
 				Repo:  validRepo,
 			})

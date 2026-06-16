@@ -17,10 +17,10 @@ import (
 func (r *TokenRepo) Subscribe(
 	ctx context.Context,
 	email, repo, confirmToken, unsubToken string,
-) (result subscriptions.SubscribeResult, err error) {
+) (err error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return subscriptions.SubscribeResult{}, fmt.Errorf("begin tx: %w", err)
+		return fmt.Errorf("begin tx: %w", err)
 	}
 
 	defer func() {
@@ -42,7 +42,7 @@ func (r *TokenRepo) Subscribe(
 
 	switch {
 	case err == nil && confirmed:
-		return subscriptions.SubscribeResult{}, subscriptions.ErrAlreadySubscribed
+		return subscriptions.ErrAlreadySubscribed
 
 	case err == nil && !confirmed:
 		// Unconfirmed - refresh the confirm token so the new email works.
@@ -51,37 +51,24 @@ func (r *TokenRepo) Subscribe(
 			`UPDATE subscriptions SET confirm_token=$1, updated_at=NOW() WHERE id=$2`,
 			confirmToken, id,
 		); err != nil {
-			return subscriptions.SubscribeResult{}, fmt.Errorf("refresh confirm token: %w", err)
-		}
-		result = subscriptions.SubscribeResult{
-			SubscriptionID: id,
-			Action:         subscriptions.SubscribeActionConfirmationRefreshed,
+			return fmt.Errorf("refresh confirm token: %w", err)
 		}
 
 	case errors.Is(err, pgx.ErrNoRows):
-		err = tx.QueryRow(
+		if _, err = tx.Exec(
 			ctx,
 			`INSERT INTO subscriptions (email, repo, confirm_token, unsubscribe_token)
-			 VALUES ($1, $2, $3, $4)
-			 RETURNING id`,
+			 VALUES ($1, $2, $3, $4)`,
 			email, repo, confirmToken, unsubToken,
-		).Scan(&id)
-		if err != nil {
-			return subscriptions.SubscribeResult{}, fmt.Errorf("insert subscription: %w", err)
-		}
-		result = subscriptions.SubscribeResult{
-			SubscriptionID: id,
-			Action:         subscriptions.SubscribeActionCreated,
+		); err != nil {
+			return fmt.Errorf("insert subscription: %w", err)
 		}
 
 	default:
-		return subscriptions.SubscribeResult{}, fmt.Errorf("lock subscription row: %w", err)
+		return fmt.Errorf("lock subscription row: %w", err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return subscriptions.SubscribeResult{}, err
-	}
-	return result, nil
+	return tx.Commit(ctx)
 }
 
 // ConfirmByToken marks a subscription as confirmed using the token from the

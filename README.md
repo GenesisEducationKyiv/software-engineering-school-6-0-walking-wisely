@@ -21,8 +21,7 @@ Built for **Software Engineering School 6.0** (Genesis Academy).
 | **Extra:** HTML subscription page at `/` | Done |
 | **Extra:** gRPC interface (gRPC-Gateway bridges to REST) | Done |
 | **Extra:** Redis caching of GitHub API responses (TTL 10 min) | Done |
-| **Extra:** RED metrics exported at `/metrics` and scraped by Prometheus | Done |
-| **Extra:** Structured JSON logs shipped to Elasticsearch + Kibana | Done |
+| **Extra:** Prometheus metrics at `/metrics` | Done |
 | **Extra:** GitHub Actions CI (lint + tests on every push/PR) | Done |
 
 ---
@@ -103,12 +102,6 @@ The full machine-readable contract is at `/swagger.json` when the server is runn
 
 ### Prometheus metrics
 
-The application exposes metrics in Prometheus format at `/metrics`. In Docker Compose, the metrics pipeline is:
-
-```
-Go OpenTelemetry metrics -> /metrics endpoint -> Prometheus
-```
-
 | Metric | Type | Labels | Description |
 |---|---|---|---|
 | `http_requests_total` | Counter | `method`, `path`, `status` | Total HTTP requests handled |
@@ -116,20 +109,6 @@ Go OpenTelemetry metrics -> /metrics endpoint -> Prometheus
 | `email_channel_depth` | Gauge | — | Number of pending emails currently buffered in the send queue |
 
 `email_channel_depth` is the primary operational signal for the sender pipeline — a value consistently near `EMAIL_CHANNEL_SIZE` means the sender cannot keep up with the scanner and notifications may start being dropped.
-
-Prometheus is exposed at `http://localhost:9091` in Compose because `9090` is already used by the gRPC server.
-
-### Structured logs
-
-The API writes structured JSON logs to stdout through the `internal/platform/logger.Logger` interface. Production containers labeled with `co.elastic.logs/enabled=true` are collected by Filebeat and shipped to Elasticsearch into daily indices named `ses2026-case-logs-*`; Kibana is exposed on `http://localhost:5601`.
-
-The log pipeline is:
-
-```
-Go slog JSON stdout -> Docker container logs -> Filebeat -> Elasticsearch -> Kibana
-```
-
-Useful Kibana data view: `ses2026-case-logs-*`, timestamp field `@timestamp`.
 
 ### Error responses
 
@@ -161,7 +140,6 @@ docker compose up --build
 ```
 
 The REST API is available at `http://localhost:8080` and the gRPC server at `localhost:9090`.
-Kibana is available at `http://localhost:5601` and Prometheus at `http://localhost:9091`.
 
 ---
 
@@ -216,9 +194,6 @@ All configuration is done through environment variables. See `.env.example` for 
 | `EMAIL_SECRET_KEY` | — | HMAC secret for token generation (required) |
 | `BASE_URL` | — | Public URL used in email links, e.g. `https://your-domain.com` (required) |
 | `GITHUB_TOKEN` | _(empty)_ | Personal access token — raises rate limit from 60 to 5 000 req/h |
-| `LOG_LEVEL` | `info` | Structured log level: `debug`, `info`, `warn`, or `error` |
-| `SERVICE_NAME` | `github-release-notifier` | Service name attached to every log entry |
-| `ENVIRONMENT` | `local` | Deployment environment attached to every log entry |
 | `SCANNER_INTERVAL` | `5m` | How often to check repos for new releases |
 | `RESEND_MAX_WAIT` | `200ms` | Max time to buffer emails before flushing a batch |
 | `EMAIL_CHANNEL_SIZE` | `1000` | Buffered channel size between scanner and sender |
@@ -268,5 +243,5 @@ gen/subscription/v1/  — generated gRPC + HTTP gateway code (do not edit by han
 - **Migrations:** `golang-migrate/migrate`
 - **Cache:** Redis 8 via `go-redis/v9`
 - **Email:** [Resend](https://resend.com) batch API
-- **Metrics:** OpenTelemetry + Prometheus (`prometheus/client_golang`)
+- **Metrics:** Prometheus (`prometheus/client_golang`)
 - **Container:** Docker multi-stage build (buf → Go builder → Alpine runtime)

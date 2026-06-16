@@ -18,18 +18,14 @@ func (s *SubscriptionService) Subscribe(
 	ctx context.Context,
 	req *pb.SubscribeRequest,
 ) (*pb.SubscribeResponse, error) {
-	result, err := s.subscribeUseCase.Subscribe(ctx, subscriptionapp.SubscribeCommand{
+	if err := s.subscribeUseCase.Subscribe(ctx, subscriptionapp.SubscribeCommand{
 		Email: req.Email,
 		Repo:  req.Repo,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, s.mapSubscribeError(ctx, req.Repo, err)
 	}
 
-	s.log.Info("subscribe: completed",
-		"subscription_id", result.SubscriptionID,
-		"repo", subscriptionapp.NormalizeRepo(req.Repo),
-		"action", result.Action)
+	s.log.Info("subscribe: subscription created", "repo", subscriptionapp.NormalizeRepo(req.Repo))
 	return &pb.SubscribeResponse{}, nil
 }
 
