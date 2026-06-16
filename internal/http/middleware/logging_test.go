@@ -92,3 +92,43 @@ func TestLoggingDifferentStatusCode(t *testing.T) {
 		t.Errorf("expected method 'POST', got %v", logCall["method"])
 	}
 }
+
+func TestLoggingNormalizesTokenLinkPaths(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "confirm",
+			path: "/api/confirm/35b2df3a91df30ec2772968aa9cbd50faa6905d3c9c79ba01faca5c2caafef99",
+			want: "/api/confirm/{token}",
+		},
+		{
+			name: "unsubscribe",
+			path: "/api/unsubscribe/35b2df3a91df30ec2772968aa9cbd50faa6905d3c9c79ba01faca5c2caafef99",
+			want: "/api/unsubscribe/{token}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := &MockLogger{}
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			loggingHandler := middleware.Logging(handler, mockLogger)
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, http.NoBody)
+			rec := httptest.NewRecorder()
+
+			loggingHandler.ServeHTTP(rec, req)
+
+			logCall := mockLogger.calls[0]
+			if logCall["path"] != tt.want {
+				t.Errorf("expected normalized token link path %q, got %v", tt.want, logCall["path"])
+			}
+		})
+	}
+}
