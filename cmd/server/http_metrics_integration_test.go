@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,8 +37,16 @@ func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new metrics recorder: %v", err)
 	}
-	if err := recorder.RegisterEmailChannelDepth(func() int { return 3 }); err != nil {
-		t.Fatalf("register email channel depth: %v", err)
+	if err := recorder.RegisterOutboxMetrics(func(context.Context) (int64, float64, int64, int64, error) {
+		return 3, 12, 1, 0, nil
+	}); err != nil {
+		t.Fatalf("register outbox metrics: %v", err)
+	}
+	if err := recorder.RegisterGitHubAvailability(func() bool { return true }); err != nil {
+		t.Fatalf("register github availability: %v", err)
+	}
+	if err := recorder.RegisterGitHubRateLimitRemaining(func() int { return 42 }); err != nil {
+		t.Fatalf("register github rate limit remaining: %v", err)
 	}
 
 	gwMux := newGatewayMux()
@@ -86,10 +95,22 @@ func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 		t.Fatalf("expected duration histogram sample count 1, got %d", got)
 	}
 
-	emailDepth := findMetricFamily(t, metrics, "email_channel_depth")
-	emailDepthMetric := findMetricWithLabels(t, emailDepth, map[string]string{})
-	if got := emailDepthMetric.GetGauge().GetValue(); got != 3 {
-		t.Fatalf("expected email channel depth 3, got %f", got)
+	outboxPending := findMetricFamily(t, metrics, "outbox_pending_count")
+	outboxPendingMetric := findMetricWithLabels(t, outboxPending, map[string]string{})
+	if got := outboxPendingMetric.GetGauge().GetValue(); got != 3 {
+		t.Fatalf("expected outbox pending count 3, got %f", got)
+	}
+
+	githubAvailable := findMetricFamily(t, metrics, "github_available")
+	githubAvailableMetric := findMetricWithLabels(t, githubAvailable, map[string]string{})
+	if got := githubAvailableMetric.GetGauge().GetValue(); got != 1 {
+		t.Fatalf("expected github availability 1, got %f", got)
+	}
+
+	githubRateLimit := findMetricFamily(t, metrics, "github_rate_limit_remaining")
+	githubRateLimitMetric := findMetricWithLabels(t, githubRateLimit, map[string]string{})
+	if got := githubRateLimitMetric.GetGauge().GetValue(); got != 42 {
+		t.Fatalf("expected github rate limit remaining 42, got %f", got)
 	}
 
 	if metricWithLabels(duration, map[string]string{"path": "/metrics"}) != nil {

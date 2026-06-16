@@ -48,11 +48,15 @@ type gatewayTestMetricsRecorder struct{}
 func (gatewayTestMetricsRecorder) RecordHTTPRequest(context.Context, string, string, int, time.Duration) {
 }
 
-func (gatewayTestMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
+func (gatewayTestMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
 	return nil
 }
 
-func (gatewayTestMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
+func (gatewayTestMetricsRecorder) RegisterGitHubAvailability(func() bool) error {
+	return nil
+}
+
+func (gatewayTestMetricsRecorder) RegisterGitHubRateLimitRemaining(func() int) error {
 	return nil
 }
 

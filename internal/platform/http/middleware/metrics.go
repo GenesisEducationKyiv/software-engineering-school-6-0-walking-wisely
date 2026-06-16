@@ -13,8 +13,9 @@ import (
 
 type MetricsRecorder interface {
 	RecordHTTPRequest(ctx context.Context, method, path string, status int, duration time.Duration)
-	RegisterEmailChannelDepth(depth func() int) error
 	RegisterOutboxMetrics(snapshot OutboxMetricsSnapshotFunc) error
+	RegisterGitHubAvailability(available func() bool) error
+	RegisterGitHubRateLimitRemaining(remaining func() int) error
 }
 
 type OutboxMetricsSnapshotFunc func(context.Context) (
@@ -55,27 +56,6 @@ func NewOpenTelemetryRecorder(meter metric.Meter) (*OpenTelemetryRecorder, error
 		httpRequestsTotal:   httpRequestsTotal,
 		httpRequestDuration: httpRequestDuration,
 	}, nil
-}
-
-func (r *OpenTelemetryRecorder) RegisterEmailChannelDepth(depth func() int) error {
-	gauge, err := r.meter.Int64ObservableGauge(
-		"email_channel_depth",
-		metric.WithDescription("Number of pending emails in the send queue."),
-		metric.WithUnit("{email}"),
-	)
-	if err != nil {
-		return fmt.Errorf("create email channel depth gauge: %w", err)
-	}
-
-	_, err = r.meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
-		observer.ObserveInt64(gauge, int64(depth()))
-		return nil
-	}, gauge)
-	if err != nil {
-		return fmt.Errorf("register email channel depth callback: %w", err)
-	}
-
-	return nil
 }
 
 func (r *OpenTelemetryRecorder) RegisterOutboxMetrics(
@@ -131,6 +111,52 @@ func (r *OpenTelemetryRecorder) RegisterOutboxMetrics(
 	}, pendingGauge, oldestAgeGauge, retryGauge, failedGauge)
 	if err != nil {
 		return fmt.Errorf("register outbox metrics callback: %w", err)
+	}
+
+	return nil
+}
+
+func (r *OpenTelemetryRecorder) RegisterGitHubAvailability(available func() bool) error {
+	gauge, err := r.meter.Int64ObservableGauge(
+		"github_available",
+		metric.WithDescription("Whether GitHub API is currently available to this service."),
+		metric.WithUnit("{state}"),
+	)
+	if err != nil {
+		return fmt.Errorf("create github availability gauge: %w", err)
+	}
+
+	_, err = r.meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
+		value := int64(0)
+		if available() {
+			value = 1
+		}
+		observer.ObserveInt64(gauge, value)
+		return nil
+	}, gauge)
+	if err != nil {
+		return fmt.Errorf("register github availability callback: %w", err)
+	}
+
+	return nil
+}
+
+func (r *OpenTelemetryRecorder) RegisterGitHubRateLimitRemaining(remaining func() int) error {
+	gauge, err := r.meter.Int64ObservableGauge(
+		"github_rate_limit_remaining",
+		metric.WithDescription("Remaining GitHub core API requests observed by the availability monitor."),
+		metric.WithUnit("{request}"),
+	)
+	if err != nil {
+		return fmt.Errorf("create github rate limit remaining gauge: %w", err)
+	}
+
+	_, err = r.meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
+		observer.ObserveInt64(gauge, int64(remaining()))
+		return nil
+	}, gauge)
+	if err != nil {
+		return fmt.Errorf("register github rate limit remaining callback: %w", err)
 	}
 
 	return nil

@@ -28,11 +28,15 @@ func (r *handlerMetricsRecorder) RecordHTTPRequest(_ context.Context, method, pa
 	})
 }
 
-func (r *handlerMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
+func (r *handlerMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
 	return nil
 }
 
-func (r *handlerMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
+func (r *handlerMetricsRecorder) RegisterGitHubAvailability(func() bool) error {
+	return nil
+}
+
+func (r *handlerMetricsRecorder) RegisterGitHubRateLimitRemaining(func() int) error {
 	return nil
 }
 

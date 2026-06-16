@@ -38,6 +38,12 @@ type rateLimitResponse struct {
 	Rate rateLimitResource `json:"rate"`
 }
 
+// Availability describes the current GitHub API state observed by this client.
+type Availability struct {
+	Authenticated bool
+	Remaining     int
+}
+
 // NewClient returns a GitHub API client. githubToken is optional but raises the
 // GitHub API rate limit from 60 to 5 000 requests per hour when provided.
 func NewClient(githubToken string, log logger.Logger) *Client {
@@ -99,32 +105,43 @@ func (c *Client) ValidateRepo(ctx context.Context, repo string) error {
 // CheckAvailability verifies that GitHub accepts the configured credentials and
 // that the current caller still has core API requests available.
 func (c *Client) CheckAvailability(ctx context.Context) error {
+	_, err := c.CheckAvailabilityStatus(ctx)
+	return err
+}
+
+// CheckAvailabilityStatus verifies GitHub availability and returns the observed
+// rate-limit state when GitHub provides it.
+func (c *Client) CheckAvailabilityStatus(ctx context.Context) (Availability, error) {
 	resp, err := c.get(ctx, "https://api.github.com/rate_limit")
 	if err != nil {
-		return fmt.Errorf("github availability check: %w", err)
+		return Availability{Authenticated: c.token != "", Remaining: -1}, fmt.Errorf("github availability check: %w", err)
 	}
 	defer c.closeBody(resp.Body)
 	switch resp.StatusCode {
 	case http.StatusOK:
 		limit, err := decodeRateLimit(resp.Body)
 		if err != nil {
-			return fmt.Errorf("github availability check: %w", err)
+			return Availability{Authenticated: c.token != "", Remaining: -1}, fmt.Errorf("github availability check: %w", err)
+		}
+		status := Availability{
+			Authenticated: c.token != "",
+			Remaining:     limit.Remaining,
 		}
 		if limit.Remaining <= 0 {
 			retryAfter := retryAfterFromUnix(limit.Reset)
 			c.log.Warn("github API unavailable due to rate limit", "retry_after", retryAfter)
-			return &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
+			return status, &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
 		}
 		c.log.Info("github API availability checked", "authenticated", c.token != "", "remaining", limit.Remaining)
-		return nil
+		return status, nil
 	case http.StatusUnauthorized:
-		return fmt.Errorf("github token is invalid or unauthorized")
+		return Availability{Authenticated: c.token != "", Remaining: -1}, fmt.Errorf("github token is invalid or unauthorized")
 	case http.StatusTooManyRequests, http.StatusForbidden:
 		retryAfter := parseRetryAfter(resp)
 		c.log.Warn("github API unavailable due to rate limit", "retry_after", retryAfter)
-		return &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
+		return Availability{Authenticated: c.token != "", Remaining: 0}, &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
 	default:
-		return fmt.Errorf("github availability check: unexpected status %d", resp.StatusCode)
+		return Availability{Authenticated: c.token != "", Remaining: -1}, fmt.Errorf("github availability check: unexpected status %d", resp.StatusCode)
 	}
 }
 

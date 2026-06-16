@@ -36,11 +36,15 @@ func (f *fakeMetricsRecorder) RecordHTTPRequest(ctx context.Context, method, pat
 	})
 }
 
-func (f *fakeMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
+func (f *fakeMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
 	return nil
 }
 
-func (f *fakeMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
+func (f *fakeMetricsRecorder) RegisterGitHubAvailability(func() bool) error {
+	return nil
+}
+
+func (f *fakeMetricsRecorder) RegisterGitHubRateLimitRemaining(func() int) error {
 	return nil
 }
 
@@ -108,7 +112,7 @@ func TestMetricsRecordsOKWhenHandlerDoesNotWriteHeader(t *testing.T) {
 	}
 }
 
-func TestOpenTelemetryRecorderRecordsHTTPMetricsAndEmailDepth(t *testing.T) {
+func TestOpenTelemetryRecorderRecordsHTTPMetricsAndObservableGauges(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	recorder, err := middleware.NewOpenTelemetryRecorder(provider.Meter("middleware-test"))
@@ -116,9 +120,16 @@ func TestOpenTelemetryRecorderRecordsHTTPMetricsAndEmailDepth(t *testing.T) {
 		t.Fatalf("new OpenTelemetry recorder: %v", err)
 	}
 
-	depth := 7
-	if err := recorder.RegisterEmailChannelDepth(func() int { return depth }); err != nil {
-		t.Fatalf("register email channel depth: %v", err)
+	if err := recorder.RegisterOutboxMetrics(func(context.Context) (int64, float64, int64, int64, error) {
+		return 7, 11.5, 2, 1, nil
+	}); err != nil {
+		t.Fatalf("register outbox metrics: %v", err)
+	}
+	if err := recorder.RegisterGitHubAvailability(func() bool { return true }); err != nil {
+		t.Fatalf("register github availability: %v", err)
+	}
+	if err := recorder.RegisterGitHubRateLimitRemaining(func() int { return 42 }); err != nil {
+		t.Fatalf("register github rate limit remaining: %v", err)
 	}
 
 	recorder.RecordHTTPRequest(context.Background(), http.MethodPatch, "/subscriptions/123", http.StatusAccepted, 1500*time.Millisecond)
@@ -175,20 +186,79 @@ func TestOpenTelemetryRecorderRecordsHTTPMetricsAndEmailDepth(t *testing.T) {
 	assertAttribute(t, duration.DataPoints[0].Attributes, "path", "/subscriptions/123")
 	assertAttribute(t, duration.DataPoints[0].Attributes, "status", "202")
 
-	emailDepthMetric := findMetric(t, metrics, "email_channel_depth")
-	if emailDepthMetric.Unit != "{email}" {
-		t.Errorf("unexpected gauge unit: %q", emailDepthMetric.Unit)
+	outboxPendingMetric := findMetric(t, metrics, "outbox_pending_count")
+	if outboxPendingMetric.Unit != "{event}" {
+		t.Errorf("unexpected outbox pending gauge unit: %q", outboxPendingMetric.Unit)
 	}
 
-	emailDepth, ok := emailDepthMetric.Data.(metricdata.Gauge[int64])
+	outboxPending, ok := outboxPendingMetric.Data.(metricdata.Gauge[int64])
 	if !ok {
-		t.Fatalf("expected email_channel_depth to be an int64 gauge, got %T", emailDepthMetric.Data)
+		t.Fatalf("expected outbox_pending_count to be an int64 gauge, got %T", outboxPendingMetric.Data)
 	}
-	if len(emailDepth.DataPoints) != 1 {
-		t.Fatalf("expected 1 gauge data point, got %d", len(emailDepth.DataPoints))
+	if len(outboxPending.DataPoints) != 1 {
+		t.Fatalf("expected 1 gauge data point, got %d", len(outboxPending.DataPoints))
 	}
-	if emailDepth.DataPoints[0].Value != int64(depth) {
-		t.Errorf("expected gauge value %d, got %d", depth, emailDepth.DataPoints[0].Value)
+	if outboxPending.DataPoints[0].Value != 7 {
+		t.Errorf("expected outbox pending value 7, got %d", outboxPending.DataPoints[0].Value)
+	}
+
+	outboxOldestMetric := findMetric(t, metrics, "outbox_oldest_pending_age_seconds")
+	outboxOldest, ok := outboxOldestMetric.Data.(metricdata.Gauge[float64])
+	if !ok {
+		t.Fatalf("expected outbox_oldest_pending_age_seconds to be a float64 gauge, got %T", outboxOldestMetric.Data)
+	}
+	if len(outboxOldest.DataPoints) != 1 || outboxOldest.DataPoints[0].Value != 11.5 {
+		t.Fatalf("unexpected outbox oldest age datapoints: %#v", outboxOldest.DataPoints)
+	}
+
+	outboxRetryMetric := findMetric(t, metrics, "outbox_retry_count")
+	outboxRetry, ok := outboxRetryMetric.Data.(metricdata.Gauge[int64])
+	if !ok {
+		t.Fatalf("expected outbox_retry_count to be an int64 gauge, got %T", outboxRetryMetric.Data)
+	}
+	if len(outboxRetry.DataPoints) != 1 || outboxRetry.DataPoints[0].Value != 2 {
+		t.Fatalf("unexpected outbox retry datapoints: %#v", outboxRetry.DataPoints)
+	}
+
+	outboxFailedMetric := findMetric(t, metrics, "outbox_failed_count")
+	outboxFailed, ok := outboxFailedMetric.Data.(metricdata.Gauge[int64])
+	if !ok {
+		t.Fatalf("expected outbox_failed_count to be an int64 gauge, got %T", outboxFailedMetric.Data)
+	}
+	if len(outboxFailed.DataPoints) != 1 || outboxFailed.DataPoints[0].Value != 1 {
+		t.Fatalf("unexpected outbox failed datapoints: %#v", outboxFailed.DataPoints)
+	}
+
+	githubAvailableMetric := findMetric(t, metrics, "github_available")
+	if githubAvailableMetric.Unit != "{state}" {
+		t.Errorf("unexpected github availability gauge unit: %q", githubAvailableMetric.Unit)
+	}
+
+	githubAvailable, ok := githubAvailableMetric.Data.(metricdata.Gauge[int64])
+	if !ok {
+		t.Fatalf("expected github_available to be an int64 gauge, got %T", githubAvailableMetric.Data)
+	}
+	if len(githubAvailable.DataPoints) != 1 {
+		t.Fatalf("expected 1 github availability gauge data point, got %d", len(githubAvailable.DataPoints))
+	}
+	if githubAvailable.DataPoints[0].Value != 1 {
+		t.Errorf("expected github availability value 1, got %d", githubAvailable.DataPoints[0].Value)
+	}
+
+	githubRateLimitMetric := findMetric(t, metrics, "github_rate_limit_remaining")
+	if githubRateLimitMetric.Unit != "{request}" {
+		t.Errorf("unexpected github rate limit gauge unit: %q", githubRateLimitMetric.Unit)
+	}
+
+	githubRateLimit, ok := githubRateLimitMetric.Data.(metricdata.Gauge[int64])
+	if !ok {
+		t.Fatalf("expected github_rate_limit_remaining to be an int64 gauge, got %T", githubRateLimitMetric.Data)
+	}
+	if len(githubRateLimit.DataPoints) != 1 {
+		t.Fatalf("expected 1 github rate limit gauge data point, got %d", len(githubRateLimit.DataPoints))
+	}
+	if githubRateLimit.DataPoints[0].Value != 42 {
+		t.Errorf("expected github rate limit value 42, got %d", githubRateLimit.DataPoints[0].Value)
 	}
 }
 

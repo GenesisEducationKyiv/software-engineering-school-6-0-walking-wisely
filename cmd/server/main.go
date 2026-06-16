@@ -111,11 +111,10 @@ func run(appLogger platformlogger.Logger) error {
 	outboxRepo := outbox.NewRepository(db)
 	outboxPublisher := outbox.NewPublisher(outboxRepo)
 	githubClient := github.NewClient(cfg.GithubToken, appLogger)
+	githubAvailability := github.NewAvailabilityState()
 	checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer checkCancel()
-	if err := githubClient.CheckAvailability(checkCtx); err != nil {
-		appLogger.Warn("github availability check failed", "err", err)
-	}
+	github.UpdateAvailability(checkCtx, githubClient, githubAvailability, appLogger)
+	checkCancel()
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 
@@ -132,6 +131,12 @@ func run(appLogger platformlogger.Logger) error {
 		return snapshot.PendingCount, snapshot.OldestPendingAge, snapshot.RetryCount, snapshot.FailedCount, nil
 	}); err != nil {
 		return fmt.Errorf("register outbox metrics: %w", err)
+	}
+	if err := metricsRecorder.RegisterGitHubAvailability(githubAvailability.Available); err != nil {
+		return fmt.Errorf("register github availability metric: %w", err)
+	}
+	if err := metricsRecorder.RegisterGitHubRateLimitRemaining(githubAvailability.RateLimitRemaining); err != nil {
+		return fmt.Errorf("register github rate limit remaining metric: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -151,6 +156,18 @@ func run(appLogger platformlogger.Logger) error {
 	go func() {
 		defer wg.Done()
 		releasemonitoringworker.StartScanner(ctx, scannerService, cfg.ScannerInterval, appLogger)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		github.StartAvailabilityMonitor(
+			ctx,
+			githubClient,
+			githubAvailability,
+			appLogger,
+			github.DefaultAvailabilityCheckInterval,
+		)
 	}()
 
 	wg.Add(1)

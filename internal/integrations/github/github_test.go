@@ -300,6 +300,25 @@ func TestClient_CheckAvailability_ValidToken(t *testing.T) {
 	}
 }
 
+func TestClient_CheckAvailabilityStatus_ReturnsObservedState(t *testing.T) {
+	t.Parallel()
+
+	client, _ := newTestClient(t, "valid-token", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `{"resources":{"core":{"remaining":123,"reset":4102444800}}}`)
+	}))
+
+	status, err := client.CheckAvailabilityStatus(context.Background())
+	if err != nil {
+		t.Fatalf("CheckAvailabilityStatus returned error: %v", err)
+	}
+	if !status.Authenticated {
+		t.Fatalf("Authenticated = false, want true")
+	}
+	if status.Remaining != 123 {
+		t.Fatalf("Remaining = %d, want 123", status.Remaining)
+	}
+}
+
 func TestClient_CheckAvailability_InvalidToken(t *testing.T) {
 	t.Parallel()
 
@@ -321,10 +340,13 @@ func TestClient_CheckAvailability_ZeroRemainingMapsToRateLimit(t *testing.T) {
 		_, _ = fmt.Fprintf(w, `{"resources":{"core":{"remaining":0,"reset":%d}}}`, resetAt.Unix())
 	}))
 
-	err := client.CheckAvailability(context.Background())
+	status, err := client.CheckAvailabilityStatus(context.Background())
 	var rateLimitErr *subscriptions.RateLimitError
 	if !errors.As(err, &rateLimitErr) {
 		t.Fatalf("error = %v, want RateLimitError", err)
+	}
+	if status.Remaining != 0 {
+		t.Fatalf("Remaining = %d, want 0", status.Remaining)
 	}
 	if rateLimitErr.RetryAfter <= 0 {
 		t.Fatalf("RetryAfter = %s, want positive duration", rateLimitErr.RetryAfter)
