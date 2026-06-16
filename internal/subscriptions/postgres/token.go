@@ -17,10 +17,10 @@ import (
 func (r *TokenRepo) Subscribe(
 	ctx context.Context,
 	email, repo, confirmToken, unsubToken string,
-) (err error) {
+) (result subscriptions.SubscribeResult, err error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return subscriptions.SubscribeResult{}, fmt.Errorf("begin tx: %w", err)
 	}
 
 	defer func() {
@@ -42,7 +42,7 @@ func (r *TokenRepo) Subscribe(
 
 	switch {
 	case err == nil && confirmed:
-		return subscriptions.ErrAlreadySubscribed
+		return subscriptions.SubscribeResult{}, subscriptions.ErrAlreadySubscribed
 
 	case err == nil && !confirmed:
 		// Unconfirmed - refresh the confirm token so the new email works.
@@ -51,24 +51,37 @@ func (r *TokenRepo) Subscribe(
 			`UPDATE subscriptions SET confirm_token=$1, updated_at=NOW() WHERE id=$2`,
 			confirmToken, id,
 		); err != nil {
-			return fmt.Errorf("refresh confirm token: %w", err)
+			return subscriptions.SubscribeResult{}, fmt.Errorf("refresh confirm token: %w", err)
+		}
+		result = subscriptions.SubscribeResult{
+			SubscriptionID: id,
+			Action:         subscriptions.SubscribeActionConfirmationRefreshed,
 		}
 
 	case errors.Is(err, pgx.ErrNoRows):
-		if _, err = tx.Exec(
+		err = tx.QueryRow(
 			ctx,
 			`INSERT INTO subscriptions (email, repo, confirm_token, unsubscribe_token)
-			 VALUES ($1, $2, $3, $4)`,
+			 VALUES ($1, $2, $3, $4)
+			 RETURNING id`,
 			email, repo, confirmToken, unsubToken,
-		); err != nil {
-			return fmt.Errorf("insert subscription: %w", err)
+		).Scan(&id)
+		if err != nil {
+			return subscriptions.SubscribeResult{}, fmt.Errorf("insert subscription: %w", err)
+		}
+		result = subscriptions.SubscribeResult{
+			SubscriptionID: id,
+			Action:         subscriptions.SubscribeActionCreated,
 		}
 
 	default:
-		return fmt.Errorf("lock subscription row: %w", err)
+		return subscriptions.SubscribeResult{}, fmt.Errorf("lock subscription row: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return subscriptions.SubscribeResult{}, err
+	}
+	return result, nil
 }
 
 // ConfirmByToken marks a subscription as confirmed using the token from the

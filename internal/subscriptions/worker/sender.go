@@ -98,6 +98,8 @@ func flushBuffer(
 	for _, chunk := range chunkMessages(buf, batchSize) {
 		if err := sender.SendBatch(flushCtx, chunk); err != nil {
 			logSendError(log, err, len(chunk))
+		} else {
+			log.Info("sender: batch sent", "batch_size", len(chunk))
 		}
 	}
 

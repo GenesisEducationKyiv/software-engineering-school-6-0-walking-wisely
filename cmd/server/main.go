@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -41,9 +41,7 @@ import (
 var indexHTML []byte
 
 func main() {
-	appLogger := platformlogger.NewSlogAdapter(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	appLogger := platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{})
 
 	if err := run(appLogger); err != nil {
 		appLogger.Error("application startup failed", "err", err)
@@ -56,6 +54,11 @@ func run(appLogger platformlogger.Logger) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	appLogger = platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{
+		Level:       cfg.LogLevel,
+		ServiceName: cfg.ServiceName,
+		Environment: cfg.Environment,
+	})
 
 	meterProvider, err := platformmetrics.InitMeterProvider()
 	if err != nil {
@@ -100,6 +103,10 @@ func run(appLogger platformlogger.Logger) error {
 	subReadRepo := postgres.NewReadRepo(db, appLogger)
 	releaseScanRepo := postgres.NewReleaseScanRepo(db, appLogger)
 	githubClient := github.NewClient(cfg.GithubToken, appLogger)
+	githubAvailability := github.NewAvailabilityState()
+	checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	github.UpdateAvailability(checkCtx, githubClient, githubAvailability, appLogger)
+	checkCancel()
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, appLogger)
@@ -107,6 +114,12 @@ func run(appLogger platformlogger.Logger) error {
 	emailChan := make(chan mail.Message, cfg.EmailChannelSize)
 	if err := metricsRecorder.RegisterEmailChannelDepth(func() int { return len(emailChan) }); err != nil {
 		return fmt.Errorf("register email channel depth metric: %w", err)
+	}
+	if err := metricsRecorder.RegisterGitHubAvailability(githubAvailability.Available); err != nil {
+		return fmt.Errorf("register github availability metric: %w", err)
+	}
+	if err := metricsRecorder.RegisterGitHubRateLimitRemaining(githubAvailability.RateLimitRemaining); err != nil {
+		return fmt.Errorf("register github rate limit remaining metric: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -117,12 +130,25 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.StartScanner(ctx, worker.ScannerDeps{
-			Repo:      releaseScanRepo,
-			GitHub:    cachedGithubClient,
-			EmailChan: emailChan,
-			BaseURL:   cfg.BaseURL,
-			Log:       appLogger,
+		github.StartAvailabilityMonitor(
+			ctx,
+			githubClient,
+			githubAvailability,
+			appLogger,
+			github.DefaultAvailabilityCheckInterval,
+		)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		worker.StartScanner(ctx, &worker.ScannerDeps{
+			Repo:               releaseScanRepo,
+			GitHub:             cachedGithubClient,
+			GitHubAvailability: githubAvailability,
+			EmailChan:          emailChan,
+			BaseURL:            cfg.BaseURL,
+			Log:                appLogger,
 		}, cfg.ScannerInterval)
 	}()
 
@@ -156,7 +182,7 @@ func run(appLogger platformlogger.Logger) error {
 	go func() {
 		defer wg.Done()
 		appLogger.Info("gRPC server listening", "port", grpcPort)
-		if err := grpcServer.Serve(lis); err != nil {
+		if err := grpcServer.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			appLogger.Error("gRPC server error", "err", err)
 			cancel()
 		}

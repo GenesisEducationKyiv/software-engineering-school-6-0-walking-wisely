@@ -49,6 +49,14 @@ func (gatewayTestMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
 	return nil
 }
 
+func (gatewayTestMetricsRecorder) RegisterGitHubAvailability(func() bool) error {
+	return nil
+}
+
+func (gatewayTestMetricsRecorder) RegisterGitHubRateLimitRemaining(func() int) error {
+	return nil
+}
+
 func newGatewayTestDB(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	t.Helper()
 

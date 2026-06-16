@@ -10,15 +10,16 @@ import (
 
 // Confirmation is the data needed to notify a user about a pending subscription.
 type Confirmation struct {
-	Email        string
-	Repo         string
-	ConfirmToken string
-	UnsubToken   string
+	SubscriptionID string
+	Email          string
+	Repo           string
+	ConfirmToken   string
+	UnsubToken     string
 }
 
 // ConfirmationNotifier notifies users about pending subscription confirmations.
 type ConfirmationNotifier interface {
-	NotifyConfirmation(c Confirmation)
+	NotifyConfirmation(c *Confirmation)
 }
 
 // MailConfirmationNotifier turns confirmation requests into email messages.
@@ -38,15 +39,26 @@ func NewMailConfirmationNotifier(queue mail.Queue, baseURL string, log logger.Lo
 
 // NotifyConfirmation queues a confirmation email. A full queue preserves the
 // existing best-effort behavior: the subscription succeeds and the drop is logged.
-func (n *MailConfirmationNotifier) NotifyConfirmation(c Confirmation) {
+func (n *MailConfirmationNotifier) NotifyConfirmation(c *Confirmation) {
 	baseURL := strings.TrimRight(n.baseURL, "/")
 	confirmURL := fmt.Sprintf("%s/api/confirm/%s", baseURL, c.ConfirmToken)
 	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", baseURL, c.UnsubToken)
 
 	if ok := n.queue.Enqueue(buildConfirmEmail(c.Email, c.Repo, confirmURL, unsubURL)); !ok {
 		// Channel full - log with repo only, not email (PII).
-		n.log.Warn("subscribe: email channel full, confirmation email dropped", "repo", c.Repo)
+		n.log.Warn("subscribe: email channel full, confirmation email dropped",
+			confirmationLogArgs(c)...)
+		return
 	}
+	n.log.Info("subscribe: confirmation email enqueued", confirmationLogArgs(c)...)
+}
+
+func confirmationLogArgs(c *Confirmation) []any {
+	args := []any{"repo", c.Repo}
+	if c.SubscriptionID != "" {
+		args = append([]any{"subscription_id", c.SubscriptionID}, args...)
+	}
+	return args
 }
 
 func buildConfirmEmail(email, repo, confirmURL, unsubURL string) mail.Message {
