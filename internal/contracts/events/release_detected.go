@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
-	platformevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 )
 
 // Subscriber is the notification recipient payload shared with event consumers.
@@ -20,7 +19,7 @@ type Subscriber struct {
 
 // ReleaseDetected is emitted when a repo has a new release for at least one subscriber.
 type ReleaseDetected struct {
-	platformevents.Metadata
+	Metadata
 	Repo        string
 	Release     contracts.Release
 	Subscribers []Subscriber
@@ -43,7 +42,7 @@ func (e ReleaseDetected) AggregateID() string {
 
 func NewReleaseDetected(repo string, release contracts.Release, subscribers []Subscriber) ReleaseDetected {
 	return ReleaseDetected{
-		Metadata: platformevents.Metadata{
+		Metadata: Metadata{
 			ID:    uuid.NewString(),
 			At:    time.Now().UTC(),
 			V:     1,
@@ -53,8 +52,4 @@ func NewReleaseDetected(repo string, release contracts.Release, subscribers []Su
 		Release:     release,
 		Subscribers: subscribers,
 	}
-}
-
-func init() {
-	platformevents.RegisterType(ReleaseDetected{})
 }
