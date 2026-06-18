@@ -21,11 +21,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 )
@@ -111,8 +111,8 @@ func newGatewayTestServer(
 	tokenRepo := postgres.NewTokenRepo(db, platformlogger.NoopLogger{})
 	readRepo := postgres.NewReadRepo(db, platformlogger.NoopLogger{})
 	bus := events.NewBus()
-	bus.Subscribe(subscriptionapp.SubscriptionRequested{}.EventName(), func(_ context.Context, ev events.Event) error {
-		req, ok := ev.(subscriptionapp.SubscriptionRequested)
+	bus.Subscribe(subscriptionevents.SubscriptionRequested{}.EventName(), func(_ context.Context, ev events.Event) error {
+		req, ok := ev.(subscriptionevents.SubscriptionRequested)
 		if !ok {
 			return nil
 		}

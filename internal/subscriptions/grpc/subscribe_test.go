@@ -12,10 +12,11 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
+	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
-	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 )
 
@@ -31,10 +32,10 @@ func newService(
 	ch chan mail.Message,
 ) *subscriptiongrpc.SubscriptionService {
 	bus := events.NewBus()
-	bus.Subscribe(subscriptionapp.SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
-		requested, ok := event.(subscriptionapp.SubscriptionRequested)
+	bus.Subscribe(subscriptionevents.SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
+		requested, ok := event.(subscriptionevents.SubscriptionRequested)
 		if !ok {
-			return fmt.Errorf("event type = %T, want %T", event, subscriptionapp.SubscriptionRequested{})
+			return fmt.Errorf("event type = %T, want %T", event, subscriptionevents.SubscriptionRequested{})
 		}
 		select {
 		case ch <- mail.Message{To: requested.Email}:
@@ -64,7 +65,7 @@ func TestSubscribe_StatusMapping(t *testing.T) {
 	}{
 		{"invalid email", "notanemail", validRepo, nil, nil, codes.InvalidArgument},
 		{"invalid repo", validEmail, "owneronly", nil, nil, codes.InvalidArgument},
-		{"repo not found", validEmail, validRepo, subscriptions.ErrRepoNotFound, nil, codes.NotFound},
+		{"repo not found", validEmail, validRepo, contracts.ErrRepoNotFound, nil, codes.NotFound},
 		{"already subscribed", validEmail, validRepo, nil, subscriptions.ErrAlreadySubscribed, codes.AlreadyExists},
 		{"unexpected github error", validEmail, validRepo, errors.New("connection timeout"), nil, codes.Internal},
 		{"unexpected db error", validEmail, validRepo, nil, errors.New("connection reset by peer"), codes.Internal},
@@ -93,7 +94,7 @@ func TestSubscribe_RateLimit(t *testing.T) {
 	ch := make(chan mail.Message, 1)
 	repo := &fakeSubscriptionRepo{}
 	svc := newService(
-		&fakeGithubClient{validateRepoErr: &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: 30 * time.Second}},
+		&fakeGithubClient{validateRepoErr: &contracts.RateLimitError{Service: "GitHub", RetryAfter: 30 * time.Second}},
 		repo,
 		repo,
 		ch,

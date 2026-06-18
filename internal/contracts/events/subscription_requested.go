@@ -1,16 +1,16 @@
-package subscriptionapp
+package events
 
 import (
 	"time"
 
 	"github.com/google/uuid"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
+	platformevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 )
 
 // SubscriptionRequested is emitted after a watch request is persisted.
 type SubscriptionRequested struct {
-	events.Metadata
+	platformevents.Metadata
 	SubscriptionID string
 	Email          string
 	Repo           string
@@ -35,7 +35,7 @@ func (e SubscriptionRequested) AggregateID() string {
 
 func NewSubscriptionRequested(subscriptionID, email, repo, confirmToken, unsubToken string) SubscriptionRequested {
 	return SubscriptionRequested{
-		Metadata: events.Metadata{
+		Metadata: platformevents.Metadata{
 			ID:    uuid.NewString(),
 			At:    time.Now().UTC(),
 			V:     1,
@@ -50,5 +50,5 @@ func NewSubscriptionRequested(subscriptionID, email, repo, confirmToken, unsubTo
 }
 
 func init() {
-	events.RegisterType(SubscriptionRequested{})
+	platformevents.RegisterType(SubscriptionRequested{})
 }

@@ -37,8 +37,7 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 
 	// Register event types so the outbox decoder and stream consumer can decode them.
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
+	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 )
 
 // ── fake email sender ──────────────────────────────────────────────────────────

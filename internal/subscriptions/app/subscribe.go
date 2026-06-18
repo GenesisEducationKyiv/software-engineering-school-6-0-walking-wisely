@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 
+	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
@@ -101,7 +102,7 @@ func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) 
 		if s.publisher == nil {
 			return nil
 		}
-		if err := s.publisher.Publish(txCtx, NewSubscriptionRequested(
+		if err := s.publisher.Publish(txCtx, subscriptionevents.NewSubscriptionRequested(
 			result.SubscriptionID,
 			email,
 			repo,

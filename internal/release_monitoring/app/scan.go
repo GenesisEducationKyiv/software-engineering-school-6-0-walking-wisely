@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
+	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 type ReleaseScanRepo interface {
@@ -103,7 +104,7 @@ func (s *ScannerService) Scan(ctx context.Context) {
 func (s *ScannerService) scanRepo(ctx context.Context, repo string) (int, error) {
 	release, err := s.github.GetLatestRelease(ctx, repo)
 	if err != nil {
-		var rle *subscriptionsdomain.RateLimitError
+		var rle *contracts.RateLimitError
 		if ok := errors.As(err, &rle); ok {
 			s.log.Warn("scanner: github rate limited, skipping repo",
 				"repo", repo, "retry_after", rle.RetryAfter)
@@ -135,7 +136,15 @@ func (s *ScannerService) scanRepo(ctx context.Context, repo string) (int, error)
 		return 0, nil
 	}
 
-	event := releasemonitoringdomain.NewReleaseDetected(repo, *release, pending)
+	event := contractevents.NewReleaseDetected(
+		repo,
+		contractevents.Release{
+			TagName: release.TagName,
+			HTMLURL: release.HTMLURL,
+			Name:    release.Name,
+		},
+		releaseDetectedSubscribers(pending),
+	)
 
 	if s.txManager != nil {
 		if err := s.txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
@@ -166,4 +175,18 @@ func (s *ScannerService) scanRepo(ctx context.Context, repo string) (int, error)
 	}
 
 	return len(pending), nil
+}
+
+func releaseDetectedSubscribers(subscribers []releasemonitoringdomain.Subscriber) []contractevents.Subscriber {
+	result := make([]contractevents.Subscriber, 0, len(subscribers))
+	for _, subscriber := range subscribers {
+		result = append(result, contractevents.Subscriber{
+			SubscriptionID:   subscriber.SubscriptionID,
+			Email:            subscriber.Email,
+			Repo:             subscriber.Repo,
+			UnsubscribeToken: subscriber.UnsubscribeToken,
+			LastSeenTag:      subscriber.LastSeenTag,
+		})
+	}
+	return result
 }

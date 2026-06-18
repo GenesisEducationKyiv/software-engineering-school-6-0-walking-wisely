@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
+	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
@@ -74,10 +76,10 @@ func newSubscribeService(
 	ch chan mail.Message,
 ) *SubscribeService {
 	bus := events.NewBus()
-	bus.Subscribe(SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
-		requested, ok := event.(SubscriptionRequested)
+	bus.Subscribe(subscriptionevents.SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
+		requested, ok := event.(subscriptionevents.SubscriptionRequested)
 		if !ok {
-			return fmt.Errorf("event type = %T, want %T", event, SubscriptionRequested{})
+			return fmt.Errorf("event type = %T, want %T", event, subscriptionevents.SubscriptionRequested{})
 		}
 		select {
 		case ch <- mail.Message{
@@ -267,9 +269,9 @@ func TestSubscribe_GitHubErrors(t *testing.T) {
 		name      string
 		githubErr error
 	}{
-		{"repo not found", subscriptions.ErrRepoNotFound},
+		{"repo not found", contracts.ErrRepoNotFound},
 		{"unexpected error", errors.New("connection timeout")},
-		{"rate limited", &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: 30 * time.Second}},
+		{"rate limited", &contracts.RateLimitError{Service: "GitHub", RetryAfter: 30 * time.Second}},
 	}
 
 	for _, tc := range tests {

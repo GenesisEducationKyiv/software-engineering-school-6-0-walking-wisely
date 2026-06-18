@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
+	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 type fakeReleaseScanRepo struct {
@@ -196,7 +197,7 @@ func TestScanNotifiesSubscribersAndUpdatesLastSeenTag(t *testing.T) {
 		t.Fatalf("published events = %d, want 1", len(publisher.events))
 	}
 
-	event, ok := publisher.events[0].(releasemonitoringdomain.ReleaseDetected)
+	event, ok := publisher.events[0].(contractevents.ReleaseDetected)
 	if !ok {
 		t.Fatalf("published event type = %T, want ReleaseDetected", publisher.events[0])
 	}
@@ -308,7 +309,7 @@ func TestScanRepoReleaseClientErrorsSkipRepo(t *testing.T) {
 		err  error
 	}{
 		{name: "generic error", err: errors.New("github unavailable")},
-		{name: "rate limit error", err: &subscriptionsdomain.RateLimitError{Service: "GitHub", RetryAfter: time.Minute}},
+		{name: "rate limit error", err: &contracts.RateLimitError{Service: "GitHub", RetryAfter: time.Minute}},
 	}
 
 	for _, tc := range tests {

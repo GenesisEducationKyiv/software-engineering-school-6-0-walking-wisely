@@ -9,9 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
-	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
 func truncateAsyncDeliveryState(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
@@ -46,7 +45,7 @@ func assertOutboxCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ev
 	}
 }
 
-func loadSubscriptionRequestedEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool) subscriptionapp.SubscriptionRequested {
+func loadSubscriptionRequestedEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool) subscriptionevents.SubscriptionRequested {
 	t.Helper()
 
 	var payload []byte
@@ -54,14 +53,14 @@ func loadSubscriptionRequestedEvent(t *testing.T, ctx context.Context, pool *pgx
 		t.Fatalf("select subscription payload: %v", err)
 	}
 
-	var event subscriptionapp.SubscriptionRequested
+	var event subscriptionevents.SubscriptionRequested
 	if err := json.Unmarshal(payload, &event); err != nil {
 		t.Fatalf("unmarshal subscription payload: %v", err)
 	}
 	return event
 }
 
-func loadReleaseDetectedEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool) releasemonitoringdomain.ReleaseDetected {
+func loadReleaseDetectedEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool) subscriptionevents.ReleaseDetected {
 	t.Helper()
 
 	var payload []byte
@@ -69,7 +68,7 @@ func loadReleaseDetectedEvent(t *testing.T, ctx context.Context, pool *pgxpool.P
 		t.Fatalf("select release payload: %v", err)
 	}
 
-	var event releasemonitoringdomain.ReleaseDetected
+	var event subscriptionevents.ReleaseDetected
 	if err := json.Unmarshal(payload, &event); err != nil {
 		t.Fatalf("unmarshal release payload: %v", err)
 	}

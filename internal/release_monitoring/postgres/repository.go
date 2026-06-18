@@ -7,8 +7,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
-	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
+	postgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 )
 
 type ReleaseScanRepo struct {
@@ -24,11 +24,11 @@ func NewReleaseScanRepo(db *pgxpool.Pool, log logger.Logger) *ReleaseScanRepo {
 }
 
 func (r *ReleaseScanRepo) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
-	return platformpostgres.WithinTransaction(ctx, r.db, fn)
+	return postgres.WithinTransaction(ctx, r.db, fn)
 }
 
 func (r *ReleaseScanRepo) ListDistinctConfirmedRepos(ctx context.Context) ([]string, error) {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	rows, err := exec.Query(ctx, `SELECT DISTINCT repo FROM subscriptions WHERE confirmed=TRUE`)
 	if err != nil {
 		return nil, fmt.Errorf("list distinct repos: %w", err)
@@ -46,8 +46,8 @@ func (r *ReleaseScanRepo) ListDistinctConfirmedRepos(ctx context.Context) ([]str
 	return repos, rows.Err()
 }
 
-func (r *ReleaseScanRepo) ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]releasemonitoringdomain.Subscriber, error) {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+func (r *ReleaseScanRepo) ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]domain.Subscriber, error) {
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	rows, err := exec.Query(
 		ctx,
 		`SELECT id, email, repo, last_seen_tag, unsubscribe_token
@@ -59,9 +59,9 @@ func (r *ReleaseScanRepo) ListConfirmedSubscribersForRepo(ctx context.Context, r
 	}
 	defer rows.Close()
 
-	var subscribers []releasemonitoringdomain.Subscriber
+	var subscribers []domain.Subscriber
 	for rows.Next() {
-		var subscriber releasemonitoringdomain.Subscriber
+		var subscriber domain.Subscriber
 		if err := rows.Scan(
 			&subscriber.SubscriptionID,
 			&subscriber.Email,
@@ -77,7 +77,7 @@ func (r *ReleaseScanRepo) ListConfirmedSubscribersForRepo(ctx context.Context, r
 }
 
 func (r *ReleaseScanRepo) UpdateLastSeenTag(ctx context.Context, repo, tag string) error {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	if _, err := exec.Exec(
 		ctx,
 		`UPDATE subscriptions SET last_seen_tag=$2, updated_at=NOW()

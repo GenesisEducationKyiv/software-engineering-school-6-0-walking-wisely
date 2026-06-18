@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
 const (
@@ -40,13 +39,13 @@ func NewEventHandlers(jobs JobWriter, baseURL string, log logger.Logger) *EventH
 
 // Register attaches all notification handlers to the given bus.
 func (h *EventHandlers) Register(bus *events.Bus) {
-	bus.Subscribe(subscriptionapp.SubscriptionRequested{}.EventName(), h.OnSubscriptionRequested)
-	bus.Subscribe(releasemonitoringdomain.ReleaseDetected{}.EventName(), h.OnReleaseDetected)
+	bus.Subscribe(contractevents.SubscriptionRequested{}.EventName(), h.OnSubscriptionRequested)
+	bus.Subscribe(contractevents.ReleaseDetected{}.EventName(), h.OnReleaseDetected)
 }
 
 // OnSubscriptionRequested turns a subscription request into a confirmation email.
 func (h *EventHandlers) OnSubscriptionRequested(ctx context.Context, event events.Event) error {
-	requested, ok := event.(subscriptionapp.SubscriptionRequested)
+	requested, ok := event.(contractevents.SubscriptionRequested)
 	if !ok {
 		return fmt.Errorf("unexpected event type %T", event)
 	}
@@ -80,7 +79,7 @@ func (h *EventHandlers) OnSubscriptionRequested(ctx context.Context, event event
 
 // OnReleaseDetected fans a detected release out to all subscribers.
 func (h *EventHandlers) OnReleaseDetected(ctx context.Context, event events.Event) error {
-	detected, ok := event.(releasemonitoringdomain.ReleaseDetected)
+	detected, ok := event.(contractevents.ReleaseDetected)
 	if !ok {
 		return fmt.Errorf("unexpected event type %T", event)
 	}
