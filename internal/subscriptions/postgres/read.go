@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // ListByEmail returns all subscriptions (confirmed and unconfirmed) for an email.
-func (r *ReadRepo) ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error) {
+func (r *ReadRepo) ListByEmail(ctx context.Context, email string) ([]subscriptionsdomain.Subscription, error) {
 	rows, err := r.db.Query(
 		ctx,
 		`SELECT id, email, repo, confirmed, last_seen_tag, created_at, updated_at
@@ -20,9 +20,9 @@ func (r *ReadRepo) ListByEmail(ctx context.Context, email string) ([]subscriptio
 	}
 	defer rows.Close()
 
-	var subs []subscriptions.Subscription
+	var subs []subscriptionsdomain.Subscription
 	for rows.Next() {
-		var s subscriptions.Subscription
+		var s subscriptionsdomain.Subscription
 		if err := rows.Scan(
 			&s.ID, &s.Email, &s.Repo, &s.Confirmed, &s.LastSeenTag, &s.CreatedAt, &s.UpdatedAt,
 		); err != nil {

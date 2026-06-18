@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // Subscribe creates a new subscription or refreshes the confirm token for an
@@ -18,7 +18,7 @@ import (
 func (r *TokenRepo) Subscribe(
 	ctx context.Context,
 	email, repo, confirmToken, unsubToken string,
-) (result subscriptions.SubscribeResult, err error) {
+) (result subscriptionsdomain.SubscribeResult, err error) {
 	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
 
 	var id string
@@ -31,7 +31,7 @@ func (r *TokenRepo) Subscribe(
 
 	switch {
 	case err == nil && confirmed:
-		return subscriptions.SubscribeResult{}, subscriptions.ErrAlreadySubscribed
+		return subscriptionsdomain.SubscribeResult{}, subscriptionsdomain.ErrAlreadySubscribed
 
 	case err == nil && !confirmed:
 		// Unconfirmed - refresh the confirm token so the new email works.
@@ -40,11 +40,11 @@ func (r *TokenRepo) Subscribe(
 			`UPDATE subscriptions SET confirm_token=$1, updated_at=NOW() WHERE id=$2`,
 			confirmToken, id,
 		); err != nil {
-			return subscriptions.SubscribeResult{}, fmt.Errorf("refresh confirm token: %w", err)
+			return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("refresh confirm token: %w", err)
 		}
-		result = subscriptions.SubscribeResult{
+		result = subscriptionsdomain.SubscribeResult{
 			SubscriptionID: id,
-			Action:         subscriptions.SubscribeActionConfirmationRefreshed,
+			Action:         subscriptionsdomain.SubscribeActionConfirmationRefreshed,
 		}
 
 	case errors.Is(err, pgx.ErrNoRows):
@@ -56,15 +56,15 @@ func (r *TokenRepo) Subscribe(
 			email, repo, confirmToken, unsubToken,
 		).Scan(&id)
 		if err != nil {
-			return subscriptions.SubscribeResult{}, fmt.Errorf("insert subscription: %w", err)
+			return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("insert subscription: %w", err)
 		}
-		result = subscriptions.SubscribeResult{
+		result = subscriptionsdomain.SubscribeResult{
 			SubscriptionID: id,
-			Action:         subscriptions.SubscribeActionCreated,
+			Action:         subscriptionsdomain.SubscribeActionCreated,
 		}
 
 	default:
-		return subscriptions.SubscribeResult{}, fmt.Errorf("lock subscription row: %w", err)
+		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("lock subscription row: %w", err)
 	}
 	return result, nil
 }
@@ -81,7 +81,7 @@ func (r *TokenRepo) ConfirmByToken(ctx context.Context, token string) (id string
 		token,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", subscriptions.ErrTokenNotFound
+		return "", subscriptionsdomain.ErrTokenNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("lock confirm token row: %w", err)
@@ -107,7 +107,7 @@ func (r *TokenRepo) UnsubscribeByToken(ctx context.Context, token string) (strin
 		token,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", subscriptions.ErrTokenNotFound
+		return "", subscriptionsdomain.ErrTokenNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("delete subscription: %w", err)

@@ -15,7 +15,7 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 )
 
@@ -69,7 +69,7 @@ func TestSubscribe_StatusMapping(t *testing.T) {
 		{"invalid email", "notanemail", validRepo, nil, nil, codes.InvalidArgument},
 		{"invalid repo", validEmail, "owneronly", nil, nil, codes.InvalidArgument},
 		{"repo not found", validEmail, validRepo, contracts.ErrRepoNotFound, nil, codes.NotFound},
-		{"already subscribed", validEmail, validRepo, nil, subscriptions.ErrAlreadySubscribed, codes.AlreadyExists},
+		{"already subscribed", validEmail, validRepo, nil, subscriptionsdomain.ErrAlreadySubscribed, codes.AlreadyExists},
 		{"unexpected github error", validEmail, validRepo, errors.New("connection timeout"), nil, codes.Internal},
 		{"unexpected db error", validEmail, validRepo, nil, errors.New("connection reset by peer"), codes.Internal},
 		{"success", validEmail, validRepo, nil, nil, codes.OK},

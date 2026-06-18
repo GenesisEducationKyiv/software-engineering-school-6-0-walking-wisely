@@ -44,13 +44,3 @@ type ReadRepo struct {
 func NewReadRepo(db *pgxpool.Pool, log logger.Logger) *ReadRepo {
 	return &ReadRepo{repository: newRepository(db, log)}
 }
-
-// ReleaseScanRepo provides subscription state needed by the release scanner.
-type ReleaseScanRepo struct {
-	repository
-}
-
-// NewReleaseScanRepo returns a ReleaseScanRepo backed by the given connection pool.
-func NewReleaseScanRepo(db *pgxpool.Pool, log logger.Logger) *ReleaseScanRepo {
-	return &ReleaseScanRepo{repository: newRepository(db, log)}
-}

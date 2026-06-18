@@ -3,12 +3,12 @@ package subscriptionapp
 import (
 	"context"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // SubscriptionReader reads subscription state.
 type SubscriptionReader interface {
-	ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error)
+	ListByEmail(ctx context.Context, email string) ([]subscriptionsdomain.Subscription, error)
 }
 
 // ListService coordinates subscription lookup.
@@ -22,10 +22,10 @@ func NewListService(repo SubscriptionReader) *ListService {
 }
 
 // ListByEmail validates and normalizes the email before reading subscriptions.
-func (s *ListService) ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error) {
+func (s *ListService) ListByEmail(ctx context.Context, email string) ([]subscriptionsdomain.Subscription, error) {
 	email = NormalizeEmail(email)
 	if !IsValidEmail(email) {
-		return nil, subscriptions.ErrInvalidEmail
+		return nil, subscriptionsdomain.ErrInvalidEmail
 	}
 	return s.repo.ListByEmail(ctx, email)
 }

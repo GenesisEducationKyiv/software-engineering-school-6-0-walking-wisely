@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // GetSubscriptions handles GET /api/subscriptions?email=...
@@ -16,7 +16,7 @@ import (
 func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetSubscriptionsRequest) (*pb.GetSubscriptionsResponse, error) {
 	subs, err := s.listUseCase.ListByEmail(ctx, req.Email)
 	if err != nil {
-		if errors.Is(err, subscriptions.ErrInvalidEmail) {
+		if errors.Is(err, subscriptionsdomain.ErrInvalidEmail) {
 			return nil, status.Error(codes.InvalidArgument, "invalid email format")
 		}
 		s.log.Error("subscriptions: list failed", "err", err)

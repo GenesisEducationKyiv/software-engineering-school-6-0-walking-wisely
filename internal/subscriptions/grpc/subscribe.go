@@ -9,8 +9,8 @@ import (
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // Subscribe handles POST /api/subscribe and adapts gRPC requests to the
@@ -36,13 +36,13 @@ func (s *SubscriptionService) Subscribe(
 
 func (s *SubscriptionService) mapSubscribeError(ctx context.Context, repo string, err error) error {
 	switch {
-	case errors.Is(err, subscriptions.ErrInvalidEmail):
+	case errors.Is(err, subscriptionsdomain.ErrInvalidEmail):
 		return status.Error(codes.InvalidArgument, "invalid email format")
-	case errors.Is(err, subscriptions.ErrInvalidRepo):
+	case errors.Is(err, subscriptionsdomain.ErrInvalidRepo):
 		return status.Error(codes.InvalidArgument, "invalid repo format, expected owner/repo")
 	case errors.Is(err, contracts.ErrRepoNotFound):
 		return status.Error(codes.NotFound, "repository not found on GitHub")
-	case errors.Is(err, subscriptions.ErrAlreadySubscribed):
+	case errors.Is(err, subscriptionsdomain.ErrAlreadySubscribed):
 		return status.Error(codes.AlreadyExists, "email already subscribed to this repository")
 	}
 
