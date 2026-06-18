@@ -12,61 +12,63 @@ import (
 )
 
 // Subscribe creates a new subscription or refreshes the confirm token for an
-// existing unconfirmed one. A SELECT FOR UPDATE serializes concurrent requests
-// for the same (email, repo) pair, preventing duplicate inserts.
+// existing unconfirmed one. A SELECT FOR UPDATE inside a transaction serializes
+// concurrent requests for the same (email, repo) pair, preventing duplicate inserts.
 // Returns ErrAlreadySubscribed if the subscription is already confirmed.
 func (r *TokenRepo) Subscribe(
 	ctx context.Context,
 	email, repo, confirmToken, unsubToken string,
 ) (result subscriptionsdomain.SubscribeResult, err error) {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	err = platformpostgres.WithinTransaction(ctx, r.db, func(ctx context.Context) error {
+		exec := platformpostgres.ExecutorFromContext(ctx, r.db)
 
-	var id string
-	var confirmed bool
-	err = exec.QueryRow(
-		ctx,
-		`SELECT id, confirmed FROM subscriptions WHERE email=$1 AND repo=$2 FOR UPDATE`,
-		email, repo,
-	).Scan(&id, &confirmed)
-
-	switch {
-	case err == nil && confirmed:
-		return subscriptionsdomain.SubscribeResult{}, subscriptionsdomain.ErrAlreadySubscribed
-
-	case err == nil && !confirmed:
-		// Unconfirmed - refresh the confirm token so the new email works.
-		if _, err = exec.Exec(
+		var id string
+		var confirmed bool
+		err := exec.QueryRow(
 			ctx,
-			`UPDATE subscriptions SET confirm_token=$1, updated_at=NOW() WHERE id=$2`,
-			confirmToken, id,
-		); err != nil {
-			return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("refresh confirm token: %w", err)
-		}
-		result = subscriptionsdomain.SubscribeResult{
-			SubscriptionID: id,
-			Action:         subscriptionsdomain.SubscribeActionConfirmationRefreshed,
-		}
+			`SELECT id, confirmed FROM subscriptions WHERE email=$1 AND repo=$2 FOR UPDATE`,
+			email, repo,
+		).Scan(&id, &confirmed)
 
-	case errors.Is(err, pgx.ErrNoRows):
-		err = exec.QueryRow(
-			ctx,
-			`INSERT INTO subscriptions (email, repo, confirm_token, unsubscribe_token)
-			 VALUES ($1, $2, $3, $4)
-			 RETURNING id`,
-			email, repo, confirmToken, unsubToken,
-		).Scan(&id)
-		if err != nil {
-			return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("insert subscription: %w", err)
-		}
-		result = subscriptionsdomain.SubscribeResult{
-			SubscriptionID: id,
-			Action:         subscriptionsdomain.SubscribeActionCreated,
-		}
+		switch {
+		case err == nil && confirmed:
+			return subscriptionsdomain.ErrAlreadySubscribed
 
-	default:
-		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("lock subscription row: %w", err)
-	}
-	return result, nil
+		case err == nil && !confirmed:
+			if _, err = exec.Exec(
+				ctx,
+				`UPDATE subscriptions SET confirm_token=$1, updated_at=NOW() WHERE id=$2`,
+				confirmToken, id,
+			); err != nil {
+				return fmt.Errorf("refresh confirm token: %w", err)
+			}
+			result = subscriptionsdomain.SubscribeResult{
+				SubscriptionID: id,
+				Action:         subscriptionsdomain.SubscribeActionConfirmationRefreshed,
+			}
+
+		case errors.Is(err, pgx.ErrNoRows):
+			err = exec.QueryRow(
+				ctx,
+				`INSERT INTO subscriptions (email, repo, confirm_token, unsubscribe_token)
+				 VALUES ($1, $2, $3, $4)
+				 RETURNING id`,
+				email, repo, confirmToken, unsubToken,
+			).Scan(&id)
+			if err != nil {
+				return fmt.Errorf("insert subscription: %w", err)
+			}
+			result = subscriptionsdomain.SubscribeResult{
+				SubscriptionID: id,
+				Action:         subscriptionsdomain.SubscribeActionCreated,
+			}
+
+		default:
+			return fmt.Errorf("lock subscription row: %w", err)
+		}
+		return nil
+	})
+	return result, err
 }
 
 // ConfirmByToken marks a subscription as confirmed using the token from the
