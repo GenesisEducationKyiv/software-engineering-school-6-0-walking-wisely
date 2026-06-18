@@ -10,7 +10,6 @@ import (
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
@@ -63,6 +62,11 @@ type fakeGithubClient struct {
 	repo            string
 }
 
+type fakeConfirmationMessage struct {
+	To   string
+	HTML string
+}
+
 func (f *fakeGithubClient) ValidateRepo(ctx context.Context, repo string) error {
 	f.calls++
 	f.ctx = ctx
@@ -73,7 +77,7 @@ func (f *fakeGithubClient) ValidateRepo(ctx context.Context, repo string) error 
 func newSubscribeService(
 	gh GithubRepoValidator,
 	repo SubscriptionWriter,
-	ch chan mail.Message,
+	ch chan fakeConfirmationMessage,
 ) *SubscribeService {
 	bus := events.NewBus()
 	bus.Subscribe(subscriptionevents.SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
@@ -82,7 +86,7 @@ func newSubscribeService(
 			return fmt.Errorf("event type = %T, want %T", event, subscriptionevents.SubscriptionRequested{})
 		}
 		select {
-		case ch <- mail.Message{
+		case ch <- fakeConfirmationMessage{
 			To: requested.Email,
 			HTML: "http://localhost/api/confirm/" + requested.ConfirmToken +
 				" http://localhost/api/unsubscribe/" + requested.UnsubToken +
@@ -103,7 +107,7 @@ func newSubscribeService(
 }
 
 func TestSubscribe(t *testing.T) {
-	ch := make(chan mail.Message, 1)
+	ch := make(chan fakeConfirmationMessage, 1)
 	repo := &fakeSubscriptionRepo{}
 	gh := &fakeGithubClient{}
 	svc := newSubscribeService(gh, repo, ch)
@@ -189,7 +193,7 @@ func TestSubscribe_EmailValidation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan mail.Message, 1)
+			ch := make(chan fakeConfirmationMessage, 1)
 			repo := &fakeSubscriptionRepo{}
 			gh := &fakeGithubClient{}
 			svc := newSubscribeService(gh, repo, ch)
@@ -236,7 +240,7 @@ func TestSubscribe_RepoValidation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan mail.Message, 1)
+			ch := make(chan fakeConfirmationMessage, 1)
 			repo := &fakeSubscriptionRepo{}
 			gh := &fakeGithubClient{}
 			svc := newSubscribeService(gh, repo, ch)
@@ -276,7 +280,7 @@ func TestSubscribe_GitHubErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan mail.Message, 1)
+			ch := make(chan fakeConfirmationMessage, 1)
 			repo := &fakeSubscriptionRepo{}
 			gh := &fakeGithubClient{validateRepoErr: tc.githubErr}
 			svc := newSubscribeService(gh, repo, ch)
@@ -313,7 +317,7 @@ func TestSubscribe_TokenRepoErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan mail.Message, 1)
+			ch := make(chan fakeConfirmationMessage, 1)
 			repo := &fakeSubscriptionRepo{subscribeErr: tc.tokenRepoErr}
 			gh := &fakeGithubClient{}
 			svc := newSubscribeService(gh, repo, ch)
@@ -351,7 +355,7 @@ func TestSubscribe_EmailChannel(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan mail.Message, tc.chanCap)
+			ch := make(chan fakeConfirmationMessage, tc.chanCap)
 			repo := &fakeSubscriptionRepo{}
 			svc := newSubscribeService(&fakeGithubClient{}, repo, ch)
 
