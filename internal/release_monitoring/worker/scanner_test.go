@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
 	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
@@ -37,7 +38,7 @@ func (r *cancelOnListRepo) UpdateLastSeenTag(context.Context, string, string) er
 
 type noopReleaseClient struct{}
 
-func (noopReleaseClient) GetLatestRelease(context.Context, string) (*releasemonitoringdomain.Release, error) {
+func (noopReleaseClient) GetLatestRelease(context.Context, string) (*contracts.Release, error) {
 	return nil, nil
 }
 

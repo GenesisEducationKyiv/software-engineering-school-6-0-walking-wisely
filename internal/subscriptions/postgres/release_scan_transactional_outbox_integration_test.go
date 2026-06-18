@@ -7,10 +7,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
-	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
 )
 
@@ -33,7 +33,7 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 
 		service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
 			Repo:      releaseScanRepo,
-			GitHub:    stubReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3", Name: "Release 1.2.3"}},
+			GitHub:    stubReleaseClient{release: &contracts.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3", Name: "Release 1.2.3"}},
 			TxManager: releaseScanRepo,
 			Publisher: outbox.NewPublisher(outbox.NewRepository(repos.pool)),
 		})
@@ -65,7 +65,7 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 
 		service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
 			Repo:      releaseScanRepo,
-			GitHub:    stubReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"}},
+			GitHub:    stubReleaseClient{release: &contracts.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"}},
 			TxManager: releaseScanRepo,
 			Publisher: failAfterPublish(t, outbox.NewPublisher(outbox.NewRepository(repos.pool)), errors.New("boom")),
 		})
@@ -91,7 +91,7 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 
 		service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
 			Repo:      releaseScanRepo,
-			GitHub:    stubReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"}},
+			GitHub:    stubReleaseClient{release: &contracts.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"}},
 			TxManager: releaseScanRepo,
 			Publisher: outbox.NewPublisher(outbox.NewRepository(repos.pool)),
 		})
@@ -104,10 +104,10 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 }
 
 type stubReleaseClient struct {
-	release *releasemonitoringdomain.Release
+	release *contracts.Release
 	err     error
 }
 
-func (c stubReleaseClient) GetLatestRelease(context.Context, string) (*releasemonitoringdomain.Release, error) {
+func (c stubReleaseClient) GetLatestRelease(context.Context, string) (*contracts.Release, error) {
 	return c.release, c.err
 }

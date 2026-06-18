@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
@@ -31,7 +32,6 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/streams"
 	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
-	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
@@ -96,12 +96,12 @@ func (s *crossServiceFakeSender) reset() {
 // ── fake GitHub client ─────────────────────────────────────────────────────────
 
 type crossServiceFakeGitHub struct {
-	release *releasemonitoringdomain.Release
+	release *contracts.Release
 }
 
 func (g crossServiceFakeGitHub) ValidateRepo(_ context.Context, _ string) error { return nil }
 
-func (g crossServiceFakeGitHub) GetLatestRelease(_ context.Context, _ string) (*releasemonitoringdomain.Release, error) {
+func (g crossServiceFakeGitHub) GetLatestRelease(_ context.Context, _ string) (*contracts.Release, error) {
 	return g.release, nil
 }
 
@@ -269,7 +269,7 @@ func TestE2E_CrossService_ConfirmAndReceiveReleaseNotification(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	gh := crossServiceFakeGitHub{release: &releasemonitoringdomain.Release{
+	gh := crossServiceFakeGitHub{release: &contracts.Release{
 		TagName: "v1.0.0",
 		Name:    "First Release",
 		HTMLURL: "https://github.com/owner/repo/releases/tag/v1.0.0",
@@ -323,7 +323,7 @@ func TestE2E_CrossService_ScannerDeduplicatesAlreadySeenRelease(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	gh := crossServiceFakeGitHub{release: &releasemonitoringdomain.Release{
+	gh := crossServiceFakeGitHub{release: &contracts.Release{
 		TagName: "v2.0.0",
 		HTMLURL: "https://github.com/owner/repo/releases/tag/v2.0.0",
 	}}

@@ -58,16 +58,16 @@ func (f *fakeReleaseScanRepo) UpdateLastSeenTag(ctx context.Context, repo, tag s
 }
 
 type fakeReleaseClient struct {
-	release *releasemonitoringdomain.Release
+	release *contracts.Release
 	err     error
 	calls   int
 	repos   []string
 	ctxs    []context.Context
-	byRepo  map[string]*releasemonitoringdomain.Release
+	byRepo  map[string]*contracts.Release
 	errs    map[string]error
 }
 
-func (f *fakeReleaseClient) GetLatestRelease(ctx context.Context, repo string) (*releasemonitoringdomain.Release, error) {
+func (f *fakeReleaseClient) GetLatestRelease(ctx context.Context, repo string) (*contracts.Release, error) {
 	f.calls++
 	f.repos = append(f.repos, repo)
 	f.ctxs = append(f.ctxs, ctx)
@@ -170,7 +170,7 @@ func TestScanNotifiesSubscribersAndUpdatesLastSeenTag(t *testing.T) {
 		},
 	}
 	client := &fakeReleaseClient{
-		release: &releasemonitoringdomain.Release{
+		release: &contracts.Release{
 			TagName: "v1.2.3",
 			HTMLURL: "https://github.com/owner/repo/releases/tag/v1.2.3",
 			Name:    "Release 1.2.3",
@@ -217,7 +217,7 @@ func TestScanPassesContextToDependencies(t *testing.T) {
 			"owner/repo": {{SubscriptionID: "sub-1", Email: "user@example.com", Repo: "owner/repo"}},
 		},
 	}
-	client := &fakeReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1"}}
+	client := &fakeReleaseClient{release: &contracts.Release{TagName: "v1"}}
 	txManager := &fakeTxManager{}
 	publisher := &recordingPublisher{}
 
@@ -245,7 +245,7 @@ func TestScanPassesContextToDependencies(t *testing.T) {
 
 func TestScanNoReposDoesNothing(t *testing.T) {
 	repo := &fakeReleaseScanRepo{subscribers: map[string][]releasemonitoringdomain.Subscriber{}}
-	client := &fakeReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1"}}
+	client := &fakeReleaseClient{release: &contracts.Release{TagName: "v1"}}
 	publisher := &recordingPublisher{}
 
 	newScannerService(repo, client, &fakeTxManager{}, publisher, &recordingScannerLogger{}).Scan(context.Background())
@@ -267,7 +267,7 @@ func TestScanListReposErrorStopsScan(t *testing.T) {
 		listErr:     errors.New("database unavailable"),
 		subscribers: map[string][]releasemonitoringdomain.Subscriber{},
 	}
-	client := &fakeReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1"}}
+	client := &fakeReleaseClient{release: &contracts.Release{TagName: "v1"}}
 	publisher := &recordingPublisher{}
 
 	newScannerService(repo, client, &fakeTxManager{}, publisher, log).Scan(context.Background())
@@ -288,7 +288,7 @@ func TestScanStopsWhenContextCancelledBeforeRepoScan(t *testing.T) {
 		repos:       []string{"owner/repo"},
 		subscribers: map[string][]releasemonitoringdomain.Subscriber{},
 	}
-	client := &fakeReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1"}}
+	client := &fakeReleaseClient{release: &contracts.Release{TagName: "v1"}}
 	publisher := &recordingPublisher{}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -371,7 +371,7 @@ func TestScanRepoListSubscribersErrorSkipsUpdate(t *testing.T) {
 		subsErr:     errors.New("database unavailable"),
 		subscribers: map[string][]releasemonitoringdomain.Subscriber{},
 	}
-	client := &fakeReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1"}}
+	client := &fakeReleaseClient{release: &contracts.Release{TagName: "v1"}}
 	publisher := &recordingPublisher{}
 
 	newScannerService(repo, client, &fakeTxManager{}, publisher, log).Scan(context.Background())
@@ -392,7 +392,7 @@ func TestScanRepoNoSubscribersSkipsUpdate(t *testing.T) {
 		repos:       []string{"owner/repo"},
 		subscribers: map[string][]releasemonitoringdomain.Subscriber{"owner/repo": nil},
 	}
-	client := &fakeReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1"}}
+	client := &fakeReleaseClient{release: &contracts.Release{TagName: "v1"}}
 	publisher := &recordingPublisher{}
 
 	newScannerService(repo, client, &fakeTxManager{}, publisher, &recordingScannerLogger{}).Scan(context.Background())
@@ -415,7 +415,7 @@ func TestScanRepoAllSubscribersAlreadySeenSkipsUpdate(t *testing.T) {
 			},
 		},
 	}
-	client := &fakeReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1"}}
+	client := &fakeReleaseClient{release: &contracts.Release{TagName: "v1"}}
 	publisher := &recordingPublisher{}
 
 	newScannerService(repo, client, &fakeTxManager{}, publisher, &recordingScannerLogger{}).Scan(context.Background())
@@ -433,7 +433,7 @@ func TestScanRepoPublishFailureSkipsUpdate(t *testing.T) {
 			"owner/repo": {{SubscriptionID: "sub-1", Email: "user@example.com", Repo: "owner/repo"}},
 		},
 	}
-	client := &fakeReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1"}}
+	client := &fakeReleaseClient{release: &contracts.Release{TagName: "v1"}}
 	publisher := &recordingPublisher{err: errors.New("outbox unavailable")}
 
 	newScannerService(repo, client, &fakeTxManager{}, publisher, log).Scan(context.Background())
@@ -455,7 +455,7 @@ func TestScanRepoUpdateFailureLeavesPublishedEventRecorded(t *testing.T) {
 		},
 		updateErr: errors.New("database unavailable"),
 	}
-	client := &fakeReleaseClient{release: &releasemonitoringdomain.Release{TagName: "v1"}}
+	client := &fakeReleaseClient{release: &contracts.Release{TagName: "v1"}}
 	publisher := &recordingPublisher{}
 	txManager := &fakeTxManager{}
 
@@ -482,7 +482,7 @@ func TestScanSummaryLogsCounts(t *testing.T) {
 		},
 	}
 	client := &fakeReleaseClient{
-		byRepo: map[string]*releasemonitoringdomain.Release{
+		byRepo: map[string]*contracts.Release{
 			"owner/ok": {TagName: "v1"},
 		},
 		errs: map[string]error{

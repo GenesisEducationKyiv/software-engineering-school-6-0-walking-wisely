@@ -8,15 +8,15 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
+	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
-	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 type JobQueue interface {
-	ClaimPending(ctx context.Context, workerID string, batchSize int) ([]notificationpostgres.Job, error)
-	MarkSent(ctx context.Context, jobs []notificationpostgres.Job) error
-	MarkFailed(ctx context.Context, jobs []notificationpostgres.Job, maxAttempts int, cause error) error
+	ClaimPending(ctx context.Context, workerID string, batchSize int) ([]notificationdomain.Job, error)
+	MarkSent(ctx context.Context, jobs []notificationdomain.Job) error
+	MarkFailed(ctx context.Context, jobs []notificationdomain.Job, maxAttempts int, cause error) error
 }
 
 func StartSender(
@@ -85,7 +85,11 @@ func flushPending(
 
 	messages := make([]mail.Message, 0, len(claimed))
 	for i := range claimed {
-		messages = append(messages, claimed[i].Message())
+		messages = append(messages, mail.Message{
+			To:      claimed[i].To,
+			Subject: claimed[i].Subject,
+			HTML:    claimed[i].HTML,
+		})
 	}
 
 	if err := sender.SendBatch(flushCtx, messages); err != nil {

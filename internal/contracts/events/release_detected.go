@@ -5,15 +5,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	platformevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 )
-
-// Release is the release payload shared with event consumers.
-type Release struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
-	Name    string `json:"name"`
-}
 
 // Subscriber is the notification recipient payload shared with event consumers.
 type Subscriber struct {
@@ -28,7 +22,7 @@ type Subscriber struct {
 type ReleaseDetected struct {
 	platformevents.Metadata
 	Repo        string
-	Release     Release
+	Release     contracts.Release
 	Subscribers []Subscriber
 }
 
@@ -47,7 +41,7 @@ func (e ReleaseDetected) AggregateID() string {
 	return e.Repo
 }
 
-func NewReleaseDetected(repo string, release Release, subscribers []Subscriber) ReleaseDetected {
+func NewReleaseDetected(repo string, release contracts.Release, subscribers []Subscriber) ReleaseDetected {
 	return ReleaseDetected{
 		Metadata: platformevents.Metadata{
 			ID:    uuid.NewString(),

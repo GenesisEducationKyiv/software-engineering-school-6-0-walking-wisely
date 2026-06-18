@@ -13,11 +13,9 @@ import (
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 )
 
-// Release holds the fields we care about from a GitHub release object.
-type Release = releasemonitoringdomain.Release
+type Release = contracts.Release
 
 // Client wraps the GitHub REST API and maps responses to domain errors.
 type Client struct {

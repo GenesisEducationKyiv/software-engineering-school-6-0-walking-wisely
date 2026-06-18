@@ -14,6 +14,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	subscriptionpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 )
@@ -211,7 +212,7 @@ func TestRecordReleaseNotificationsHappyPath(t *testing.T) {
 	sub1 := insertSubscription(t, ctx, pool)
 	sub2 := insertSubscription(t, ctx, pool)
 	eventID := uuid.NewString()
-	jobs := []ReleaseNotificationJob{
+	jobs := []notificationdomain.ReleaseNotificationJob{
 		{SubscriptionID: sub1, To: "a@example.com", Subject: "Release v1", HTML: "<p>v1</p>"},
 		{SubscriptionID: sub2, To: "b@example.com", Subject: "Release v1", HTML: "<p>v1</p>"},
 	}
@@ -263,10 +264,10 @@ func TestRecordReleaseNotificationsInsertsAcrossBatchBoundary(t *testing.T) {
 	truncateNotificationTables(t, ctx, pool)
 
 	eventID := uuid.NewString()
-	jobs := make([]ReleaseNotificationJob, 0, 5)
+	jobs := make([]notificationdomain.ReleaseNotificationJob, 0, 5)
 	for i := 0; i < 5; i++ {
 		subID := insertSubscription(t, ctx, pool)
-		jobs = append(jobs, ReleaseNotificationJob{
+		jobs = append(jobs, notificationdomain.ReleaseNotificationJob{
 			SubscriptionID: subID,
 			To:             "subscriber@example.com",
 			Subject:        "Release v2",
@@ -297,7 +298,7 @@ func TestRecordReleaseNotificationsIdempotent(t *testing.T) {
 	truncateNotificationTables(t, ctx, pool)
 	subID := insertSubscription(t, ctx, pool)
 	eventID := uuid.NewString()
-	jobs := []ReleaseNotificationJob{
+	jobs := []notificationdomain.ReleaseNotificationJob{
 		{SubscriptionID: subID, To: "a@example.com", Subject: "Release", HTML: "<p>html</p>"},
 	}
 

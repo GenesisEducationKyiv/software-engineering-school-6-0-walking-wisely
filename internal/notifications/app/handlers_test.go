@@ -9,8 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
-	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
+	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 )
 
@@ -37,7 +38,7 @@ type releaseNotificationArgs struct {
 	handlerName string
 	eventID     string
 	releaseTag  string
-	jobs        []notificationpostgres.ReleaseNotificationJob
+	jobs        []notificationdomain.ReleaseNotificationJob
 }
 
 func (f *fakeJobWriter) RecordConfirmation(
@@ -53,7 +54,7 @@ func (f *fakeJobWriter) RecordConfirmation(
 func (f *fakeJobWriter) RecordReleaseNotifications(
 	_ context.Context,
 	handlerName, eventID, releaseTag string,
-	jobs []notificationpostgres.ReleaseNotificationJob,
+	jobs []notificationdomain.ReleaseNotificationJob,
 ) error {
 	f.releaseNotificationCalls = append(f.releaseNotificationCalls, releaseNotificationArgs{
 		handlerName, eventID, releaseTag, jobs,
@@ -171,7 +172,7 @@ func TestOnReleaseDetectedHappyPath(t *testing.T) {
 	h := NewEventHandlers(writer, "https://example.com", nil)
 	evt := contractevents.NewReleaseDetected(
 		"owner/repo",
-		contractevents.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"},
+		contracts.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"},
 		[]contractevents.Subscriber{sub},
 	)
 
@@ -224,7 +225,7 @@ func TestOnReleaseDetectedUsesReleaseNameWhenNonEmpty(t *testing.T) {
 	evt := contractevents.ReleaseDetected{
 		Metadata:    events.Metadata{ID: uuid.NewString(), At: time.Now().UTC(), V: 1, IdKey: "key"},
 		Repo:        "owner/repo",
-		Release:     contractevents.Release{TagName: "v1.0.0", Name: "First Release", HTMLURL: "https://github.com"},
+		Release:     contracts.Release{TagName: "v1.0.0", Name: "First Release", HTMLURL: "https://github.com"},
 		Subscribers: []contractevents.Subscriber{sub},
 	}
 
@@ -256,7 +257,7 @@ func TestOnReleaseDetectedFallsBackToTagNameWhenNameEmpty(t *testing.T) {
 	evt := contractevents.ReleaseDetected{
 		Metadata:    events.Metadata{ID: uuid.NewString(), At: time.Now().UTC(), V: 1, IdKey: "key"},
 		Repo:        "owner/repo",
-		Release:     contractevents.Release{TagName: "v2.0.0", Name: "", HTMLURL: "https://github.com"},
+		Release:     contracts.Release{TagName: "v2.0.0", Name: "", HTMLURL: "https://github.com"},
 		Subscribers: []contractevents.Subscriber{sub},
 	}
 
@@ -291,7 +292,7 @@ func TestOnReleaseDetectedJobWriterError(t *testing.T) {
 	h := NewEventHandlers(writer, "https://example.com", nil)
 	evt := contractevents.NewReleaseDetected(
 		"owner/repo",
-		contractevents.Release{TagName: "v1.0.0", HTMLURL: "https://github.com"},
+		contracts.Release{TagName: "v1.0.0", HTMLURL: "https://github.com"},
 		[]contractevents.Subscriber{newSubscriber()},
 	)
 
@@ -310,7 +311,7 @@ func TestOnReleaseDetectedEmptySubscribers(t *testing.T) {
 	h := NewEventHandlers(writer, "https://example.com", nil)
 	evt := contractevents.NewReleaseDetected(
 		"owner/repo",
-		contractevents.Release{TagName: "v1.0.0", HTMLURL: "https://github.com"},
+		contracts.Release{TagName: "v1.0.0", HTMLURL: "https://github.com"},
 		nil,
 	)
 

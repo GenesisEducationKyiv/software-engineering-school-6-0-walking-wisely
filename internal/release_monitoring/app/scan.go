@@ -23,7 +23,7 @@ type TransactionManager interface {
 }
 
 type ReleaseClient interface {
-	GetLatestRelease(ctx context.Context, repo string) (*releasemonitoringdomain.Release, error)
+	GetLatestRelease(ctx context.Context, repo string) (*contracts.Release, error)
 }
 
 type ScannerService struct {
@@ -138,7 +138,7 @@ func (s *ScannerService) scanRepo(ctx context.Context, repo string) (int, error)
 
 	event := contractevents.NewReleaseDetected(
 		repo,
-		contractevents.Release{
+		contracts.Release{
 			TagName: release.TagName,
 			HTMLURL: release.HTMLURL,
 			Name:    release.Name,

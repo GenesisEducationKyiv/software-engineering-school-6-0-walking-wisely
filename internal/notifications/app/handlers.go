@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
-	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
+	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
@@ -19,7 +19,7 @@ const (
 // JobWriter persists durable notification jobs.
 type JobWriter interface {
 	RecordConfirmation(ctx context.Context, handlerName, eventID, subscriptionID, to, subject, html, confirmToken string) error
-	RecordReleaseNotifications(ctx context.Context, handlerName, eventID, releaseTag string, jobs []notificationpostgres.ReleaseNotificationJob) error
+	RecordReleaseNotifications(ctx context.Context, handlerName, eventID, releaseTag string, jobs []notificationdomain.ReleaseNotificationJob) error
 }
 
 // EventHandlers react to cross-domain events by creating durable notification jobs.
@@ -89,9 +89,9 @@ func (h *EventHandlers) OnReleaseDetected(ctx context.Context, event events.Even
 		releaseName = detected.Release.Name
 	}
 
-	jobs := make([]notificationpostgres.ReleaseNotificationJob, 0, len(detected.Subscribers))
+	jobs := make([]notificationdomain.ReleaseNotificationJob, 0, len(detected.Subscribers))
 	for _, subscriber := range detected.Subscribers {
-		jobs = append(jobs, notificationpostgres.ReleaseNotificationJob{
+		jobs = append(jobs, notificationdomain.ReleaseNotificationJob{
 			SubscriptionID: subscriber.SubscriptionID,
 			To:             subscriber.Email,
 			Subject:        fmt.Sprintf("[%s] New release: %s", subscriber.Repo, detected.Release.TagName),

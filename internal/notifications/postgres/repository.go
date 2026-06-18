@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 )
 
@@ -20,15 +20,6 @@ const (
 
 	DefaultReleaseNotificationInsertBatchSize = 500
 )
-
-type Job struct {
-	ID           string
-	EventID      string
-	To           string
-	Subject      string
-	HTML         string
-	AttemptCount int
-}
 
 type Repository struct {
 	db                             *pgxpool.Pool
@@ -79,7 +70,7 @@ func (r *Repository) RecordReleaseNotifications(
 	handlerName string,
 	eventID string,
 	releaseTag string,
-	jobs []ReleaseNotificationJob,
+	jobs []notificationdomain.ReleaseNotificationJob,
 ) error {
 	return r.recordDelivery(ctx, handlerName, eventID, func(txCtx context.Context) error {
 		batchSize := r.releaseNotificationInsertBatch
@@ -96,14 +87,7 @@ func (r *Repository) RecordReleaseNotifications(
 	})
 }
 
-type ReleaseNotificationJob struct {
-	SubscriptionID string
-	To             string
-	Subject        string
-	HTML           string
-}
-
-func (r *Repository) insertReleaseNotificationBatch(ctx context.Context, eventID, releaseTag string, jobs []ReleaseNotificationJob) error {
+func (r *Repository) insertReleaseNotificationBatch(ctx context.Context, eventID, releaseTag string, jobs []notificationdomain.ReleaseNotificationJob) error {
 	if len(jobs) == 0 {
 		return nil
 	}
@@ -174,7 +158,7 @@ func (r *Repository) recordDelivery(ctx context.Context, handlerName, eventID st
 	})
 }
 
-func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSize int) ([]Job, error) {
+func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSize int) ([]notificationdomain.Job, error) {
 	rows, err := r.db.Query(
 		ctx,
 		`WITH locked AS (
@@ -205,9 +189,9 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 	}
 	defer rows.Close()
 
-	jobs := make([]Job, 0, batchSize)
+	jobs := make([]notificationdomain.Job, 0, batchSize)
 	for rows.Next() {
-		var job Job
+		var job notificationdomain.Job
 		if err := rows.Scan(&job.ID, &job.EventID, &job.To, &job.Subject, &job.HTML, &job.AttemptCount); err != nil {
 			return nil, fmt.Errorf("scan notification job: %w", err)
 		}
@@ -216,7 +200,7 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 	return jobs, rows.Err()
 }
 
-func (r *Repository) MarkSent(ctx context.Context, jobs []Job) error {
+func (r *Repository) MarkSent(ctx context.Context, jobs []notificationdomain.Job) error {
 	ids := make([]uuid.UUID, 0, len(jobs))
 	for _, job := range jobs {
 		ids = append(ids, uuid.MustParse(job.ID))
@@ -233,7 +217,7 @@ func (r *Repository) MarkSent(ctx context.Context, jobs []Job) error {
 	return nil
 }
 
-func (r *Repository) MarkFailed(ctx context.Context, jobs []Job, maxAttempts int, cause error) error {
+func (r *Repository) MarkFailed(ctx context.Context, jobs []notificationdomain.Job, maxAttempts int, cause error) error {
 	for _, job := range jobs {
 		status := StatusPending
 		attempts := job.AttemptCount + 1
@@ -276,14 +260,6 @@ func (r *Repository) DeleteSentBefore(ctx context.Context, cutoff time.Time) (in
 		return 0, fmt.Errorf("delete sent notification jobs: %w", err)
 	}
 	return tag.RowsAffected(), nil
-}
-
-func (j *Job) Message() mail.Message {
-	return mail.Message{
-		To:      j.To,
-		Subject: j.Subject,
-		HTML:    j.HTML,
-	}
 }
 
 func maxInt(a, b int) int {
