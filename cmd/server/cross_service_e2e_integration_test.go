@@ -36,9 +36,14 @@ import (
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 
-	// Register event types so the outbox decoder and stream consumer can decode them.
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 )
+
+func init() {
+	contractevents.RegisterTypes(func(event contractevents.Event) {
+		events.RegisterType(event)
+	})
+}
 
 // ── fake email sender ──────────────────────────────────────────────────────────
 
