@@ -16,7 +16,7 @@ import (
 
 	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	subscriptionpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
+	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 )
 
 // ── shared setup ──────────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ func newNotificationTestDB(t *testing.T, ctx context.Context) (*Repository, *pgx
 	if err != nil {
 		t.Fatalf("build postgres connection string: %v", err)
 	}
-	if err := subscriptionpostgres.RunMigrations(databaseURL, logger.NoopLogger{}); err != nil {
+	if err := platformmigrations.Run(databaseURL, logger.NoopLogger{}); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 
