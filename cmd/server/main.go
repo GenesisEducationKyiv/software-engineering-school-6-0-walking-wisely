@@ -20,14 +20,17 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github"
 	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github/redis"
 	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	platformevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/streams"
 	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
@@ -35,9 +38,6 @@ import (
 	releasemonitoringworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/worker"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
-
-	// Register event types so outbox can decode them for stream publishing.
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
@@ -55,6 +55,10 @@ func main() {
 }
 
 func run(appLogger platformlogger.Logger) error {
+	contractevents.RegisterTypes(func(event contractevents.Event) {
+		platformevents.RegisterType(event)
+	})
+
 	cfg, err := platformconfig.LoadAppConfig()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -83,7 +87,7 @@ func run(appLogger platformlogger.Logger) error {
 		return fmt.Errorf("init metrics recorder: %w", err)
 	}
 
-	if err := postgres.RunMigrations(cfg.DatabaseURL, appLogger); err != nil {
+	if err := platformmigrations.Run(cfg.DatabaseURL, appLogger); err != nil {
 		return fmt.Errorf("run database migrations: %w", err)
 	}
 

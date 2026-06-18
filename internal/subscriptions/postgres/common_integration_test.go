@@ -14,6 +14,7 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 )
 
 type testRepos struct {
@@ -64,7 +65,7 @@ func newTestRepos(t *testing.T, ctx context.Context) testRepos {
 	if err != nil {
 		t.Fatalf("build postgres connection string: %v", err)
 	}
-	if err := RunMigrations(databaseURL, logger.NoopLogger{}); err != nil {
+	if err := platformmigrations.Run(databaseURL, logger.NoopLogger{}); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 

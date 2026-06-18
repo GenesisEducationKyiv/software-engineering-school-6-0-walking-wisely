@@ -22,10 +22,11 @@ import (
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 )
@@ -86,7 +87,7 @@ func newGatewayTestDB(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("build postgres connection string: %v", err)
 	}
-	if err := postgres.RunMigrations(databaseURL, platformlogger.NoopLogger{}); err != nil {
+	if err := platformmigrations.Run(databaseURL, platformlogger.NoopLogger{}); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 

@@ -1,5 +1,5 @@
-// Package postgres provides PostgreSQL-backed storage for subscriptions and applies embedded SQL migrations.
-package postgres
+// Package migrations applies the shared PostgreSQL schema used by the service.
+package migrations
 
 import (
 	"embed"
@@ -13,16 +13,16 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
-//go:embed migrations/*.sql
+//go:embed *.sql
 var migrationsFS embed.FS
 
-// RunMigrations applies all pending SQL migrations embedded in the migrations directory.
-func RunMigrations(databaseURL string, log logger.Logger) error {
+// Run applies all pending SQL migrations embedded in this package.
+func Run(databaseURL string, log logger.Logger) error {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
 
-	sourceDriver, err := iofs.New(migrationsFS, "migrations")
+	sourceDriver, err := iofs.New(migrationsFS, ".")
 	if err != nil {
 		return fmt.Errorf("create migration source: %w", err)
 	}
