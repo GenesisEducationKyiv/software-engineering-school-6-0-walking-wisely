@@ -345,7 +345,7 @@ func newTestRepository(t *testing.T, ctx context.Context) (*Repository, *pgxpool
 	if err != nil {
 		t.Fatalf("start postgres container: %v", err)
 	}
-	t.Cleanup(func() {
+	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
 		if err := container.Terminate(context.Background()); err != nil {
 			t.Logf("terminate postgres container: %v", err)
 		}
@@ -384,7 +384,7 @@ type outboxSeed struct {
 	IdempotencyKey string
 }
 
-func insertOutboxRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, seed outboxSeed) {
+func insertOutboxRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, seed outboxSeed) { //nolint:gocritic
 	t.Helper()
 
 	if _, err := pool.Exec(

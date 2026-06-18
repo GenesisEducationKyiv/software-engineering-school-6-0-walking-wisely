@@ -125,7 +125,7 @@ type releaseScanSubscriptionSeed struct {
 	LastSeenTag      *string
 }
 
-func insertReleaseScanSubscription(t *testing.T, ctx context.Context, pool *pgxpool.Pool, seed releaseScanSubscriptionSeed) string {
+func insertReleaseScanSubscription(t *testing.T, ctx context.Context, pool *pgxpool.Pool, seed releaseScanSubscriptionSeed) string { //nolint:gocritic
 	t.Helper()
 
 	var id string

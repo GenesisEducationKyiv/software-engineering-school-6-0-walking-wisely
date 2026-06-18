@@ -35,7 +35,7 @@ func newReleaseScanTestDB(t *testing.T, ctx context.Context) (*ReleaseScanRepo, 
 	if err != nil {
 		t.Fatalf("start postgres container: %v", err)
 	}
-	t.Cleanup(func() {
+	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
 		if err := container.Terminate(context.Background()); err != nil {
 			t.Logf("terminate postgres container: %v", err)
 		}
@@ -302,7 +302,7 @@ func TestUpdateLastSeenTagInsideTransactionRollback(t *testing.T) {
 		}
 		return errDeliberate
 	})
-	if err != errDeliberate {
+	if !errors.Is(err, errDeliberate) {
 		t.Fatalf("WithinTransaction returned %v, want %v", err, errDeliberate)
 	}
 

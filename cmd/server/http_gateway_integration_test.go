@@ -128,7 +128,7 @@ func TestIntegration_HTTPGatewaySubscriptionNegativeCases(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s %s: %v", tc.method, tc.path, err)
 			}
-			defer resp.Body.Close()
+			defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 			assertGatewayStatus(t, resp, tc.wantStatus)
 		})
@@ -150,7 +150,7 @@ func TestIntegration_HTTPGatewaySwaggerJSONIsExposed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /swagger.json: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)

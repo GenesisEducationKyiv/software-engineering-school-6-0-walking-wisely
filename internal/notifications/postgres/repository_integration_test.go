@@ -37,7 +37,7 @@ func newNotificationTestDB(t *testing.T, ctx context.Context) (*Repository, *pgx
 	if err != nil {
 		t.Fatalf("start postgres container: %v", err)
 	}
-	t.Cleanup(func() {
+	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
 		if err := container.Terminate(context.Background()); err != nil {
 			t.Logf("terminate postgres container: %v", err)
 		}
@@ -259,8 +259,8 @@ func TestRecordReleaseNotificationsInsertsAcrossBatchBoundary(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
-	repo, pool := newNotificationTestDB(t, ctx)
-	repo = NewRepository(pool, 2)
+	_, pool := newNotificationTestDB(t, ctx)
+	repo := NewRepository(pool, 2)
 	truncateNotificationTables(t, ctx, pool)
 
 	eventID := uuid.NewString()

@@ -44,6 +44,11 @@ linters:
   exclusions:
     paths:
       - vendor
+    rules:
+      - linters:
+          - gosec
+        text: "G101"
+        path: "_test\\.go$"
 
 formatters:
   enable:

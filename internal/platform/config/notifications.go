@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"time"
 )
@@ -46,7 +47,7 @@ func LoadNotificationsConfig() (*NotificationsConfig, error) {
 		StreamReclaimAfter:  parseDurationOrDefault("STREAM_RECLAIM_AFTER", 5*time.Minute),
 		StreamReclaimTick:   parseDurationOrDefault("STREAM_RECLAIM_TICK", 5*time.Minute),
 		StreamAckTimeout:    parseDurationOrDefault("STREAM_ACK_TIMEOUT", 5*time.Second),
-		StreamMaxDeliveries: int(parseNonNegativeInt64OrDefault("STREAM_MAX_DELIVERIES", 5)),
+		StreamMaxDeliveries: int(min(parseNonNegativeInt64OrDefault("STREAM_MAX_DELIVERIES", 5), math.MaxInt)),
 		StreamDLQKey:        envOrDefault("STREAM_DLQ_KEY", "events.dlq"),
 		LogLevel:            envOrDefault("LOG_LEVEL", "info"),
 		ServiceName:         envOrDefault("SERVICE_NAME", "notifications"),

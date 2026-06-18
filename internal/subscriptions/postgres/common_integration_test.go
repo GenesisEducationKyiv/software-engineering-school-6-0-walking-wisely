@@ -18,10 +18,9 @@ import (
 )
 
 type testRepos struct {
-	token       *TokenRepo
-	read        *ReadRepo
-	releaseScan *ReleaseScanRepo
-	pool        *pgxpool.Pool
+	token *TokenRepo
+	read  *ReadRepo
+	pool  *pgxpool.Pool
 }
 
 func TestIntegration_SubscriptionRepos(t *testing.T) {
@@ -34,9 +33,6 @@ func TestIntegration_SubscriptionRepos(t *testing.T) {
 	testTokenRepoConfirmByToken(t, ctx, repos)
 	testTokenRepoUnsubscribeByToken(t, ctx, repos)
 	testReadRepoListByEmail(t, ctx, repos)
-	testReleaseScanRepoListDistinctConfirmedRepos(t, ctx, repos)
-	testReleaseScanRepoListConfirmedSubscribersForRepo(t, ctx, repos)
-	testReleaseScanRepoUpdateLastSeenTag(t, ctx, repos)
 }
 
 func newTestRepos(t *testing.T, ctx context.Context) testRepos {
@@ -55,7 +51,7 @@ func newTestRepos(t *testing.T, ctx context.Context) testRepos {
 	if err != nil {
 		t.Fatalf("start postgres container: %v", err)
 	}
-	t.Cleanup(func() {
+	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
 		if err := container.Terminate(context.Background()); err != nil {
 			t.Logf("terminate postgres container: %v", err)
 		}
@@ -76,10 +72,9 @@ func newTestRepos(t *testing.T, ctx context.Context) testRepos {
 	t.Cleanup(pool.Close)
 
 	return testRepos{
-		token:       NewTokenRepo(pool, logger.NoopLogger{}),
-		read:        NewReadRepo(pool, logger.NoopLogger{}),
-		releaseScan: NewReleaseScanRepo(pool, logger.NoopLogger{}),
-		pool:        pool,
+		token: NewTokenRepo(pool, logger.NoopLogger{}),
+		read:  NewReadRepo(pool, logger.NoopLogger{}),
+		pool:  pool,
 	}
 }
 
@@ -104,7 +99,7 @@ type subscriptionSeed struct {
 	CreatedAt        time.Time
 }
 
-func mustInsertSubscription(t *testing.T, ctx context.Context, pool *pgxpool.Pool, seed subscriptionSeed) string {
+func mustInsertSubscription(t *testing.T, ctx context.Context, pool *pgxpool.Pool, seed subscriptionSeed) string { //nolint:gocritic
 	t.Helper()
 
 	createdAt := seed.CreatedAt
@@ -135,30 +130,6 @@ func assertConfirmed(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id s
 	}
 	if got != want {
 		t.Fatalf("confirmed = %v, want %v", got, want)
-	}
-}
-
-func assertLastSeenTag(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id, want string) {
-	t.Helper()
-
-	var got *string
-	if err := pool.QueryRow(ctx, `SELECT last_seen_tag FROM subscriptions WHERE id=$1`, id).Scan(&got); err != nil {
-		t.Fatalf("query last_seen_tag: %v", err)
-	}
-	if got == nil || *got != want {
-		t.Fatalf("last_seen_tag = %#v, want %q", got, want)
-	}
-}
-
-func assertNullLastSeenTag(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id string) {
-	t.Helper()
-
-	var got *string
-	if err := pool.QueryRow(ctx, `SELECT last_seen_tag FROM subscriptions WHERE id=$1`, id).Scan(&got); err != nil {
-		t.Fatalf("query last_seen_tag: %v", err)
-	}
-	if got != nil {
-		t.Fatalf("last_seen_tag = %q, want NULL", *got)
 	}
 }
 

@@ -84,7 +84,7 @@ func freeTCPPort(t *testing.T) int {
 	if err != nil {
 		t.Fatalf("find free TCP port: %v", err)
 	}
-	defer listener.Close()
+	defer listener.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	_, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {

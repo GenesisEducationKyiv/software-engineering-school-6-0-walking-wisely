@@ -67,7 +67,7 @@ func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request health route: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected health status %d, got %d", http.StatusOK, resp.StatusCode)
@@ -124,11 +124,11 @@ func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 func scrapeMetrics(t *testing.T, url string) map[string]*dto.MetricFamily {
 	t.Helper()
 
-	resp, err := http.Get(url)
+	resp, err := http.Get(url) //nolint:gosec,noctx // test helper; URL is constructed from test server, not user input
 	if err != nil {
 		t.Fatalf("scrape metrics: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected metrics status %d, got %d", http.StatusOK, resp.StatusCode)

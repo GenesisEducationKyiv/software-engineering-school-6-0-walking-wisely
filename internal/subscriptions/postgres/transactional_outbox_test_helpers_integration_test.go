@@ -60,21 +60,6 @@ func loadSubscriptionRequestedEvent(t *testing.T, ctx context.Context, pool *pgx
 	return event
 }
 
-func loadReleaseDetectedEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool) subscriptionevents.ReleaseDetected {
-	t.Helper()
-
-	var payload []byte
-	if err := pool.QueryRow(ctx, `SELECT payload_json FROM outbox_events WHERE event_type=$1`, "release_monitoring.release_detected").Scan(&payload); err != nil {
-		t.Fatalf("select release payload: %v", err)
-	}
-
-	var event subscriptionevents.ReleaseDetected
-	if err := json.Unmarshal(payload, &event); err != nil {
-		t.Fatalf("unmarshal release payload: %v", err)
-	}
-	return event
-}
-
 type failAfterPublishPublisher struct {
 	t    *testing.T
 	next events.Publisher

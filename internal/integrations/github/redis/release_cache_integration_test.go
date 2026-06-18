@@ -144,7 +144,7 @@ func newTestRedisClient(t *testing.T, ctx context.Context) *goredis.Client {
 	if err != nil {
 		t.Fatalf("start redis container: %v", err)
 	}
-	t.Cleanup(func() {
+	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
 		if err := container.Terminate(context.Background()); err != nil {
 			t.Logf("terminate redis container: %v", err)
 		}

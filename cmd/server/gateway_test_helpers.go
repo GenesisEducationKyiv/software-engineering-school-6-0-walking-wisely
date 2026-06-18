@@ -77,7 +77,7 @@ func newGatewayTestDB(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("start postgres container: %v", err)
 	}
-	t.Cleanup(func() {
+	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
 		if err := container.Terminate(context.Background()); err != nil {
 			t.Logf("terminate postgres container: %v", err)
 		}
@@ -201,7 +201,7 @@ func postJSON(t *testing.T, target string, body any, wantStatus int) {
 	if err != nil {
 		t.Fatalf("POST %s: %v", target, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	assertGatewayStatus(t, resp, wantStatus)
 }
@@ -209,11 +209,11 @@ func postJSON(t *testing.T, target string, body any, wantStatus int) {
 func getJSON(t *testing.T, target string, wantStatus int, dst any) {
 	t.Helper()
 
-	resp, err := http.Get(target)
+	resp, err := http.Get(target) //nolint:gosec,noctx // test helper; URL is constructed from test server, not user input
 	if err != nil {
 		t.Fatalf("GET %s: %v", target, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	assertGatewayStatus(t, resp, wantStatus)
 	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
@@ -224,11 +224,11 @@ func getJSON(t *testing.T, target string, wantStatus int, dst any) {
 func getStatus(t *testing.T, target string, wantStatus int) {
 	t.Helper()
 
-	resp, err := http.Get(target)
+	resp, err := http.Get(target) //nolint:gosec,noctx // test helper; URL is constructed from test server, not user input
 	if err != nil {
 		t.Fatalf("GET %s: %v", target, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	assertGatewayStatus(t, resp, wantStatus)
 }
