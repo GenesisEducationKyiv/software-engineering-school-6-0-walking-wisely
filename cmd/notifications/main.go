@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
@@ -21,9 +22,6 @@ import (
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/streams"
-
-	// Register event types so the stream consumer can decode them.
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 )
 
 func main() {
@@ -35,6 +33,10 @@ func main() {
 }
 
 func run(log platformlogger.Logger) error {
+	contractevents.RegisterTypes(func(event contractevents.Event) {
+		events.RegisterType(event)
+	})
+
 	cfg, err := platformconfig.LoadNotificationsConfig()
 	if err != nil {
 		return err

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
 )
 
 func TestIntegration_HTTPGatewaySubscriptionHappyPath(t *testing.T) {

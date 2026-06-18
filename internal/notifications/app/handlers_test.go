@@ -12,7 +12,6 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 )
 
 // ── fake JobWriter ─────────────────────────────────────────────────────────────
@@ -223,7 +222,7 @@ func TestOnReleaseDetectedUsesReleaseNameWhenNonEmpty(t *testing.T) {
 	writer := &fakeJobWriter{}
 	h := NewEventHandlers(writer, "https://example.com", nil)
 	evt := contractevents.ReleaseDetected{
-		Metadata:    events.Metadata{ID: uuid.NewString(), At: time.Now().UTC(), V: 1, IdKey: "key"},
+		Metadata:    contractevents.Metadata{ID: uuid.NewString(), At: time.Now().UTC(), V: 1, IdKey: "key"},
 		Repo:        "owner/repo",
 		Release:     contracts.Release{TagName: "v1.0.0", Name: "First Release", HTMLURL: "https://github.com"},
 		Subscribers: []contractevents.Subscriber{sub},
@@ -255,7 +254,7 @@ func TestOnReleaseDetectedFallsBackToTagNameWhenNameEmpty(t *testing.T) {
 	writer := &fakeJobWriter{}
 	h := NewEventHandlers(writer, "https://example.com", nil)
 	evt := contractevents.ReleaseDetected{
-		Metadata:    events.Metadata{ID: uuid.NewString(), At: time.Now().UTC(), V: 1, IdKey: "key"},
+		Metadata:    contractevents.Metadata{ID: uuid.NewString(), At: time.Now().UTC(), V: 1, IdKey: "key"},
 		Repo:        "owner/repo",
 		Release:     contracts.Release{TagName: "v2.0.0", Name: "", HTMLURL: "https://github.com"},
 		Subscribers: []contractevents.Subscriber{sub},

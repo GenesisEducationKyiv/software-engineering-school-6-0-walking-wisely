@@ -1,4 +1,4 @@
-// Package mail defines the email delivery contract used by background workers.
+// Package mail defines the email delivery contract shared between components.
 package mail
 
 import "context"
