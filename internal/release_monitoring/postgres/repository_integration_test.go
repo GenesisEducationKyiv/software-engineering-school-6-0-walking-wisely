@@ -10,52 +10,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 )
 
 // ── shared setup ──────────────────────────────────────────────────────────────
 
-func newReleaseScanTestDB(t *testing.T, ctx context.Context) (*ReleaseScanRepo, *pgxpool.Pool) {
+func newReleaseScanTestDB(t *testing.T, _ context.Context) (*ReleaseScanRepo, *pgxpool.Pool) {
 	t.Helper()
-
-	testcontainers.SkipIfProviderIsNotHealthy(t)
-
-	container, err := tcpostgres.Run(
-		ctx,
-		"postgres:16-alpine",
-		tcpostgres.WithDatabase("app"),
-		tcpostgres.WithUsername("app"),
-		tcpostgres.WithPassword("secret"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
+	if sharedPool == nil {
+		t.Fatal("sharedPool not initialized — TestMain must set it up")
 	}
-	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
-		if err := container.Terminate(context.Background()); err != nil {
-			t.Logf("terminate postgres container: %v", err)
-		}
-	})
-
-	databaseURL, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("build postgres connection string: %v", err)
-	}
-	if err := platformmigrations.Run(databaseURL, logger.NoopLogger{}); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatalf("connect to postgres: %v", err)
-	}
-	t.Cleanup(pool.Close)
-
-	return NewReleaseScanRepo(pool, logger.NoopLogger{}), pool
+	return NewReleaseScanRepo(sharedPool, logger.NoopLogger{}), sharedPool
 }
 
 func integrationContext(t *testing.T) (context.Context, context.CancelFunc) {
@@ -109,8 +75,7 @@ func readLastSeenTag(t *testing.T, ctx context.Context, pool *pgxpool.Pool, subI
 
 // ── ListDistinctConfirmedRepos ────────────────────────────────────────────────
 
-func TestListDistinctConfirmedReposEmptyTable(t *testing.T) {
-	t.Parallel()
+func TestIntegration_ListDistinctConfirmedReposEmptyTable(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -129,8 +94,7 @@ func TestListDistinctConfirmedReposEmptyTable(t *testing.T) {
 	}
 }
 
-func TestListDistinctConfirmedRepos(t *testing.T) {
-	t.Parallel()
+func TestIntegration_ListDistinctConfirmedRepos(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -168,8 +132,7 @@ func TestListDistinctConfirmedRepos(t *testing.T) {
 
 // ── ListConfirmedSubscribersForRepo ───────────────────────────────────────────
 
-func TestListConfirmedSubscribersForRepoFieldsRoundTrip(t *testing.T) {
-	t.Parallel()
+func TestIntegration_ListConfirmedSubscribersForRepoFieldsRoundTrip(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -212,8 +175,7 @@ func TestListConfirmedSubscribersForRepoFieldsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestListConfirmedSubscribersExcludesUnconfirmed(t *testing.T) {
-	t.Parallel()
+func TestIntegration_ListConfirmedSubscribersExcludesUnconfirmed(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -235,8 +197,7 @@ func TestListConfirmedSubscribersExcludesUnconfirmed(t *testing.T) {
 
 // ── UpdateLastSeenTag ─────────────────────────────────────────────────────────
 
-func TestUpdateLastSeenTag(t *testing.T) {
-	t.Parallel()
+func TestIntegration_UpdateLastSeenTag(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -257,8 +218,7 @@ func TestUpdateLastSeenTag(t *testing.T) {
 	}
 }
 
-func TestUpdateLastSeenTagSkipsUnconfirmedRows(t *testing.T) {
-	t.Parallel()
+func TestIntegration_UpdateLastSeenTagSkipsUnconfirmedRows(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -284,8 +244,7 @@ func TestUpdateLastSeenTagSkipsUnconfirmedRows(t *testing.T) {
 	}
 }
 
-func TestUpdateLastSeenTagInsideTransactionRollback(t *testing.T) {
-	t.Parallel()
+func TestIntegration_UpdateLastSeenTagInsideTransactionRollback(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 

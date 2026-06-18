@@ -11,53 +11,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 )
 
 // ── shared setup ──────────────────────────────────────────────────────────────
 
-func newNotificationTestDB(t *testing.T, ctx context.Context) (*Repository, *pgxpool.Pool) {
+func newNotificationTestDB(t *testing.T, _ context.Context) (*Repository, *pgxpool.Pool) {
 	t.Helper()
-
-	testcontainers.SkipIfProviderIsNotHealthy(t)
-
-	container, err := tcpostgres.Run(
-		ctx,
-		"postgres:16-alpine",
-		tcpostgres.WithDatabase("app"),
-		tcpostgres.WithUsername("app"),
-		tcpostgres.WithPassword("secret"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
+	if sharedPool == nil {
+		t.Fatal("sharedPool not initialized — TestMain must set it up")
 	}
-	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
-		if err := container.Terminate(context.Background()); err != nil {
-			t.Logf("terminate postgres container: %v", err)
-		}
-	})
-
-	databaseURL, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("build postgres connection string: %v", err)
-	}
-	if err := platformmigrations.Run(databaseURL, logger.NoopLogger{}); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatalf("connect to postgres: %v", err)
-	}
-	t.Cleanup(pool.Close)
-
-	return NewRepository(pool), pool
+	return NewRepository(sharedPool), sharedPool
 }
 
 func integrationContext(t *testing.T) (context.Context, context.CancelFunc) {
@@ -94,8 +59,7 @@ func truncateNotificationTables(t *testing.T, ctx context.Context, pool *pgxpool
 
 // ── RecordConfirmation ────────────────────────────────────────────────────────
 
-func TestRecordConfirmationHappyPath(t *testing.T) {
-	t.Parallel()
+func TestIntegration_RecordConfirmationHappyPath(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -158,8 +122,7 @@ func TestRecordConfirmationHappyPath(t *testing.T) {
 	}
 }
 
-func TestRecordConfirmationIdempotent(t *testing.T) {
-	t.Parallel()
+func TestIntegration_RecordConfirmationIdempotent(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -201,8 +164,7 @@ func TestRecordConfirmationIdempotent(t *testing.T) {
 
 // ── RecordReleaseNotifications ────────────────────────────────────────────────
 
-func TestRecordReleaseNotificationsHappyPath(t *testing.T) {
-	t.Parallel()
+func TestIntegration_RecordReleaseNotificationsHappyPath(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -254,8 +216,7 @@ func TestRecordReleaseNotificationsHappyPath(t *testing.T) {
 	}
 }
 
-func TestRecordReleaseNotificationsInsertsAcrossBatchBoundary(t *testing.T) {
-	t.Parallel()
+func TestIntegration_RecordReleaseNotificationsInsertsAcrossBatchBoundary(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -288,8 +249,7 @@ func TestRecordReleaseNotificationsInsertsAcrossBatchBoundary(t *testing.T) {
 	}
 }
 
-func TestRecordReleaseNotificationsIdempotent(t *testing.T) {
-	t.Parallel()
+func TestIntegration_RecordReleaseNotificationsIdempotent(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -333,8 +293,7 @@ func TestRecordReleaseNotificationsIdempotent(t *testing.T) {
 
 // ── ClaimPending ──────────────────────────────────────────────────────────────
 
-func TestClaimPendingFieldsRoundTrip(t *testing.T) {
-	t.Parallel()
+func TestIntegration_ClaimPendingFieldsRoundTrip(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -372,8 +331,7 @@ func TestClaimPendingFieldsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestClaimPendingSkipsInFlightRows(t *testing.T) {
-	t.Parallel()
+func TestIntegration_ClaimPendingSkipsInFlightRows(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -402,8 +360,7 @@ func TestClaimPendingSkipsInFlightRows(t *testing.T) {
 
 // ── MarkSent ──────────────────────────────────────────────────────────────────
 
-func TestMarkSent(t *testing.T) {
-	t.Parallel()
+func TestIntegration_MarkSent(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -456,8 +413,7 @@ func TestMarkSent(t *testing.T) {
 
 // ── MarkFailed ────────────────────────────────────────────────────────────────
 
-func TestMarkFailedBelowMaxKeepsPending(t *testing.T) {
-	t.Parallel()
+func TestIntegration_MarkFailedBelowMaxKeepsPending(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -513,8 +469,7 @@ func TestMarkFailedBelowMaxKeepsPending(t *testing.T) {
 	}
 }
 
-func TestMarkFailedAtMaxMovesToFailed(t *testing.T) {
-	t.Parallel()
+func TestIntegration_MarkFailedAtMaxMovesToFailed(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 
@@ -566,8 +521,7 @@ func TestMarkFailedAtMaxMovesToFailed(t *testing.T) {
 	}
 }
 
-func TestDeleteSentBefore(t *testing.T) {
-	t.Parallel()
+func TestIntegration_DeleteSentBefore(t *testing.T) {
 	ctx, cancel := integrationContext(t)
 	defer cancel()
 

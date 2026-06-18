@@ -12,16 +12,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 )
 
-func TestRepositoryClaimPending(t *testing.T) {
-	t.Parallel()
-
+func TestIntegration_RepositoryClaimPending(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -99,9 +92,7 @@ func TestRepositoryClaimPending(t *testing.T) {
 	}
 }
 
-func TestRepositoryClaimPendingConcurrentClaimersDoNotOverlap(t *testing.T) {
-	t.Parallel()
-
+func TestIntegration_RepositoryClaimPendingConcurrentClaimersDoNotOverlap(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -164,9 +155,7 @@ func TestRepositoryClaimPendingConcurrentClaimersDoNotOverlap(t *testing.T) {
 	}
 }
 
-func TestRepositoryMarkFailedSchedulesRetry(t *testing.T) {
-	t.Parallel()
-
+func TestIntegration_RepositoryMarkFailedSchedulesRetry(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -208,9 +197,7 @@ func TestRepositoryMarkFailedSchedulesRetry(t *testing.T) {
 	}
 }
 
-func TestRepositoryMarkFailedMovesToFailedAfterMaxAttempts(t *testing.T) {
-	t.Parallel()
-
+func TestIntegration_RepositoryMarkFailedMovesToFailedAfterMaxAttempts(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -245,9 +232,7 @@ func TestRepositoryMarkFailedMovesToFailedAfterMaxAttempts(t *testing.T) {
 	}
 }
 
-func TestRepositoryDeleteDeliveredBefore(t *testing.T) {
-	t.Parallel()
-
+func TestIntegration_RepositoryDeleteDeliveredBefore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -329,43 +314,12 @@ func TestRepositoryDeleteDeliveredBefore(t *testing.T) {
 	}
 }
 
-func newTestRepository(t *testing.T, ctx context.Context) (*Repository, *pgxpool.Pool) {
+func newTestRepository(t *testing.T, _ context.Context) (*Repository, *pgxpool.Pool) {
 	t.Helper()
-
-	testcontainers.SkipIfProviderIsNotHealthy(t)
-
-	container, err := tcpostgres.Run(
-		ctx,
-		"postgres:16-alpine",
-		tcpostgres.WithDatabase("app"),
-		tcpostgres.WithUsername("app"),
-		tcpostgres.WithPassword("secret"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
+	if sharedPool == nil {
+		t.Fatal("sharedPool not initialized — TestMain must set it up")
 	}
-	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
-		if err := container.Terminate(context.Background()); err != nil {
-			t.Logf("terminate postgres container: %v", err)
-		}
-	})
-
-	databaseURL, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("build postgres connection string: %v", err)
-	}
-	if err := platformmigrations.Run(databaseURL, logger.NoopLogger{}); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatalf("connect to postgres: %v", err)
-	}
-	t.Cleanup(pool.Close)
-
-	return NewRepository(pool), pool
+	return NewRepository(sharedPool), sharedPool
 }
 
 type outboxSeed struct {
