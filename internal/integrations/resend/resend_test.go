@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -84,9 +84,9 @@ func TestResendClientSendBatchMapsRateLimit(t *testing.T) {
 		{To: "user@example.com", Subject: "Hello", HTML: "<p>Body</p>"},
 	})
 
-	var rle *subscriptions.RateLimitError
+	var rle *contracts.RateLimitError
 	if !errors.As(err, &rle) {
-		t.Fatalf("error = %T, want *subscriptions.RateLimitError", err)
+		t.Fatalf("error = %T, want *contracts.RateLimitError", err)
 	}
 	if rle.Service != "Resend" {
 		t.Fatalf("service = %s, want Resend", rle.Service)

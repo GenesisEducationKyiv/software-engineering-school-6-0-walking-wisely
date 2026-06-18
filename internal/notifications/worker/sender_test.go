@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 type fakeMailSender struct {
@@ -398,7 +398,7 @@ func TestLogSendError(t *testing.T) {
 		},
 		{
 			name:      "rate limit",
-			err:       &subscriptionsdomain.RateLimitError{Service: "email", RetryAfter: time.Minute},
+			err:       &contracts.RateLimitError{Service: "email", RetryAfter: time.Minute},
 			wantWarns: 1,
 			wantMsg:   "sender: email provider rate limited, dropping batch",
 		},

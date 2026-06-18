@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 const (
@@ -28,7 +28,7 @@ type resendEmail struct {
 }
 
 // Client sends transactional email via the Resend batch API.
-// It surfaces rate-limit responses as *subscriptions.RateLimitError so callers can
+// It surfaces rate-limit responses as *contracts.RateLimitError so callers can
 // decide whether to retry or log-and-drop.
 type Client struct {
 	http      *http.Client
@@ -98,7 +98,7 @@ func (c *Client) SendBatch(ctx context.Context, messages []mail.Message) error {
 	case http.StatusTooManyRequests:
 		retryAfter := parseResendRetryAfter(resp)
 		c.log.Debug("resend rate limited", "retry_after", retryAfter, "batch_size", len(messages))
-		return &subscriptions.RateLimitError{Service: "Resend", RetryAfter: retryAfter}
+		return &contracts.RateLimitError{Service: "Resend", RetryAfter: retryAfter}
 
 	default:
 		return fmt.Errorf("resend API unexpected status %d", resp.StatusCode)

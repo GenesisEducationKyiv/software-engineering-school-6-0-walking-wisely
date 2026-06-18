@@ -7,10 +7,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/mail"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 type JobQueue interface {
@@ -107,7 +107,7 @@ func logSendError(log logger.Logger, err error, batchSize int) {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
-	var rle *subscriptionsdomain.RateLimitError
+	var rle *contracts.RateLimitError
 	if ok := errors.As(err, &rle); ok {
 		log.Warn("sender: email provider rate limited, dropping batch",
 			"batch_size", batchSize, "retry_after", rle.RetryAfter)

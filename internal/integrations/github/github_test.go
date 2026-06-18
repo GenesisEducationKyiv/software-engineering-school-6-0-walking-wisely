@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 )
 
 type rewriteTransport struct {
@@ -111,7 +111,7 @@ func TestClient_GetLatestRelease_NotFoundMapsToDomainError(t *testing.T) {
 	}))
 
 	_, err := client.GetLatestRelease(context.Background(), "owner/repo")
-	if !errors.Is(err, subscriptions.ErrRepoNotFound) {
+	if !errors.Is(err, contracts.ErrRepoNotFound) {
 		t.Fatalf("error = %v, want ErrRepoNotFound", err)
 	}
 }
@@ -125,7 +125,7 @@ func TestClient_GetLatestRelease_TooManyRequestsUsesRetryAfter(t *testing.T) {
 	}))
 
 	_, err := client.GetLatestRelease(context.Background(), "owner/repo")
-	var rateLimitErr *subscriptions.RateLimitError
+	var rateLimitErr *contracts.RateLimitError
 	if !errors.As(err, &rateLimitErr) {
 		t.Fatalf("error = %v, want RateLimitError", err)
 	}
@@ -147,7 +147,7 @@ func TestClient_GetLatestRelease_ForbiddenRateLimitUsesResetHeader(t *testing.T)
 	}))
 
 	_, err := client.GetLatestRelease(context.Background(), "owner/repo")
-	var rateLimitErr *subscriptions.RateLimitError
+	var rateLimitErr *contracts.RateLimitError
 	if !errors.As(err, &rateLimitErr) {
 		t.Fatalf("error = %v, want RateLimitError", err)
 	}
@@ -227,7 +227,7 @@ func TestClient_ValidateRepo_NotFound(t *testing.T) {
 	}))
 
 	err := client.ValidateRepo(context.Background(), "owner/repo")
-	if !errors.Is(err, subscriptions.ErrRepoNotFound) {
+	if !errors.Is(err, contracts.ErrRepoNotFound) {
 		t.Fatalf("error = %v, want ErrRepoNotFound", err)
 	}
 }
@@ -341,7 +341,7 @@ func TestClient_CheckAvailability_ZeroRemainingMapsToRateLimit(t *testing.T) {
 	}))
 
 	status, err := client.CheckAvailabilityStatus(context.Background())
-	var rateLimitErr *subscriptions.RateLimitError
+	var rateLimitErr *contracts.RateLimitError
 	if !errors.As(err, &rateLimitErr) {
 		t.Fatalf("error = %v, want RateLimitError", err)
 	}

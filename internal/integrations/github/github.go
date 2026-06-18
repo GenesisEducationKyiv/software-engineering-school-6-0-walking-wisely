@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
 )
 
 // Release holds the fields we care about from a GitHub release object.
@@ -58,7 +58,7 @@ func NewClient(githubToken string, log logger.Logger) *Client {
 }
 
 // GetLatestRelease returns the latest release for a repo in "owner/repo" format.
-// Returns subscriptions.ErrRepoNotFound on 404, or *subscriptions.RateLimitError on 429/403.
+// Returns contracts.ErrRepoNotFound on 404, or *contracts.RateLimitError on 429/403.
 func (c *Client) GetLatestRelease(ctx context.Context, repo string) (*Release, error) {
 	owner, name, err := splitRepo(repo)
 	if err != nil {
@@ -130,7 +130,7 @@ func (c *Client) CheckAvailabilityStatus(ctx context.Context) (Availability, err
 		if limit.Remaining <= 0 {
 			retryAfter := retryAfterFromUnix(limit.Reset)
 			c.log.Warn("github API unavailable due to rate limit", "retry_after", retryAfter)
-			return status, &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
+			return status, &contracts.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
 		}
 		c.log.Info("github API availability checked", "authenticated", c.token != "", "remaining", limit.Remaining)
 		return status, nil
@@ -139,7 +139,7 @@ func (c *Client) CheckAvailabilityStatus(ctx context.Context) (Availability, err
 	case http.StatusTooManyRequests, http.StatusForbidden:
 		retryAfter := parseRetryAfter(resp)
 		c.log.Warn("github API unavailable due to rate limit", "retry_after", retryAfter)
-		return Availability{Authenticated: c.token != "", Remaining: 0}, &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
+		return Availability{Authenticated: c.token != "", Remaining: 0}, &contracts.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
 	default:
 		return Availability{Authenticated: c.token != "", Remaining: -1}, fmt.Errorf("github availability check: unexpected status %d", resp.StatusCode)
 	}
@@ -175,7 +175,7 @@ func (c *Client) checkStatus(resp *http.Response, repo string) error {
 		return nil
 
 	case http.StatusNotFound:
-		return subscriptions.ErrRepoNotFound
+		return contracts.ErrRepoNotFound
 
 	case http.StatusUnauthorized:
 		return fmt.Errorf("github token is invalid or unauthorized")
@@ -185,7 +185,7 @@ func (c *Client) checkStatus(resp *http.Response, repo string) error {
 		// 429 + Retry-After for secondary rate limits.
 		retryAfter := parseRetryAfter(resp)
 		c.log.Debug("github rate limited", "repo", repo, "retry_after", retryAfter)
-		return &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
+		return &contracts.RateLimitError{Service: "GitHub", RetryAfter: retryAfter}
 
 	default:
 		return fmt.Errorf("github API unexpected status %d for %s", resp.StatusCode, repo)
