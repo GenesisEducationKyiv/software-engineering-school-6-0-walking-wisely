@@ -204,9 +204,10 @@ func run(appLogger platformlogger.Logger) error {
 	}()
 
 	// Saga orchestrator — drives the subscribe confirmation saga.
-	sagaOrchestrator := subscriptionapp.NewSagaOrchestrator(subscriptionapp.SagaOrchestratorDeps{
+	sagaOrchestrator := subscriptionapp.NewSagaOrchestrator(&subscriptionapp.SagaOrchestratorDeps{
 		SagaRepo:  subSagaRepo,
 		SubRepo:   subTokenRepo,
+		TxManager: subTokenRepo,
 		Publisher: outboxPublisher,
 		Log:       appLogger,
 	})
@@ -234,6 +235,22 @@ func run(appLogger platformlogger.Logger) error {
 		if err := replyConsumer.Run(ctx, replyBus); err != nil {
 			appLogger.Error("saga reply consumer error", "err", err)
 			cancel()
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(cfg.SagaSweepInterval)
+		defer ticker.Stop()
+		sagaOrchestrator.Sweep(ctx, cfg.SagaStuckAfter)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sagaOrchestrator.Sweep(ctx, cfg.SagaStuckAfter)
+			}
 		}
 	}()
 

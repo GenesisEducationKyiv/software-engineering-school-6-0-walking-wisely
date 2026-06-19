@@ -31,6 +31,8 @@ type AppConfig struct {
 	ScannerInterval       time.Duration
 	OutboxCleanupInterval time.Duration
 	OutboxRetention       time.Duration
+	SagaSweepInterval     time.Duration
+	SagaStuckAfter        time.Duration
 }
 
 // LoadAppConfig reads all configuration from environment variables and returns a validated AppConfig.
@@ -56,6 +58,8 @@ func LoadAppConfig() (*AppConfig, error) {
 		ScannerInterval:       parseDurationOrDefault("SCANNER_INTERVAL", 5*time.Minute),
 		OutboxCleanupInterval: parseDurationOrDefault("OUTBOX_CLEANUP_INTERVAL", 30*time.Minute),
 		OutboxRetention:       parseDurationOrDefault("OUTBOX_RETENTION", 7*24*time.Hour),
+		SagaSweepInterval:     parseDurationOrDefault("SAGA_SWEEP_INTERVAL", 5*time.Minute),
+		SagaStuckAfter:        parseDurationOrDefault("SAGA_STUCK_AFTER", 10*time.Minute),
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
