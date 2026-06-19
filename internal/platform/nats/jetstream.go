@@ -262,7 +262,7 @@ func (c *Consumer) dispatch(ctx context.Context, bus events.Publisher, msg *gona
 		return
 	}
 
-	if err := bus.Publish(ctx, event); err != nil {
+	if err := c.safePublish(ctx, bus, event); err != nil {
 		c.log.Error(
 			"jetstream consumer handler failed, message will be redelivered",
 			"event_type", envelope.EventType,
@@ -274,6 +274,20 @@ func (c *Consumer) dispatch(ctx context.Context, bus events.Publisher, msg *gona
 	}
 
 	c.ack(ctx, msg)
+}
+
+// safePublish dispatches the event to the bus, recovering from any panic in a handler
+// so one poisoned message cannot crash the consumer goroutine (and the whole replica).
+// A recovered panic is converted to an error: the message is not acked and is
+// redelivered / dead-lettered like any other handler failure.
+func (c *Consumer) safePublish(ctx context.Context, bus events.Publisher, event events.Event) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in event handler: %v", r)
+			c.log.Error("jetstream consumer handler panicked", "event", event.EventName(), "panic", r)
+		}
+	}()
+	return bus.Publish(ctx, event)
 }
 
 func (c *Consumer) ack(ctx context.Context, msg *gonats.Msg) {
