@@ -3,14 +3,10 @@ package subscriptionapp
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
-	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
@@ -62,11 +58,6 @@ type fakeGithubClient struct {
 	repo            string
 }
 
-type fakeConfirmationMessage struct {
-	To   string
-	HTML string
-}
-
 func (f *fakeGithubClient) ValidateRepo(ctx context.Context, repo string) error {
 	f.calls++
 	f.ctx = ctx
@@ -74,43 +65,44 @@ func (f *fakeGithubClient) ValidateRepo(ctx context.Context, repo string) error 
 	return f.validateRepoErr
 }
 
+// fakeOrchestrator captures EnqueueWithinTx calls for assertion.
+type fakeOrchestrator struct {
+	err   error
+	calls []enqueueCall
+}
+
+type enqueueCall struct {
+	subscriptionID string
+	email          string
+	repo           string
+	confirmToken   string
+	unsubToken     string
+}
+
+func (f *fakeOrchestrator) EnqueueWithinTx(_ context.Context, subscriptionID, email, repo, confirmToken, unsubToken string) error {
+	f.calls = append(f.calls, enqueueCall{subscriptionID, email, repo, confirmToken, unsubToken})
+	return f.err
+}
+
 func newSubscribeService(
 	gh GithubRepoValidator,
 	repo SubscriptionWriter,
-	ch chan fakeConfirmationMessage,
+	orch SubscriptionOrchestrator,
 ) *SubscribeService {
-	bus := events.NewBus()
-	bus.Subscribe(subscriptionevents.SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
-		requested, ok := event.(subscriptionevents.SubscriptionRequested)
-		if !ok {
-			return fmt.Errorf("event type = %T, want %T", event, subscriptionevents.SubscriptionRequested{})
-		}
-		select {
-		case ch <- fakeConfirmationMessage{
-			To: requested.Email,
-			HTML: "http://localhost/api/confirm/" + requested.ConfirmToken +
-				" http://localhost/api/unsubscribe/" + requested.UnsubToken +
-				" " + requested.Repo,
-		}:
-		default:
-		}
-		return nil
-	})
-
 	return NewSubscribeService(&SubscribeDeps{
 		Repo:           repo,
 		TxManager:      fakeTxManager{},
 		Github:         gh,
-		Publisher:      bus,
+		Orchestrator:   orch,
 		EmailSecretKey: "test-secret",
 	})
 }
 
 func TestSubscribe(t *testing.T) {
-	ch := make(chan fakeConfirmationMessage, 1)
 	repo := &fakeSubscriptionRepo{}
 	gh := &fakeGithubClient{}
-	svc := newSubscribeService(gh, repo, ch)
+	orch := &fakeOrchestrator{}
+	svc := newSubscribeService(gh, repo, orch)
 	ctx := context.WithValue(context.Background(), testContextKey{}, "request-123")
 
 	result, err := svc.Subscribe(ctx, SubscribeCommand{
@@ -127,18 +119,12 @@ func TestSubscribe(t *testing.T) {
 	if gh.calls != 1 {
 		t.Fatalf("github calls = %d, want 1", gh.calls)
 	}
-	if gh.ctx != ctx {
-		t.Errorf("github context was not passed through")
-	}
 	if gh.repo != validRepo {
 		t.Errorf("github repo = %q, want %q", gh.repo, validRepo)
 	}
 
 	if repo.calls != 1 {
 		t.Fatalf("repo calls = %d, want 1", repo.calls)
-	}
-	if repo.ctx != ctx {
-		t.Errorf("repo context was not passed through")
 	}
 	if repo.email != validEmail {
 		t.Errorf("repo email = %q, want %q", repo.email, validEmail)
@@ -156,21 +142,21 @@ func TestSubscribe(t *testing.T) {
 		t.Errorf("confirm and unsubscribe tokens should differ")
 	}
 
-	if len(ch) != 1 {
-		t.Fatalf("queued messages = %d, want 1", len(ch))
+	if len(orch.calls) != 1 {
+		t.Fatalf("orchestrator EnqueueWithinTx called %d times, want 1", len(orch.calls))
 	}
-	msg := <-ch
-	if msg.To != validEmail {
-		t.Errorf("message To = %q, want %q", msg.To, validEmail)
+	call := orch.calls[0]
+	if call.subscriptionID != "sub-1" {
+		t.Errorf("enqueue subscriptionID = %q, want sub-1", call.subscriptionID)
 	}
-	for _, want := range []string{
-		validRepo,
-		"http://localhost/api/confirm/" + repo.confirmToken,
-		"http://localhost/api/unsubscribe/" + repo.unsubToken,
-	} {
-		if !strings.Contains(msg.HTML, want) {
-			t.Errorf("message HTML does not contain %q: %s", want, msg.HTML)
-		}
+	if call.email != validEmail {
+		t.Errorf("enqueue email = %q, want %q", call.email, validEmail)
+	}
+	if call.repo != validRepo {
+		t.Errorf("enqueue repo = %q, want %q", call.repo, validRepo)
+	}
+	if call.confirmToken != repo.confirmToken {
+		t.Errorf("enqueue confirmToken = %q, want %q", call.confirmToken, repo.confirmToken)
 	}
 }
 
@@ -193,10 +179,10 @@ func TestSubscribe_EmailValidation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan fakeConfirmationMessage, 1)
 			repo := &fakeSubscriptionRepo{}
 			gh := &fakeGithubClient{}
-			svc := newSubscribeService(gh, repo, ch)
+			orch := &fakeOrchestrator{}
+			svc := newSubscribeService(gh, repo, orch)
 
 			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
 				Email: tc.email,
@@ -212,9 +198,6 @@ func TestSubscribe_EmailValidation(t *testing.T) {
 				}
 				if repo.calls != 0 {
 					t.Errorf("repo calls = %d, want 0", repo.calls)
-				}
-				if len(ch) != 0 {
-					t.Errorf("queued messages = %d, want 0", len(ch))
 				}
 			}
 		})
@@ -240,10 +223,10 @@ func TestSubscribe_RepoValidation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan fakeConfirmationMessage, 1)
 			repo := &fakeSubscriptionRepo{}
 			gh := &fakeGithubClient{}
-			svc := newSubscribeService(gh, repo, ch)
+			orch := &fakeOrchestrator{}
+			svc := newSubscribeService(gh, repo, orch)
 
 			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
 				Email: validEmail,
@@ -259,9 +242,6 @@ func TestSubscribe_RepoValidation(t *testing.T) {
 				}
 				if repo.calls != 0 {
 					t.Errorf("repo calls = %d, want 0", repo.calls)
-				}
-				if len(ch) != 0 {
-					t.Errorf("queued messages = %d, want 0", len(ch))
 				}
 			}
 		})
@@ -280,10 +260,10 @@ func TestSubscribe_GitHubErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan fakeConfirmationMessage, 1)
 			repo := &fakeSubscriptionRepo{}
 			gh := &fakeGithubClient{validateRepoErr: tc.githubErr}
-			svc := newSubscribeService(gh, repo, ch)
+			orch := &fakeOrchestrator{}
+			svc := newSubscribeService(gh, repo, orch)
 
 			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
 				Email: validEmail,
@@ -298,9 +278,6 @@ func TestSubscribe_GitHubErrors(t *testing.T) {
 			}
 			if repo.calls != 0 {
 				t.Errorf("repo calls = %d, want 0", repo.calls)
-			}
-			if len(ch) != 0 {
-				t.Errorf("queued messages = %d, want 0", len(ch))
 			}
 		})
 	}
@@ -317,10 +294,10 @@ func TestSubscribe_TokenRepoErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan fakeConfirmationMessage, 1)
 			repo := &fakeSubscriptionRepo{subscribeErr: tc.tokenRepoErr}
 			gh := &fakeGithubClient{}
-			svc := newSubscribeService(gh, repo, ch)
+			orch := &fakeOrchestrator{}
+			svc := newSubscribeService(gh, repo, orch)
 
 			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
 				Email: validEmail,
@@ -335,41 +312,6 @@ func TestSubscribe_TokenRepoErrors(t *testing.T) {
 			}
 			if repo.calls != 1 {
 				t.Errorf("repo calls = %d, want 1", repo.calls)
-			}
-			if len(ch) != 0 {
-				t.Errorf("queued messages = %d, want 0", len(ch))
-			}
-		})
-	}
-}
-
-func TestSubscribe_EmailChannel(t *testing.T) {
-	tests := []struct {
-		name         string
-		chanCap      int
-		wantEnqueued bool
-	}{
-		{"channel has capacity", 1, true},
-		{"channel full (unbuffered)", 0, false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan fakeConfirmationMessage, tc.chanCap)
-			repo := &fakeSubscriptionRepo{}
-			svc := newSubscribeService(&fakeGithubClient{}, repo, ch)
-
-			_, err := svc.Subscribe(context.Background(), SubscribeCommand{
-				Email: validEmail,
-				Repo:  validRepo,
-			})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			enqueued := len(ch) == 1
-			if enqueued != tc.wantEnqueued {
-				t.Errorf("enqueued = %v, want %v", enqueued, tc.wantEnqueued)
 			}
 		})
 	}

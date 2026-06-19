@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"regexp"
 
-	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
@@ -33,12 +31,17 @@ type SubscribeCommand struct {
 	Repo  string
 }
 
+// SubscriptionOrchestrator enqueues the saga command within an active transaction.
+type SubscriptionOrchestrator interface {
+	EnqueueWithinTx(txCtx context.Context, subscriptionID, email, repo, confirmToken, unsubToken string) error
+}
+
 // SubscribeService coordinates the subscribe use case.
 type SubscribeService struct {
 	repo           SubscriptionWriter
 	txManager      TransactionManager
 	github         GithubRepoValidator
-	publisher      events.Publisher
+	orchestrator   SubscriptionOrchestrator
 	emailSecretKey string
 }
 
@@ -47,7 +50,7 @@ type SubscribeDeps struct {
 	Repo           SubscriptionWriter
 	TxManager      TransactionManager
 	Github         GithubRepoValidator
-	Publisher      events.Publisher
+	Orchestrator   SubscriptionOrchestrator
 	EmailSecretKey string
 }
 
@@ -57,13 +60,13 @@ func NewSubscribeService(deps *SubscribeDeps) *SubscribeService {
 		repo:           deps.Repo,
 		txManager:      deps.TxManager,
 		github:         deps.Github,
-		publisher:      deps.Publisher,
+		orchestrator:   deps.Orchestrator,
 		emailSecretKey: deps.EmailSecretKey,
 	}
 }
 
 // Subscribe validates the command, verifies the repo, persists the subscription,
-// and requests a confirmation email.
+// and enqueues the saga's SendConfirmationEmail command — all atomically.
 func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) (subscriptionsdomain.SubscribeResult, error) {
 	email := NormalizeEmail(cmd.Email)
 	repo := NormalizeRepo(cmd.Repo)
@@ -99,17 +102,11 @@ func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) 
 		if err != nil {
 			return err
 		}
-		if s.publisher == nil {
+		if s.orchestrator == nil {
 			return nil
 		}
-		if err := s.publisher.Publish(txCtx, subscriptionevents.NewSubscriptionRequested(
-			result.SubscriptionID,
-			email,
-			repo,
-			confirmToken,
-			unsubToken,
-		)); err != nil {
-			return fmt.Errorf("publish subscription requested: %w", err)
+		if err := s.orchestrator.EnqueueWithinTx(txCtx, result.SubscriptionID, email, repo, confirmToken, unsubToken); err != nil {
+			return fmt.Errorf("enqueue saga: %w", err)
 		}
 		return nil
 	}); err != nil {

@@ -18,6 +18,8 @@ const (
 	StatusProcessing = "processing"
 	StatusDelivered  = "delivered"
 	StatusFailed     = "failed"
+
+	defaultTableName = "outbox_events"
 )
 
 type Record struct {
@@ -42,11 +44,18 @@ type MetricsSnapshot struct {
 }
 
 type Repository struct {
-	db *pgxpool.Pool
+	db        *pgxpool.Pool
+	tableName string
 }
 
-func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db}
+// NewRepository creates an outbox repository using the given table name.
+// Pass no table name to use the default "outbox_events".
+func NewRepository(db *pgxpool.Pool, tableName ...string) *Repository {
+	name := defaultTableName
+	if len(tableName) > 0 && tableName[0] != "" {
+		name = tableName[0]
+	}
+	return &Repository{db: db, tableName: name}
 }
 
 func (r *Repository) Append(ctx context.Context, event events.DurableEvent) error {
@@ -63,10 +72,10 @@ func (r *Repository) Append(ctx context.Context, event events.DurableEvent) erro
 	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
 	if _, err := exec.Exec(
 		ctx,
-		`INSERT INTO outbox_events
+		fmt.Sprintf(`INSERT INTO %s
 		 (id, event_type, aggregate_type, aggregate_id, payload_json, occurred_at, available_at, status, attempt_count, idempotency_key)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9)
-		 ON CONFLICT (idempotency_key) DO NOTHING`,
+		 ON CONFLICT (idempotency_key) DO NOTHING`, r.tableName),
 		eventID,
 		event.EventName(),
 		event.AggregateType(),
@@ -86,9 +95,9 @@ func (r *Repository) Append(ctx context.Context, event events.DurableEvent) erro
 func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSize int) ([]Record, error) {
 	rows, err := r.db.Query(
 		ctx,
-		`WITH locked AS (
+		fmt.Sprintf(`WITH locked AS (
 			SELECT id
-			FROM outbox_events
+			FROM %s
 			WHERE status IN ('pending', 'processing')
 			  AND available_at <= NOW()
 			  AND (status <> 'processing' OR locked_at < NOW() - INTERVAL '5 minutes')
@@ -96,7 +105,7 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 			FOR UPDATE SKIP LOCKED
 			LIMIT $1
 		), claimed AS (
-			UPDATE outbox_events o
+			UPDATE %s o
 			SET status = 'processing',
 			    locked_at = NOW(),
 			    locked_by = $2,
@@ -109,7 +118,7 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 		)
 		SELECT id::text, event_type, aggregate_type, aggregate_id, payload_json,
 		       occurred_at, available_at, status, attempt_count, last_error, idempotency_key
-		FROM claimed`,
+		FROM claimed`, r.tableName, r.tableName),
 		batchSize,
 		workerID,
 	)
@@ -145,9 +154,9 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 func (r *Repository) MarkDelivered(ctx context.Context, id string) error {
 	if _, err := r.db.Exec(
 		ctx,
-		`UPDATE outbox_events
+		fmt.Sprintf(`UPDATE %s
 		 SET status = 'delivered', locked_at = NULL, locked_by = NULL, last_error = NULL, updated_at = NOW()
-		 WHERE id = $1::uuid`,
+		 WHERE id = $1::uuid`, r.tableName),
 		id,
 	); err != nil {
 		return fmt.Errorf("mark outbox delivered: %w", err)
@@ -164,7 +173,7 @@ func (r *Repository) MarkFailed(ctx context.Context, id string, attemptCount, ma
 
 	if _, err := r.db.Exec(
 		ctx,
-		`UPDATE outbox_events
+		fmt.Sprintf(`UPDATE %s
 		 SET status = $2,
 		     attempt_count = $3,
 		     last_error = $4,
@@ -172,7 +181,7 @@ func (r *Repository) MarkFailed(ctx context.Context, id string, attemptCount, ma
 		     locked_at = NULL,
 		     locked_by = NULL,
 		     updated_at = NOW()
-		 WHERE id = $1::uuid`,
+		 WHERE id = $1::uuid`, r.tableName),
 		id,
 		status,
 		attemptCount,
@@ -187,9 +196,9 @@ func (r *Repository) MarkFailed(ctx context.Context, id string, attemptCount, ma
 func (r *Repository) DeleteDeliveredBefore(ctx context.Context, cutoff time.Time) (int64, error) {
 	tag, err := r.db.Exec(
 		ctx,
-		`DELETE FROM outbox_events
+		fmt.Sprintf(`DELETE FROM %s
 		 WHERE status = 'delivered'
-		   AND updated_at < $1`,
+		   AND updated_at < $1`, r.tableName),
 		cutoff,
 	)
 	if err != nil {
@@ -202,12 +211,12 @@ func (r *Repository) Metrics(ctx context.Context) (MetricsSnapshot, error) {
 	var snapshot MetricsSnapshot
 	err := r.db.QueryRow(
 		ctx,
-		`SELECT
+		fmt.Sprintf(`SELECT
 			COUNT(*) FILTER (WHERE status = 'pending') AS pending_count,
 			COALESCE(EXTRACT(EPOCH FROM NOW() - MIN(occurred_at)) FILTER (WHERE status = 'pending'), 0),
 			COUNT(*) FILTER (WHERE attempt_count > 0 AND status <> 'delivered') AS retry_count,
 			COUNT(*) FILTER (WHERE status = 'failed') AS failed_count
-		FROM outbox_events`,
+		FROM %s`, r.tableName),
 	).Scan(&snapshot.PendingCount, &snapshot.OldestPendingAge, &snapshot.RetryCount, &snapshot.FailedCount)
 	if err != nil {
 		return MetricsSnapshot{}, fmt.Errorf("query outbox metrics: %w", err)

@@ -8,7 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 )
 
@@ -23,15 +25,19 @@ const (
 
 type Repository struct {
 	db                             *pgxpool.Pool
+	outboxRepo                     *outbox.Repository // nil → no reply emission
 	releaseNotificationInsertBatch int
 }
 
-func NewRepository(db *pgxpool.Pool, releaseNotificationInsertBatch ...int) *Repository {
+// NewRepository creates a notification job repository.
+// outboxRepo is optional; when non-nil, terminal confirmation job transitions
+// append saga reply events to notifications_outbox within the same transaction.
+func NewRepository(db *pgxpool.Pool, outboxRepo *outbox.Repository, releaseNotificationInsertBatch ...int) *Repository {
 	batchSize := DefaultReleaseNotificationInsertBatchSize
 	if len(releaseNotificationInsertBatch) > 0 && releaseNotificationInsertBatch[0] > 0 {
 		batchSize = releaseNotificationInsertBatch[0]
 	}
-	return &Repository{db: db, releaseNotificationInsertBatch: batchSize}
+	return &Repository{db: db, outboxRepo: outboxRepo, releaseNotificationInsertBatch: batchSize}
 }
 
 func (r *Repository) RecordConfirmation(
@@ -39,6 +45,7 @@ func (r *Repository) RecordConfirmation(
 	handlerName string,
 	eventID string,
 	subscriptionID string,
+	sagaID string,
 	to string,
 	subject string,
 	html string,
@@ -46,11 +53,21 @@ func (r *Repository) RecordConfirmation(
 ) error {
 	return r.recordDelivery(ctx, handlerName, eventID, func(txCtx context.Context) error {
 		exec := platformpostgres.ExecutorFromContext(txCtx, r.db)
+
+		var sagaUUID *uuid.UUID
+		if sagaID != "" {
+			parsed, err := uuid.Parse(sagaID)
+			if err != nil {
+				return fmt.Errorf("parse saga id: %w", err)
+			}
+			sagaUUID = &parsed
+		}
+
 		if _, err := exec.Exec(
 			txCtx,
 			`INSERT INTO notification_jobs
-			 (job_type, subscription_id, event_id, to_email, subject, html_body, confirm_token)
-			 VALUES ('confirmation', $1::uuid, $2::uuid, $3, $4, $5, $6)
+			 (job_type, subscription_id, event_id, to_email, subject, html_body, confirm_token, saga_id)
+			 VALUES ('confirmation', $1::uuid, $2::uuid, $3, $4, $5, $6, $7)
 			 ON CONFLICT DO NOTHING`,
 			subscriptionID,
 			eventID,
@@ -58,6 +75,7 @@ func (r *Repository) RecordConfirmation(
 			subject,
 			html,
 			confirmToken,
+			sagaUUID,
 		); err != nil {
 			return fmt.Errorf("insert confirmation job: %w", err)
 		}
@@ -132,9 +150,6 @@ func (r *Repository) recordDelivery(ctx context.Context, handlerName, eventID st
 	return platformpostgres.WithinTransaction(ctx, r.db, func(txCtx context.Context) error {
 		exec := platformpostgres.ExecutorFromContext(txCtx, r.db)
 
-		// ON CONFLICT DO NOTHING avoids putting the transaction into an error
-		// state (which a plain INSERT violation would do in Postgres), so we can
-		// safely check the row count to detect duplicate deliveries.
 		tag, err := exec.Exec(
 			txCtx,
 			`INSERT INTO event_deliveries (handler_name, event_id)
@@ -178,9 +193,10 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 			    updated_at = NOW()
 			FROM locked
 			WHERE j.id = locked.id
-			RETURNING j.id::text, j.event_id::text, j.to_email, j.subject, j.html_body, j.attempt_count
+			RETURNING j.id::text, j.event_id::text, j.to_email, j.subject, j.html_body, j.attempt_count,
+			          COALESCE(j.saga_id::text, '') AS saga_id
 		)
-		SELECT id, event_id, to_email, subject, html_body, attempt_count FROM claimed`,
+		SELECT id, event_id, to_email, subject, html_body, attempt_count, saga_id FROM claimed`,
 		batchSize,
 		workerID,
 	)
@@ -192,7 +208,7 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 	jobs := make([]notificationdomain.Job, 0, batchSize)
 	for rows.Next() {
 		var job notificationdomain.Job
-		if err := rows.Scan(&job.ID, &job.EventID, &job.To, &job.Subject, &job.HTML, &job.AttemptCount); err != nil {
+		if err := rows.Scan(&job.ID, &job.EventID, &job.To, &job.Subject, &job.HTML, &job.AttemptCount, &job.SagaID); err != nil {
 			return nil, fmt.Errorf("scan notification job: %w", err)
 		}
 		jobs = append(jobs, job)
@@ -200,31 +216,95 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 	return jobs, rows.Err()
 }
 
+// MarkSent marks jobs as sent. For confirmation jobs that carry a SagaID, it
+// appends a ConfirmationEmailSent reply to the notifications outbox within the
+// same transaction as the status update.
 func (r *Repository) MarkSent(ctx context.Context, jobs []notificationdomain.Job) error {
-	ids := make([]uuid.UUID, 0, len(jobs))
+	var regularIDs []uuid.UUID
 	for _, job := range jobs {
-		ids = append(ids, uuid.MustParse(job.ID))
+		if job.SagaID == "" {
+			regularIDs = append(regularIDs, uuid.MustParse(job.ID))
+			continue
+		}
+		// Saga confirmation job — update + emit reply atomically.
+		if err := platformpostgres.WithinTransaction(ctx, r.db, func(txCtx context.Context) error {
+			exec := platformpostgres.ExecutorFromContext(txCtx, r.db)
+			if _, err := exec.Exec(
+				txCtx,
+				`UPDATE notification_jobs
+				 SET status = 'sent', sent_at = NOW(), locked_at = NULL, locked_by = NULL, last_error = NULL, updated_at = NOW()
+				 WHERE id = $1::uuid`,
+				job.ID,
+			); err != nil {
+				return fmt.Errorf("mark job sent: %w", err)
+			}
+			if r.outboxRepo != nil {
+				return r.outboxRepo.Append(txCtx, commands.NewConfirmationEmailSent(job.SagaID))
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
-	if _, err := r.db.Exec(
-		ctx,
-		`UPDATE notification_jobs
-		 SET status = 'sent', sent_at = NOW(), locked_at = NULL, locked_by = NULL, last_error = NULL, updated_at = NOW()
-		 WHERE id = ANY($1)`,
-		ids,
-	); err != nil {
-		return fmt.Errorf("mark notification jobs sent: %w", err)
+
+	// Bulk-update non-saga jobs.
+	if len(regularIDs) > 0 {
+		if _, err := r.db.Exec(
+			ctx,
+			`UPDATE notification_jobs
+			 SET status = 'sent', sent_at = NOW(), locked_at = NULL, locked_by = NULL, last_error = NULL, updated_at = NOW()
+			 WHERE id = ANY($1)`,
+			regularIDs,
+		); err != nil {
+			return fmt.Errorf("mark notification jobs sent: %w", err)
+		}
 	}
 	return nil
 }
 
+// MarkFailed marks jobs as failed (or re-queues for retry). For confirmation
+// jobs that exhaust their retries and carry a SagaID, it appends a
+// ConfirmationEmailFailed reply within the same transaction as the status update.
 func (r *Repository) MarkFailed(ctx context.Context, jobs []notificationdomain.Job, maxAttempts int, cause error) error {
 	for _, job := range jobs {
-		status := StatusPending
 		attempts := job.AttemptCount + 1
+		status := StatusPending
 		if attempts >= maxAttempts {
 			status = StatusFailed
 		}
 		backoff := time.Duration(1<<maxInt(attempts-1, 0)) * time.Second
+		isTerminalFailure := (status == StatusFailed) && (job.SagaID != "")
+
+		if isTerminalFailure {
+			// Terminal failure for a saga job — update + emit reply atomically.
+			if err := platformpostgres.WithinTransaction(ctx, r.db, func(txCtx context.Context) error {
+				exec := platformpostgres.ExecutorFromContext(txCtx, r.db)
+				if _, err := exec.Exec(
+					txCtx,
+					`UPDATE notification_jobs
+					 SET status = $2,
+					     attempt_count = $3,
+					     last_error = $4,
+					     available_at = $5,
+					     locked_at = NULL,
+					     locked_by = NULL,
+					     updated_at = NOW()
+					 WHERE id = $1::uuid`,
+					job.ID, status, attempts, cause.Error(), time.Now().UTC().Add(backoff),
+				); err != nil {
+					return fmt.Errorf("mark job failed: %w", err)
+				}
+				if r.outboxRepo != nil {
+					return r.outboxRepo.Append(txCtx, commands.NewConfirmationEmailFailed(job.SagaID, cause.Error()))
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Non-terminal failure or non-saga job — simple update.
 		if _, err := r.db.Exec(
 			ctx,
 			`UPDATE notification_jobs

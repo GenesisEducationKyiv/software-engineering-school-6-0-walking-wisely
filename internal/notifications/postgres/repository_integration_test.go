@@ -22,7 +22,7 @@ func newNotificationTestDB(t *testing.T, _ context.Context) (*Repository, *pgxpo
 	if sharedPool == nil {
 		t.Fatal("sharedPool not initialized — TestMain must set it up")
 	}
-	return NewRepository(sharedPool), sharedPool
+	return NewRepository(sharedPool, nil), sharedPool
 }
 
 func integrationContext(t *testing.T) (context.Context, context.CancelFunc) {
@@ -71,7 +71,7 @@ func TestIntegration_RecordConfirmationHappyPath(t *testing.T) {
 	confirmToken := uuid.NewString()
 
 	// Act
-	err := repo.RecordConfirmation(ctx, "handler.test", eventID, subID, "to@example.com", "Subject", "<p>html</p>", confirmToken)
+	err := repo.RecordConfirmation(ctx, "handler.test", eventID, subID, "", "to@example.com", "Subject", "<p>html</p>", confirmToken)
 	// Assert
 	if err != nil {
 		t.Fatalf("RecordConfirmation returned error: %v", err)
@@ -135,7 +135,7 @@ func TestIntegration_RecordConfirmationIdempotent(t *testing.T) {
 
 	// Act — call twice with the same eventID
 	for i := 0; i < 2; i++ {
-		if err := repo.RecordConfirmation(ctx, "handler.test", eventID, subID, "to@example.com", "Subject", "<p>html</p>", confirmToken); err != nil {
+		if err := repo.RecordConfirmation(ctx, "handler.test", eventID, subID, "", "to@example.com", "Subject", "<p>html</p>", confirmToken); err != nil {
 			t.Fatalf("RecordConfirmation call %d returned error: %v", i+1, err)
 		}
 	}

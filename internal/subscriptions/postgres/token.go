@@ -99,6 +99,20 @@ func (r *TokenRepo) ConfirmByToken(ctx context.Context, token string) (id string
 	return id, nil
 }
 
+// DeleteSubscription deletes a subscription by ID. Used by the saga orchestrator
+// to compensate a failed confirmation email dispatch.
+func (r *TokenRepo) DeleteSubscription(ctx context.Context, id string) error {
+	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	if _, err := exec.Exec(
+		ctx,
+		`DELETE FROM subscriptions WHERE id = $1::uuid`,
+		id,
+	); err != nil {
+		return fmt.Errorf("delete subscription %s: %w", id, err)
+	}
+	return nil
+}
+
 // UnsubscribeByToken deletes a subscription using the token embedded in every
 // notification email. Returns the subscription ID on success for logging.
 func (r *TokenRepo) UnsubscribeByToken(ctx context.Context, token string) (string, error) {

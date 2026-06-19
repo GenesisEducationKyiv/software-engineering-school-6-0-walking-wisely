@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
@@ -12,13 +13,13 @@ import (
 )
 
 const (
-	subscriptionRequestedHandler = "notifications.subscription_requested"
+	sendConfirmationEmailHandler = "notifications.send_confirmation_email"
 	releaseDetectedHandler       = "notifications.release_detected"
 )
 
 // JobWriter persists durable notification jobs.
 type JobWriter interface {
-	RecordConfirmation(ctx context.Context, handlerName, eventID, subscriptionID, to, subject, html, confirmToken string) error
+	RecordConfirmation(ctx context.Context, handlerName, eventID, subscriptionID, sagaID, to, subject, html, confirmToken string) error
 	RecordReleaseNotifications(ctx context.Context, handlerName, eventID, releaseTag string, jobs []notificationdomain.ReleaseNotificationJob) error
 }
 
@@ -39,41 +40,43 @@ func NewEventHandlers(jobs JobWriter, baseURL string, log logger.Logger) *EventH
 
 // Register attaches all notification handlers to the given bus.
 func (h *EventHandlers) Register(bus *events.Bus) {
-	bus.Subscribe(contractevents.SubscriptionRequested{}.EventName(), h.OnSubscriptionRequested)
+	bus.Subscribe(commands.SendConfirmationEmail{}.EventName(), h.OnSendConfirmationEmail)
 	bus.Subscribe(contractevents.ReleaseDetected{}.EventName(), h.OnReleaseDetected)
 }
 
-// OnSubscriptionRequested turns a subscription request into a confirmation email.
-func (h *EventHandlers) OnSubscriptionRequested(ctx context.Context, event events.Event) error {
-	requested, ok := event.(contractevents.SubscriptionRequested)
+// OnSendConfirmationEmail turns a saga command into a durable confirmation email job.
+func (h *EventHandlers) OnSendConfirmationEmail(ctx context.Context, event events.Event) error {
+	cmd, ok := event.(commands.SendConfirmationEmail)
 	if !ok {
 		return fmt.Errorf("unexpected event type %T", event)
 	}
 
-	confirmURL := fmt.Sprintf("%s/api/confirm/%s", h.baseURL, requested.ConfirmToken)
-	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", h.baseURL, requested.UnsubToken)
-	subject := fmt.Sprintf("Confirm your subscription to %s releases", requested.Repo)
+	confirmURL := fmt.Sprintf("%s/api/confirm/%s", h.baseURL, cmd.ConfirmToken)
+	unsubURL := fmt.Sprintf("%s/api/unsubscribe/%s", h.baseURL, cmd.UnsubToken)
+	subject := fmt.Sprintf("Confirm your subscription to %s releases", cmd.Repo)
 	html := fmt.Sprintf(`<p>You requested release notifications for <strong>%s</strong>.</p>
 <p><a href="%s">Confirm subscription</a></p>
 <p><small>Didn't request this? <a href="%s">Unsubscribe</a></small></p>`,
-		requested.Repo, confirmURL, unsubURL)
+		cmd.Repo, confirmURL, unsubURL)
 
 	if err := h.jobs.RecordConfirmation(
 		ctx,
-		subscriptionRequestedHandler,
-		requested.EventID(),
-		requested.SubscriptionID,
-		requested.Email,
+		sendConfirmationEmailHandler,
+		cmd.EventID(),
+		cmd.SubscriptionID,
+		cmd.SagaID,
+		cmd.Email,
 		subject,
 		html,
-		requested.ConfirmToken,
+		cmd.ConfirmToken,
 	); err != nil {
 		return fmt.Errorf("record confirmation job: %w", err)
 	}
 
 	h.log.Info("subscribe: confirmation job recorded",
-		"subscription_id", requested.SubscriptionID,
-		"repo", requested.Repo)
+		"subscription_id", cmd.SubscriptionID,
+		"saga_id", cmd.SagaID,
+		"repo", cmd.Repo)
 	return nil
 }
 

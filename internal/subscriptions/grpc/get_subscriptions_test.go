@@ -20,7 +20,7 @@ func strPtr(s string) *string { return &s }
 
 func TestGetSubscriptions_EmailValidation(t *testing.T) {
 	repo := &fakeSubscriptionRepo{}
-	svc := newService(&fakeGithubClient{}, repo, repo, nil)
+	svc := newService(&fakeGithubClient{}, repo, repo)
 
 	t.Run("invalid email rejected", func(t *testing.T) {
 		_, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
@@ -49,7 +49,7 @@ func TestGetSubscriptions_RepoError(t *testing.T) {
 	repo := &fakeSubscriptionRepo{
 		listByEmailErr: errors.New("connection reset by peer"),
 	}
-	svc := newService(&fakeGithubClient{}, repo, repo, nil)
+	svc := newService(&fakeGithubClient{}, repo, repo)
 
 	_, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
 		Email: validEmail,
@@ -65,7 +65,7 @@ func TestGetSubscriptions_RepoError(t *testing.T) {
 
 func TestGetSubscriptions_NoSubscriptions(t *testing.T) {
 	repo := &fakeSubscriptionRepo{}
-	svc := newService(&fakeGithubClient{}, repo, repo, nil)
+	svc := newService(&fakeGithubClient{}, repo, repo)
 
 	resp, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
 		Email: validEmail,
@@ -88,7 +88,7 @@ func TestGetSubscriptions_ResponseMapping(t *testing.T) {
 		{Email: validEmail, Repo: "owner/beta", Confirmed: false, LastSeenTag: strPtr("v0.1.0")},
 	}
 	repo := &fakeSubscriptionRepo{listByEmailResult: subs}
-	svc := newService(&fakeGithubClient{}, repo, repo, nil)
+	svc := newService(&fakeGithubClient{}, repo, repo)
 
 	resp, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
 		Email: validEmail,
@@ -125,7 +125,7 @@ func TestGetSubscriptions_NilLastSeenTag(t *testing.T) {
 		{Email: validEmail, Repo: validRepo, Confirmed: false, LastSeenTag: nil},
 	}
 	repo := &fakeSubscriptionRepo{listByEmailResult: subs}
-	svc := newService(&fakeGithubClient{}, repo, repo, nil)
+	svc := newService(&fakeGithubClient{}, repo, repo)
 
 	resp, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
 		Email: validEmail,

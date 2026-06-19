@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	contractcommands "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
@@ -18,6 +19,7 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 
 	// Register event types so the JetStream consumer can decode them.
@@ -35,6 +37,9 @@ func main() {
 
 func run(log platformlogger.Logger) error {
 	contractevents.RegisterTypes(func(event contractevents.Event) {
+		events.RegisterType(event)
+	})
+	contractcommands.RegisterTypes(func(event contractevents.Event) {
 		events.RegisterType(event)
 	})
 
@@ -61,7 +66,17 @@ func run(log platformlogger.Logger) error {
 	}
 	defer natsClient.Close()
 
-	notificationJobRepo := notificationpostgres.NewRepository(db, cfg.JobInsertBatchSize)
+	// Outbox for saga reply events (notifications_outbox => NATS).
+	notificationsOutboxRepo := outbox.NewRepository(db, "notifications_outbox")
+	notificationsOutboxPublisher, err := platformnats.NewPublisher(natsClient, platformnats.PublisherOptions{
+		StreamName:    cfg.NATSStreamName,
+		SubjectPrefix: cfg.NATSSubjectPrefix,
+	})
+	if err != nil {
+		return err
+	}
+
+	notificationJobRepo := notificationpostgres.NewRepository(db, notificationsOutboxRepo, cfg.JobInsertBatchSize)
 	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, log)
 
 	bus := events.NewBus()
@@ -105,6 +120,20 @@ func run(log platformlogger.Logger) error {
 	go func() {
 		defer wg.Done()
 		notificationworker.StartCleanup(ctx, notificationJobRepo, cfg.JobCleanupInterval, cfg.JobRetention, log)
+	}()
+
+	// Dispatcher for the notifications outbox — publishes saga reply events to NATS.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		outbox.StartDispatcher(ctx, notificationsOutboxRepo, notificationsOutboxPublisher, cfg.NotificationsOutboxInterval, 32, 5, log)
+	}()
+
+	// Cleanup for the notifications outbox.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		outbox.StartCleanup(ctx, notificationsOutboxRepo, cfg.NotificationsOutboxInterval, cfg.NotificationsOutboxRetention, log)
 	}()
 
 	// Minimal health endpoint for container orchestration readiness probes.

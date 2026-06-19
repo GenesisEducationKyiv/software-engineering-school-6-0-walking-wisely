@@ -10,15 +10,21 @@ import (
 
 // AppConfig holds all environment-driven configuration for the API service.
 type AppConfig struct {
-	RestPort              string
-	GrpcPort              string
-	DatabaseURL           string
-	RedisURL              string
-	NATSURL               string
-	EmailSecretKey        string
-	GithubToken           string // optional - raises GitHub API rate limit
-	NATSStreamName        string
-	NATSSubjectPrefix     string
+	RestPort          string
+	GrpcPort          string
+	DatabaseURL       string
+	RedisURL          string
+	NATSURL           string
+	EmailSecretKey    string
+	GithubToken       string // optional - raises GitHub API rate limit
+	NATSStreamName    string
+	NATSSubjectPrefix string
+	// Consumer config for receiving saga reply events from notifications service.
+	NATSConsumerName      string
+	NATSBatchSize         int
+	NATSAckWait           time.Duration
+	NATSMaxDeliveries     int
+	NATSDLQSubject        string
 	LogLevel              string
 	ServiceName           string
 	Environment           string
@@ -39,6 +45,11 @@ func LoadAppConfig() (*AppConfig, error) {
 		GithubToken:           os.Getenv("GITHUB_TOKEN"),
 		NATSStreamName:        envOrDefault("NATS_STREAM_NAME", "EVENTS"),
 		NATSSubjectPrefix:     envOrDefault("NATS_SUBJECT_PREFIX", "events"),
+		NATSConsumerName:      envOrDefault("NATS_CONSUMER_NAME", "subscriptions"),
+		NATSBatchSize:         parseIntOrDefault("NATS_BATCH_SIZE", 32),
+		NATSAckWait:           parseDurationOrDefault("NATS_ACK_WAIT", 5*time.Second),
+		NATSMaxDeliveries:     int(parseNonNegativeInt64OrDefault("NATS_MAX_DELIVERIES", 5)),
+		NATSDLQSubject:        envOrDefault("NATS_DLQ_SUBJECT", "events_dlq.subscriptions"),
 		LogLevel:              envOrDefault("LOG_LEVEL", "info"),
 		ServiceName:           envOrDefault("SERVICE_NAME", "github-release-notifier"),
 		Environment:           envOrDefault("ENVIRONMENT", "local"),
