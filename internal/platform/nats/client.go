@@ -39,8 +39,19 @@ func NewClientWithRetry(
 		nc, err := gonats.Connect(
 			natsURL,
 			gonats.Name(clientName),
-			gonats.NoReconnect(),
 			gonats.Timeout(5*time.Second),
+			gonats.MaxReconnects(-1),
+			gonats.ReconnectWait(2*time.Second),
+			gonats.ReconnectJitter(500*time.Millisecond, 2*time.Second),
+			gonats.DisconnectErrHandler(func(_ *gonats.Conn, err error) {
+				log.Warn("nats disconnected", "err", err)
+			}),
+			gonats.ReconnectHandler(func(_ *gonats.Conn) {
+				log.Info("nats reconnected")
+			}),
+			gonats.ClosedHandler(func(_ *gonats.Conn) {
+				log.Info("nats connection closed")
+			}),
 		)
 		if err == nil {
 			if err := nc.FlushTimeout(5 * time.Second); err == nil {

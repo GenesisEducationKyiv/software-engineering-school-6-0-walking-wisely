@@ -103,7 +103,6 @@ type Consumer struct {
 	maxDeliveries int
 	dlqSubject    string
 	fetchWait     time.Duration
-	subscription  *gonats.Subscription
 	log           logger.Logger
 }
 
@@ -180,7 +179,6 @@ func (c *Consumer) Run(ctx context.Context, bus events.Publisher) error {
 	if err != nil {
 		return err
 	}
-	c.subscription = sub
 	defer func() {
 		if err := sub.Drain(); err != nil {
 			c.log.Error("jetstream consumer drain failed", "err", err)
@@ -211,6 +209,14 @@ func (c *Consumer) Run(ctx context.Context, bus events.Publisher) error {
 				return nil
 			}
 			c.log.Error("jetstream consumer fetch failed", "err", err)
+			if !sub.IsValid() {
+				c.log.Warn("jetstream subscription invalid, resubscribing")
+				if newSub, subErr := c.ensureSubscription(); subErr != nil {
+					c.log.Error("jetstream resubscribe failed", "err", subErr)
+				} else {
+					sub = newSub
+				}
+			}
 			select {
 			case <-ctx.Done():
 				return nil
