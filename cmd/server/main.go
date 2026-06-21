@@ -39,7 +39,10 @@ import (
 	releasemonitoringworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/worker"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
+	subscriptionnotify "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/notify"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
+
+	notificationv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/notification/v1"
 
 	// Register event types so outbox can decode them for JetStream publishing.
 	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
@@ -144,6 +147,22 @@ func run(appLogger platformlogger.Logger) error {
 		return fmt.Errorf("init jetstream publisher: %w", err)
 	}
 
+	// When SAGA_TRANSPORT=grpc the outbox dispatcher calls the Notifications gRPC
+	// server directly for SendConfirmationEmail commands. All other events still go
+	// through NATS. The outbox provides at-least-once delivery for both paths.
+	var dispatchPublisher platformevents.Publisher = eventPublisher
+	if cfg.SagaTransport == "grpc" {
+		notifConn, err := grpc.NewClient(cfg.NotificationsGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return fmt.Errorf("connect to notifications grpc at %s: %w", cfg.NotificationsGRPCAddr, err)
+		}
+		defer notifConn.Close()
+		notifGRPCClient := notificationv1.NewNotificationServiceClient(notifConn)
+		grpcPub := subscriptionnotify.NewGRPCPublisher(notifGRPCClient, 32)
+		dispatchPublisher = subscriptionnotify.NewRoutingPublisher(grpcPub, eventPublisher)
+		appLogger.Info("saga transport: grpc", "addr", cfg.NotificationsGRPCAddr)
+	}
+
 	if err := metricsRecorder.RegisterOutboxMetrics(func(ctx context.Context) (int64, float64, int64, int64, error) {
 		snapshot, err := outboxRepo.Metrics(ctx)
 		if err != nil {
@@ -194,7 +213,7 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartDispatcher(ctx, outboxRepo, eventPublisher, 200*time.Millisecond, 32, 5, appLogger)
+		outbox.StartDispatcher(ctx, outboxRepo, dispatchPublisher, 200*time.Millisecond, 32, 5, appLogger)
 	}()
 
 	wg.Add(1)

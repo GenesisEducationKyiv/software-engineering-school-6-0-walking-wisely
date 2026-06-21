@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -9,10 +11,15 @@ import (
 	"syscall"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
+	notificationv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/notification/v1"
 	contractcommands "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
+	notificationgrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/grpc"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
 	notificationworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
 	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
@@ -136,6 +143,27 @@ func run(log platformlogger.Logger) error {
 		outbox.StartCleanup(ctx, notificationsOutboxRepo, cfg.NotificationsOutboxInterval, cfg.NotificationsOutboxRetention, log)
 	}()
 
+	// Internal gRPC server — accepts SendConfirmation calls from the subscriptions
+	// service when SAGA_TRANSPORT=grpc is set on that side.
+	grpcSrv := grpc.NewServer()
+	notificationv1.RegisterNotificationServiceServer(grpcSrv, notificationgrpc.NewServer(notificationHandlers))
+	reflection.Register(grpcSrv)
+
+	grpcLis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+	if err != nil {
+		return err
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		log.Info("notifications gRPC server listening", "port", cfg.GRPCPort)
+		if err := grpcSrv.Serve(grpcLis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			log.Error("notifications gRPC server error", "err", err)
+			cancel()
+		}
+	}()
+
 	// Minimal health endpoint for container orchestration readiness probes.
 	healthSrv := &http.Server{
 		Addr:         ":" + cfg.HTTPPort,
@@ -163,6 +191,8 @@ func run(log platformlogger.Logger) error {
 
 	log.Info("shutdown signal received")
 	cancel()
+
+	grpcSrv.GracefulStop()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

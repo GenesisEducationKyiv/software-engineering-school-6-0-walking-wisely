@@ -33,6 +33,8 @@ type AppConfig struct {
 	OutboxRetention       time.Duration
 	SagaSweepInterval     time.Duration
 	SagaStuckAfter        time.Duration
+	SagaTransport         string // "nats" (default) or "grpc"
+	NotificationsGRPCAddr string // address of the notifications gRPC server, used when SagaTransport=grpc
 }
 
 // LoadAppConfig reads all configuration from environment variables and returns a validated AppConfig.
@@ -60,6 +62,8 @@ func LoadAppConfig() (*AppConfig, error) {
 		OutboxRetention:       parseDurationOrDefault("OUTBOX_RETENTION", 7*24*time.Hour),
 		SagaSweepInterval:     parseDurationOrDefault("SAGA_SWEEP_INTERVAL", 5*time.Minute),
 		SagaStuckAfter:        parseDurationOrDefault("SAGA_STUCK_AFTER", 10*time.Minute),
+		SagaTransport:         envOrDefault("SAGA_TRANSPORT", "nats"),
+		NotificationsGRPCAddr: envOrDefault("NOTIFICATIONS_GRPC_ADDR", "localhost:9091"),
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err

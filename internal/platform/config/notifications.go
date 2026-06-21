@@ -30,6 +30,7 @@ type NotificationsConfig struct {
 	JobRetention                 time.Duration
 	NotificationsOutboxInterval  time.Duration
 	NotificationsOutboxRetention time.Duration
+	GRPCPort                     string // port for the internal notification gRPC server
 }
 
 // LoadNotificationsConfig reads configuration from environment variables.
@@ -57,6 +58,7 @@ func LoadNotificationsConfig() (*NotificationsConfig, error) {
 		JobRetention:                 parseDurationOrDefault("NOTIFICATION_JOB_RETENTION", 7*24*time.Hour),
 		NotificationsOutboxInterval:  parseDurationOrDefault("NOTIFICATIONS_OUTBOX_INTERVAL", 200*time.Millisecond),
 		NotificationsOutboxRetention: parseDurationOrDefault("NOTIFICATIONS_OUTBOX_RETENTION", 7*24*time.Hour),
+		GRPCPort:                     envOrDefault("GRPC_PORT", "9091"),
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
