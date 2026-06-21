@@ -213,7 +213,7 @@ func (r *Repository) Metrics(ctx context.Context) (MetricsSnapshot, error) {
 		ctx,
 		fmt.Sprintf(`SELECT
 			COUNT(*) FILTER (WHERE status = 'pending') AS pending_count,
-			COALESCE(EXTRACT(EPOCH FROM NOW() - MIN(occurred_at)) FILTER (WHERE status = 'pending'), 0),
+			COALESCE(EXTRACT(EPOCH FROM NOW() - MIN(occurred_at) FILTER (WHERE status = 'pending')), 0),
 			COUNT(*) FILTER (WHERE attempt_count > 0 AND status <> 'delivered') AS retry_count,
 			COUNT(*) FILTER (WHERE status = 'failed') AS failed_count
 		FROM %s`, r.tableName),

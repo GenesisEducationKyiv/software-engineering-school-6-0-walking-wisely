@@ -147,10 +147,19 @@ func run(appLogger platformlogger.Logger) error {
 		return fmt.Errorf("init jetstream publisher: %w", err)
 	}
 
+	sagaMetrics, err := subscriptionnotify.NewSagaMetrics(
+		meterProvider.Meter("github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/subscriptions/saga"),
+	)
+	if err != nil {
+		return fmt.Errorf("init saga metrics: %w", err)
+	}
+
 	// When SAGA_TRANSPORT=grpc the outbox dispatcher calls the Notifications gRPC
 	// server directly for SendConfirmationEmail commands. All other events still go
 	// through NATS. The outbox provides at-least-once delivery for both paths.
-	var dispatchPublisher platformevents.Publisher = eventPublisher
+	// Both transports are wrapped with per-transport metrics instrumentation.
+	instrumentedNATS := subscriptionnotify.NewInstrumentedPublisher(eventPublisher, "nats", sagaMetrics)
+	var dispatchPublisher platformevents.Publisher = instrumentedNATS
 	if cfg.SagaTransport == "grpc" {
 		notifConn, err := grpc.NewClient(cfg.NotificationsGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
@@ -159,7 +168,8 @@ func run(appLogger platformlogger.Logger) error {
 		defer notifConn.Close()
 		notifGRPCClient := notificationv1.NewNotificationServiceClient(notifConn)
 		grpcPub := subscriptionnotify.NewGRPCPublisher(notifGRPCClient, 32)
-		dispatchPublisher = subscriptionnotify.NewRoutingPublisher(grpcPub, eventPublisher)
+		instrumentedGRPC := subscriptionnotify.NewInstrumentedPublisher(grpcPub, "grpc", sagaMetrics)
+		dispatchPublisher = subscriptionnotify.NewRoutingPublisher(instrumentedGRPC, instrumentedNATS)
 		appLogger.Info("saga transport: grpc", "addr", cfg.NotificationsGRPCAddr)
 	}
 

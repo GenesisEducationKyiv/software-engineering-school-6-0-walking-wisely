@@ -82,6 +82,8 @@ services:
       OUTBOX_RETENTION: ${OUTBOX_RETENTION:-168h}
       SAGA_SWEEP_INTERVAL: ${SAGA_SWEEP_INTERVAL:-5m}
       SAGA_STUCK_AFTER: ${SAGA_STUCK_AFTER:-10m}
+      SAGA_TRANSPORT: ${SAGA_TRANSPORT:-nats}
+      NOTIFICATIONS_GRPC_ADDR: ${NOTIFICATIONS_GRPC_ADDR:-notifications:9091}
     labels:
       co.elastic.logs/enabled: "true"
 
@@ -93,6 +95,7 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:${NOTIFICATIONS_PORT:-8081}:8081"
+      - "127.0.0.1:${NOTIFICATIONS_GRPC_PORT:-9092}:9091"
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,6 +119,7 @@ services:
       NOTIFICATION_JOB_CLEANUP_INTERVAL: ${NOTIFICATION_JOB_CLEANUP_INTERVAL:-30m}
       NOTIFICATION_JOB_RETENTION: ${NOTIFICATION_JOB_RETENTION:-168h}
       HTTP_PORT: "8081"
+      GRPC_PORT: "9091"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
       interval: 10s
