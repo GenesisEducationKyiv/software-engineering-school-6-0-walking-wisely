@@ -10,7 +10,7 @@ import (
 	"github.com/playwright-community/playwright-go"
 
 	servere2e "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/cmd/server/e2e"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
 )
 
 func TestIndexPageSubscriptionFlow(t *testing.T) {

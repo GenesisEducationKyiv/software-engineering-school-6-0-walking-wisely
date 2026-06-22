@@ -20,19 +20,24 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github"
-	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/github/redis"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/http/middleware"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail/resend"
+	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github"
+	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github/redis"
+	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	platformevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/streams"
+	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
+	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
+	releasemonitoringworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/worker"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/worker"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
@@ -50,7 +55,11 @@ func main() {
 }
 
 func run(appLogger platformlogger.Logger) error {
-	cfg, err := config.LoadAppConfig()
+	contractevents.RegisterTypes(func(event contractevents.Event) {
+		platformevents.RegisterType(event)
+	})
+
+	cfg, err := platformconfig.LoadAppConfig()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -78,7 +87,7 @@ func run(appLogger platformlogger.Logger) error {
 		return fmt.Errorf("init metrics recorder: %w", err)
 	}
 
-	if err := postgres.RunMigrations(cfg.DatabaseURL, appLogger); err != nil {
+	if err := platformmigrations.Run(cfg.DatabaseURL, appLogger); err != nil {
 		return fmt.Errorf("run database migrations: %w", err)
 	}
 
@@ -101,7 +110,9 @@ func run(appLogger platformlogger.Logger) error {
 
 	subTokenRepo := postgres.NewTokenRepo(db, appLogger)
 	subReadRepo := postgres.NewReadRepo(db, appLogger)
-	releaseScanRepo := postgres.NewReleaseScanRepo(db, appLogger)
+	releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(db, appLogger)
+	outboxRepo := outbox.NewRepository(db)
+	outboxPublisher := outbox.NewPublisher(outboxRepo)
 	githubClient := github.NewClient(cfg.GithubToken, appLogger)
 	githubAvailability := github.NewAvailabilityState()
 	checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -109,11 +120,20 @@ func run(appLogger platformlogger.Logger) error {
 	checkCancel()
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
-	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, appLogger)
 
-	emailChan := make(chan mail.Message, cfg.EmailChannelSize)
-	if err := metricsRecorder.RegisterEmailChannelDepth(func() int { return len(emailChan) }); err != nil {
-		return fmt.Errorf("register email channel depth metric: %w", err)
+	streamPublisher := streams.NewPublisherWithOptions(redisClient, cfg.StreamKey, streams.PublisherOptions{
+		MaxLen:     cfg.StreamMaxLen,
+		ApproxTrim: true,
+	})
+
+	if err := metricsRecorder.RegisterOutboxMetrics(func(ctx context.Context) (int64, float64, int64, int64, error) {
+		snapshot, err := outboxRepo.Metrics(ctx)
+		if err != nil {
+			return 0, 0, 0, 0, err
+		}
+		return snapshot.PendingCount, snapshot.OldestPendingAge, snapshot.RetryCount, snapshot.FailedCount, nil
+	}); err != nil {
+		return fmt.Errorf("register outbox metrics: %w", err)
 	}
 	if err := metricsRecorder.RegisterGitHubAvailability(githubAvailability.Available); err != nil {
 		return fmt.Errorf("register github availability metric: %w", err)
@@ -126,6 +146,20 @@ func run(appLogger platformlogger.Logger) error {
 	defer cancel()
 
 	var wg sync.WaitGroup
+
+	scannerService := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
+		Repo:      releaseScanRepo,
+		GitHub:    cachedGithubClient,
+		TxManager: releaseScanRepo,
+		Publisher: outboxPublisher,
+		Log:       appLogger,
+	})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		releasemonitoringworker.StartScanner(ctx, scannerService, cfg.ScannerInterval, appLogger)
+	}()
 
 	wg.Add(1)
 	go func() {
@@ -142,29 +176,22 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.StartScanner(ctx, &worker.ScannerDeps{
-			Repo:               releaseScanRepo,
-			GitHub:             cachedGithubClient,
-			GitHubAvailability: githubAvailability,
-			EmailChan:          emailChan,
-			BaseURL:            cfg.BaseURL,
-			Log:                appLogger,
-		}, cfg.ScannerInterval)
+		outbox.StartDispatcher(ctx, outboxRepo, streamPublisher, 200*time.Millisecond, 32, 5, appLogger)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.StartSender(ctx, resendClient, emailChan, cfg.ResendMaxWait, appLogger)
+		outbox.StartCleanup(ctx, outboxRepo, cfg.OutboxCleanupInterval, cfg.OutboxRetention, appLogger)
 	}()
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      subTokenRepo,
+		TxManager:      subTokenRepo,
 		ReadRepo:       subReadRepo,
 		Github:         githubClient,
-		EmailChan:      emailChan,
+		Publisher:      outboxPublisher,
 		EmailSecretKey: cfg.EmailSecretKey,
-		BaseURL:        cfg.BaseURL,
 		Log:            appLogger,
 	})
 

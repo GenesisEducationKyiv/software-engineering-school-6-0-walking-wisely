@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // validToken is a well-formed 64-character lowercase hex string that passes
@@ -60,9 +60,9 @@ func TestUnsubscribe_RepoErrors(t *testing.T) {
 		wantCode codes.Code
 	}{
 		// Exact sentinel → NotFound.
-		{"token not found", subscriptions.ErrTokenNotFound, codes.NotFound},
+		{"token not found", subscriptionsdomain.ErrTokenNotFound, codes.NotFound},
 		// Wrapped sentinel must still resolve via errors.Is → NotFound.
-		{"wrapped token not found", fmt.Errorf("db layer: %w", subscriptions.ErrTokenNotFound), codes.NotFound},
+		{"wrapped token not found", fmt.Errorf("db layer: %w", subscriptionsdomain.ErrTokenNotFound), codes.NotFound},
 		// Any other error → Internal.
 		{"unexpected db error", errors.New("connection reset by peer"), codes.Internal},
 	}

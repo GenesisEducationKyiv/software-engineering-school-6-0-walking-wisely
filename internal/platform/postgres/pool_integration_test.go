@@ -12,10 +12,10 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
+	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 )
 
-func TestIntegration_InitDBWithRetry_ConnectsToPostgres(t *testing.T) {
+func TestIntegration_NewDBWithRetry_ConnectsToPostgres(t *testing.T) {
 	testcontainers.SkipIfProviderIsNotHealthy(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -43,7 +43,7 @@ func TestIntegration_InitDBWithRetry_ConnectsToPostgres(t *testing.T) {
 		t.Fatalf("build postgres connection string: %v", err)
 	}
 
-	pool, err := NewDBWithRetry(databaseURL, config.RetryConfig{
+	pool, err := NewDBWithRetry(databaseURL, platformconfig.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -62,11 +62,11 @@ func TestIntegration_InitDBWithRetry_ConnectsToPostgres(t *testing.T) {
 	}
 }
 
-func TestIntegration_InitDBWithRetry_ReturnsErrorWhenPostgresUnavailable(t *testing.T) {
+func TestIntegration_NewDBWithRetry_ReturnsErrorWhenPostgresUnavailable(t *testing.T) {
 	hostPort := freeTCPPort(t)
 	databaseURL := fmt.Sprintf("postgres://app:secret@127.0.0.1:%d/app?sslmode=disable&connect_timeout=1", hostPort)
 
-	pool, err := NewDBWithRetry(databaseURL, config.RetryConfig{
+	pool, err := NewDBWithRetry(databaseURL, platformconfig.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -84,7 +84,7 @@ func freeTCPPort(t *testing.T) int {
 	if err != nil {
 		t.Fatalf("find free TCP port: %v", err)
 	}
-	defer listener.Close()
+	defer listener.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	_, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {

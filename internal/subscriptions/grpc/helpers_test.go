@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 )
 
 // helperStream captures headers set via grpc.SetHeader.
@@ -55,7 +55,7 @@ func TestHandleRateLimitError(t *testing.T) {
 			ctx := grpc.NewContextWithServerTransportStream(context.Background(), stream)
 			svc := NewSubscriptionService(&ServiceDeps{})
 
-			err := svc.handleRateLimitError(ctx, &subscriptions.RateLimitError{
+			err := svc.handleRateLimitError(ctx, &contracts.RateLimitError{
 				Service:    "GitHub",
 				RetryAfter: tc.retryAfter,
 			})

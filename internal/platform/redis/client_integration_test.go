@@ -12,10 +12,10 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
+	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 )
 
-func TestIntegration_InitRedisWithRetry_ConnectsToRedis(t *testing.T) {
+func TestIntegration_NewClientWithRetry_ConnectsToRedis(t *testing.T) {
 	testcontainers.SkipIfProviderIsNotHealthy(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -46,7 +46,7 @@ func TestIntegration_InitRedisWithRetry_ConnectsToRedis(t *testing.T) {
 	}
 	redisURL := "redis://" + net.JoinHostPort(host, port.Port()) + "/0"
 
-	client, err := NewClientWithRetry(redisURL, config.RetryConfig{
+	client, err := NewClientWithRetry(redisURL, platformconfig.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -72,11 +72,11 @@ func TestIntegration_InitRedisWithRetry_ConnectsToRedis(t *testing.T) {
 	}
 }
 
-func TestIntegration_InitRedisWithRetry_ReturnsErrorWhenRedisUnavailable(t *testing.T) {
+func TestIntegration_NewClientWithRetry_ReturnsErrorWhenRedisUnavailable(t *testing.T) {
 	hostPort := freeTCPPort(t)
 	redisURL := fmt.Sprintf("redis://127.0.0.1:%d/0", hostPort)
 
-	client, err := NewClientWithRetry(redisURL, config.RetryConfig{
+	client, err := NewClientWithRetry(redisURL, platformconfig.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -96,7 +96,7 @@ func freeTCPPort(t *testing.T) int {
 	if err != nil {
 		t.Fatalf("find free TCP port: %v", err)
 	}
-	defer listener.Close()
+	defer listener.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	_, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // Unsubscribe handles GET /api/unsubscribe/{token}.
@@ -18,9 +18,9 @@ func (s *SubscriptionService) Unsubscribe(ctx context.Context, req *pb.Unsubscri
 	id, err := s.unsubscribeUseCase.Unsubscribe(ctx, req.Token)
 	if err != nil {
 		switch {
-		case errors.Is(err, subscriptions.ErrInvalidToken):
+		case errors.Is(err, subscriptionsdomain.ErrInvalidToken):
 			return nil, status.Error(codes.InvalidArgument, "invalid token format")
-		case errors.Is(err, subscriptions.ErrTokenNotFound):
+		case errors.Is(err, subscriptionsdomain.ErrTokenNotFound):
 			return nil, status.Error(codes.NotFound, "token not found")
 		}
 		s.log.Error("unsubscribe: db error", "err", err)

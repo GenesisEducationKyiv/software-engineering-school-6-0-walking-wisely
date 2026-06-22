@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // fakeSubscriptionRepo implements the gRPC-facing subscription repository interfaces
@@ -17,14 +17,14 @@ type fakeSubscriptionRepo struct {
 	confirmByTokenErr     error
 	unsubscribeByTokenID  string
 	unsubscribeByTokenErr error
-	listByEmailResult     []subscriptions.Subscription
+	listByEmailResult     []subscriptionsdomain.Subscription
 	listByEmailErr        error
 }
 
-func (f *fakeSubscriptionRepo) Subscribe(_ context.Context, _, _, _, _ string) (subscriptions.SubscribeResult, error) {
-	return subscriptions.SubscribeResult{
+func (f *fakeSubscriptionRepo) Subscribe(_ context.Context, _, _, _, _ string) (subscriptionsdomain.SubscribeResult, error) {
+	return subscriptionsdomain.SubscribeResult{
 		SubscriptionID: "sub-1",
-		Action:         subscriptions.SubscribeActionCreated,
+		Action:         subscriptionsdomain.SubscribeActionCreated,
 	}, f.subscribeErr
 }
 
@@ -36,8 +36,15 @@ func (f *fakeSubscriptionRepo) UnsubscribeByToken(_ context.Context, _ string) (
 	return f.unsubscribeByTokenID, f.unsubscribeByTokenErr
 }
 
-func (f *fakeSubscriptionRepo) ListByEmail(_ context.Context, _ string) ([]subscriptions.Subscription, error) {
+func (f *fakeSubscriptionRepo) ListByEmail(_ context.Context, _ string) ([]subscriptionsdomain.Subscription, error) {
 	return f.listByEmailResult, f.listByEmailErr
+}
+
+// fakeTxManager runs fn directly without a real transaction.
+type fakeTxManager struct{}
+
+func (fakeTxManager) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
 }
 
 // fakeGithubClient implements RepositoryValidator with a configurable error.

@@ -3,7 +3,7 @@ package subscriptionapp
 import (
 	"context"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // ConfirmationRepo stores confirmation-token lifecycle changes.
@@ -24,7 +24,7 @@ func NewConfirmService(repo ConfirmationRepo) *ConfirmService {
 // Confirm validates token format and confirms the matching subscription.
 func (s *ConfirmService) Confirm(ctx context.Context, token string) (string, error) {
 	if !IsValidToken(token) {
-		return "", subscriptions.ErrInvalidToken
+		return "", subscriptionsdomain.ErrInvalidToken
 	}
 	return s.repo.ConfirmByToken(ctx, token)
 }

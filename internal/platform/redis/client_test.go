@@ -9,7 +9,7 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
+	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 )
 
 type recordingLogger struct {
@@ -29,7 +29,7 @@ func (l *recordingLogger) Error(string, ...any) {}
 func (l *recordingLogger) ErrorContext(context.Context, string, ...any) {}
 
 func TestNewClientWithRetry_RejectsNonPositiveMaxAttempts(t *testing.T) {
-	_, err := NewClientWithRetry("redis://127.0.0.1:6379/0", config.RetryConfig{
+	_, err := NewClientWithRetry("redis://127.0.0.1:6379/0", platformconfig.RetryConfig{
 		MaxAttempts: 0,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -45,12 +45,12 @@ func TestNewClientWithRetry_RejectsNonPositiveMaxAttempts(t *testing.T) {
 func TestNewClientWithRetry_RejectsNonPositiveWaits(t *testing.T) {
 	tests := []struct {
 		name string
-		cfg  config.RetryConfig
+		cfg  platformconfig.RetryConfig
 		want string
 	}{
 		{
 			name: "initial wait",
-			cfg: config.RetryConfig{
+			cfg: platformconfig.RetryConfig{
 				MaxAttempts: 1,
 				InitialWait: 0,
 				MaxWait:     time.Millisecond,
@@ -59,7 +59,7 @@ func TestNewClientWithRetry_RejectsNonPositiveWaits(t *testing.T) {
 		},
 		{
 			name: "max wait",
-			cfg: config.RetryConfig{
+			cfg: platformconfig.RetryConfig{
 				MaxAttempts: 1,
 				InitialWait: time.Millisecond,
 				MaxWait:     0,
@@ -84,7 +84,7 @@ func TestNewClientWithRetry_RejectsNonPositiveWaits(t *testing.T) {
 func TestNewClientWithRetry_InvalidRedisURLDoesNotRetry(t *testing.T) {
 	log := &recordingLogger{}
 
-	_, err := NewClientWithRetry("not a redis url", config.RetryConfig{
+	_, err := NewClientWithRetry("not a redis url", platformconfig.RetryConfig{
 		MaxAttempts: 3,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -105,7 +105,7 @@ func TestNewClientWithRetry_SucceedsWithoutRetry(t *testing.T) {
 	var attempts int
 	var sleeps []time.Duration
 
-	client, err := newClientWithRetry(config.RetryConfig{
+	client, err := newClientWithRetry(platformconfig.RetryConfig{
 		MaxAttempts: 3,
 		InitialWait: 10 * time.Millisecond,
 		MaxWait:     50 * time.Millisecond,
@@ -138,7 +138,7 @@ func TestNewClientWithRetry_ExhaustsAttemptsAndCapsBackoff(t *testing.T) {
 	var attempts int
 	var sleeps []time.Duration
 
-	_, err := newClientWithRetry(config.RetryConfig{
+	_, err := newClientWithRetry(platformconfig.RetryConfig{
 		MaxAttempts: 4,
 		InitialWait: 10 * time.Millisecond,
 		MaxWait:     25 * time.Millisecond,
@@ -183,7 +183,7 @@ func TestNewClientWithRetry_SucceedsAfterRetry(t *testing.T) {
 	var attempts int
 	var sleeps []time.Duration
 
-	client, err := newClientWithRetry(config.RetryConfig{
+	client, err := newClientWithRetry(platformconfig.RetryConfig{
 		MaxAttempts: 3,
 		InitialWait: 10 * time.Millisecond,
 		MaxWait:     50 * time.Millisecond,

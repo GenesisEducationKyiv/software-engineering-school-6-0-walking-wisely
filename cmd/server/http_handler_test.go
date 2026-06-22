@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 )
 
 type handlerMetricsCall struct {
@@ -26,7 +28,7 @@ func (r *handlerMetricsRecorder) RecordHTTPRequest(_ context.Context, method, pa
 	})
 }
 
-func (r *handlerMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
+func (r *handlerMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
 	return nil
 }
 

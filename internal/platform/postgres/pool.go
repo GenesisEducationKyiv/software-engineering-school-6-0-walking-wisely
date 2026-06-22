@@ -10,17 +10,17 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/config"
+	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 // NewDB opens a PostgreSQL connection pool using retry defaults read from the environment.
 func NewDB(databaseURL string, log logger.Logger) (*pgxpool.Pool, error) {
-	return NewDBWithRetry(databaseURL, config.DBRetryConfigFromEnv(), log)
+	return NewDBWithRetry(databaseURL, platformconfig.DBRetryConfigFromEnv(), log)
 }
 
 // NewDBWithRetry opens a PostgreSQL connection pool, retrying on transient failures according to retry.
-func NewDBWithRetry(databaseURL string, retry config.RetryConfig, log logger.Logger) (*pgxpool.Pool, error) {
+func NewDBWithRetry(databaseURL string, retry platformconfig.RetryConfig, log logger.Logger) (*pgxpool.Pool, error) {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
@@ -39,7 +39,7 @@ func NewDBWithRetry(databaseURL string, retry config.RetryConfig, log logger.Log
 	}, time.Sleep)
 }
 
-func validateDBRetryConfig(retry config.RetryConfig) error {
+func validateDBRetryConfig(retry platformconfig.RetryConfig) error {
 	if retry.MaxAttempts <= 0 {
 		return errors.New("database retry max attempts must be positive")
 	}
@@ -69,7 +69,7 @@ func openAndPingDBPool(poolCfg *pgxpool.Config) (*pgxpool.Pool, error) {
 }
 
 func newDBPoolWithRetry(
-	retry config.RetryConfig,
+	retry platformconfig.RetryConfig,
 	log logger.Logger,
 	openAndPing func() (*pgxpool.Pool, error),
 	sleep func(time.Duration),

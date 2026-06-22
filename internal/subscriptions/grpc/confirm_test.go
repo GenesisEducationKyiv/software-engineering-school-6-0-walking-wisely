@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // validToken is shared with unsubscribe_test.go (same package).
@@ -47,8 +47,8 @@ func TestConfirm_RepoErrors(t *testing.T) {
 		repoErr  error
 		wantCode codes.Code
 	}{
-		{"token not found", subscriptions.ErrTokenNotFound, codes.NotFound},
-		{"token not found wrapped", fmt.Errorf("db: %w", subscriptions.ErrTokenNotFound), codes.NotFound},
+		{"token not found", subscriptionsdomain.ErrTokenNotFound, codes.NotFound},
+		{"token not found wrapped", fmt.Errorf("db: %w", subscriptionsdomain.ErrTokenNotFound), codes.NotFound},
 		{"unexpected db error", errors.New("connection refused"), codes.Internal},
 	}
 

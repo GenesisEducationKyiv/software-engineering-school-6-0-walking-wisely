@@ -10,10 +10,10 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 )
 
-func (s *SubscriptionService) handleRateLimitError(ctx context.Context, rle *subscriptions.RateLimitError) error {
+func (s *SubscriptionService) handleRateLimitError(ctx context.Context, rle *contracts.RateLimitError) error {
 	secs := int(math.Ceil(rle.RetryAfter.Seconds()))
 	s.log.Warn("rate limited dependency",
 		"service", rle.Service,

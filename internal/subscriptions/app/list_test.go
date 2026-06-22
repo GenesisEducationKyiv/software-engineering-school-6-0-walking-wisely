@@ -6,18 +6,18 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 type fakeListRepo struct {
-	result []subscriptions.Subscription
+	result []subscriptionsdomain.Subscription
 	err    error
 	calls  int
 	ctx    context.Context
 	email  string
 }
 
-func (f *fakeListRepo) ListByEmail(ctx context.Context, email string) ([]subscriptions.Subscription, error) {
+func (f *fakeListRepo) ListByEmail(ctx context.Context, email string) ([]subscriptionsdomain.Subscription, error) {
 	f.calls++
 	f.ctx = ctx
 	f.email = email
@@ -25,7 +25,7 @@ func (f *fakeListRepo) ListByEmail(ctx context.Context, email string) ([]subscri
 }
 
 func TestListByEmail(t *testing.T) {
-	expected := []subscriptions.Subscription{{Email: validEmail, Repo: validRepo}}
+	expected := []subscriptionsdomain.Subscription{{Email: validEmail, Repo: validRepo}}
 	repo := &fakeListRepo{result: expected}
 	svc := NewListService(repo)
 	ctx := context.WithValue(context.Background(), testContextKey{}, "request-123")
@@ -64,7 +64,7 @@ func TestListByEmail_InvalidEmail(t *testing.T) {
 			svc := NewListService(repo)
 
 			_, err := svc.ListByEmail(context.Background(), tc.email)
-			if !errors.Is(err, subscriptions.ErrInvalidEmail) {
+			if !errors.Is(err, subscriptionsdomain.ErrInvalidEmail) {
 				t.Errorf("got %v, want ErrInvalidEmail", err)
 			}
 			if repo.calls != 0 {
@@ -75,7 +75,7 @@ func TestListByEmail_InvalidEmail(t *testing.T) {
 }
 
 func TestListByEmail_EmptyResult(t *testing.T) {
-	repo := &fakeListRepo{result: []subscriptions.Subscription{}}
+	repo := &fakeListRepo{result: []subscriptionsdomain.Subscription{}}
 	svc := NewListService(repo)
 
 	got, err := svc.ListByEmail(context.Background(), validEmail)

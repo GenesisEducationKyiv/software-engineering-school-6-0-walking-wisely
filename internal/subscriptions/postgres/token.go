@@ -7,120 +7,96 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // Subscribe creates a new subscription or refreshes the confirm token for an
-// existing unconfirmed one. A SELECT FOR UPDATE serializes concurrent requests
-// for the same (email, repo) pair, preventing duplicate inserts.
+// existing unconfirmed one. A SELECT FOR UPDATE inside a transaction serializes
+// concurrent requests for the same (email, repo) pair, preventing duplicate inserts.
 // Returns ErrAlreadySubscribed if the subscription is already confirmed.
 func (r *TokenRepo) Subscribe(
 	ctx context.Context,
 	email, repo, confirmToken, unsubToken string,
-) (result subscriptions.SubscribeResult, err error) {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return subscriptions.SubscribeResult{}, fmt.Errorf("begin tx: %w", err)
-	}
+) (result subscriptionsdomain.SubscribeResult, err error) {
+	err = platformpostgres.WithinTransaction(ctx, r.db, func(ctx context.Context) error {
+		exec := platformpostgres.ExecutorFromContext(ctx, r.db)
 
-	defer func() {
-		if err != nil {
-			rollbackErr := tx.Rollback(ctx)
-			if rollbackErr != nil {
-				r.log.Error("subscribe: failed to rollback transaction", "err", rollbackErr)
+		var id string
+		var confirmed bool
+		err := exec.QueryRow(
+			ctx,
+			`SELECT id, confirmed FROM subscriptions WHERE email=$1 AND repo=$2 FOR UPDATE`,
+			email, repo,
+		).Scan(&id, &confirmed)
+
+		switch {
+		case err == nil && confirmed:
+			return subscriptionsdomain.ErrAlreadySubscribed
+
+		case err == nil && !confirmed:
+			if _, err = exec.Exec(
+				ctx,
+				`UPDATE subscriptions SET confirm_token=$1, updated_at=NOW() WHERE id=$2`,
+				confirmToken, id,
+			); err != nil {
+				return fmt.Errorf("refresh confirm token: %w", err)
 			}
+			result = subscriptionsdomain.SubscribeResult{
+				SubscriptionID: id,
+				Action:         subscriptionsdomain.SubscribeActionConfirmationRefreshed,
+			}
+
+		case errors.Is(err, pgx.ErrNoRows):
+			err = exec.QueryRow(
+				ctx,
+				`INSERT INTO subscriptions (email, repo, confirm_token, unsubscribe_token)
+				 VALUES ($1, $2, $3, $4)
+				 RETURNING id`,
+				email, repo, confirmToken, unsubToken,
+			).Scan(&id)
+			if err != nil {
+				return fmt.Errorf("insert subscription: %w", err)
+			}
+			result = subscriptionsdomain.SubscribeResult{
+				SubscriptionID: id,
+				Action:         subscriptionsdomain.SubscribeActionCreated,
+			}
+
+		default:
+			return fmt.Errorf("lock subscription row: %w", err)
 		}
-	}()
-
-	var id string
-	var confirmed bool
-	err = tx.QueryRow(
-		ctx,
-		`SELECT id, confirmed FROM subscriptions WHERE email=$1 AND repo=$2 FOR UPDATE`,
-		email, repo,
-	).Scan(&id, &confirmed)
-
-	switch {
-	case err == nil && confirmed:
-		return subscriptions.SubscribeResult{}, subscriptions.ErrAlreadySubscribed
-
-	case err == nil && !confirmed:
-		// Unconfirmed - refresh the confirm token so the new email works.
-		if _, err = tx.Exec(
-			ctx,
-			`UPDATE subscriptions SET confirm_token=$1, updated_at=NOW() WHERE id=$2`,
-			confirmToken, id,
-		); err != nil {
-			return subscriptions.SubscribeResult{}, fmt.Errorf("refresh confirm token: %w", err)
-		}
-		result = subscriptions.SubscribeResult{
-			SubscriptionID: id,
-			Action:         subscriptions.SubscribeActionConfirmationRefreshed,
-		}
-
-	case errors.Is(err, pgx.ErrNoRows):
-		err = tx.QueryRow(
-			ctx,
-			`INSERT INTO subscriptions (email, repo, confirm_token, unsubscribe_token)
-			 VALUES ($1, $2, $3, $4)
-			 RETURNING id`,
-			email, repo, confirmToken, unsubToken,
-		).Scan(&id)
-		if err != nil {
-			return subscriptions.SubscribeResult{}, fmt.Errorf("insert subscription: %w", err)
-		}
-		result = subscriptions.SubscribeResult{
-			SubscriptionID: id,
-			Action:         subscriptions.SubscribeActionCreated,
-		}
-
-	default:
-		return subscriptions.SubscribeResult{}, fmt.Errorf("lock subscription row: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return subscriptions.SubscribeResult{}, err
-	}
-	return result, nil
+		return nil
+	})
+	return result, err
 }
 
 // ConfirmByToken marks a subscription as confirmed using the token from the
 // confirmation email. Uses SELECT FOR UPDATE to guard against concurrent calls.
 // Returns the subscription ID on success for logging (never the email).
 func (r *TokenRepo) ConfirmByToken(ctx context.Context, token string) (id string, err error) {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return "", fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			rollbackErr := tx.Rollback(ctx)
-			if rollbackErr != nil {
-				r.log.Error("confirm: failed to rollback transaction", "err", rollbackErr)
-			}
-		}
-	}()
+	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
 
-	err = tx.QueryRow(
+	err = exec.QueryRow(
 		ctx,
 		`SELECT id FROM subscriptions WHERE confirm_token=$1 FOR UPDATE`,
 		token,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", subscriptions.ErrTokenNotFound
+		return "", subscriptionsdomain.ErrTokenNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("lock confirm token row: %w", err)
 	}
 
-	if _, err = tx.Exec(
+	if _, err = exec.Exec(
 		ctx,
 		`UPDATE subscriptions SET confirmed=TRUE, updated_at=NOW() WHERE id=$1`, id,
 	); err != nil {
 		return "", fmt.Errorf("confirm subscription: %w", err)
 	}
 
-	return id, tx.Commit(ctx)
+	return id, nil
 }
 
 // UnsubscribeByToken deletes a subscription using the token embedded in every
@@ -133,7 +109,7 @@ func (r *TokenRepo) UnsubscribeByToken(ctx context.Context, token string) (strin
 		token,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", subscriptions.ErrTokenNotFound
+		return "", subscriptionsdomain.ErrTokenNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("delete subscription: %w", err)

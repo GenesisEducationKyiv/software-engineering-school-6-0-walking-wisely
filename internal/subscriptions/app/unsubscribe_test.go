@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 type fakeUnsubscribeRepo struct {
@@ -51,7 +51,7 @@ func TestUnsubscribe_InvalidToken(t *testing.T) {
 	svc := NewUnsubscribeService(repo)
 
 	_, err := svc.Unsubscribe(context.Background(), "not-a-valid-token")
-	if !errors.Is(err, subscriptions.ErrInvalidToken) {
+	if !errors.Is(err, subscriptionsdomain.ErrInvalidToken) {
 		t.Errorf("got %v, want ErrInvalidToken", err)
 	}
 	if repo.calls != 0 {
@@ -70,10 +70,10 @@ func TestUnsubscribe_RepoError(t *testing.T) {
 }
 
 func TestUnsubscribe_TokenNotFound(t *testing.T) {
-	svc := NewUnsubscribeService(&fakeUnsubscribeRepo{err: subscriptions.ErrTokenNotFound})
+	svc := NewUnsubscribeService(&fakeUnsubscribeRepo{err: subscriptionsdomain.ErrTokenNotFound})
 
 	_, err := svc.Unsubscribe(context.Background(), validToken)
-	if !errors.Is(err, subscriptions.ErrTokenNotFound) {
+	if !errors.Is(err, subscriptionsdomain.ErrTokenNotFound) {
 		t.Errorf("got %v, want ErrTokenNotFound", err)
 	}
 }

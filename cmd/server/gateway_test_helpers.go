@@ -21,8 +21,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 )
@@ -45,7 +49,7 @@ type gatewayTestMetricsRecorder struct{}
 func (gatewayTestMetricsRecorder) RecordHTTPRequest(context.Context, string, string, int, time.Duration) {
 }
 
-func (gatewayTestMetricsRecorder) RegisterEmailChannelDepth(func() int) error {
+func (gatewayTestMetricsRecorder) RegisterOutboxMetrics(middleware.OutboxMetricsSnapshotFunc) error {
 	return nil
 }
 
@@ -73,7 +77,7 @@ func newGatewayTestDB(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("start postgres container: %v", err)
 	}
-	t.Cleanup(func() {
+	t.Cleanup(func() { //nolint:contextcheck // t.Cleanup runs after test context cancels; context.Background() is intentional
 		if err := container.Terminate(context.Background()); err != nil {
 			t.Logf("terminate postgres container: %v", err)
 		}
@@ -83,7 +87,7 @@ func newGatewayTestDB(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("build postgres connection string: %v", err)
 	}
-	if err := postgres.RunMigrations(databaseURL, platformlogger.NoopLogger{}); err != nil {
+	if err := platformmigrations.Run(databaseURL, platformlogger.NoopLogger{}); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 
@@ -107,13 +111,29 @@ func newGatewayTestServer(
 
 	tokenRepo := postgres.NewTokenRepo(db, platformlogger.NoopLogger{})
 	readRepo := postgres.NewReadRepo(db, platformlogger.NoopLogger{})
+	bus := events.NewBus()
+	bus.Subscribe(subscriptionevents.SubscriptionRequested{}.EventName(), func(_ context.Context, ev events.Event) error {
+		req, ok := ev.(subscriptionevents.SubscriptionRequested)
+		if !ok {
+			return nil
+		}
+		select {
+		case emailChan <- mail.Message{
+			To:      req.Email,
+			Subject: "Confirm your subscription to " + req.Repo + " releases",
+			HTML:    baseURL + "/api/confirm/" + req.ConfirmToken + " " + baseURL + "/api/unsubscribe/" + req.UnsubToken,
+		}:
+		default:
+		}
+		return nil
+	})
 	service := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      tokenRepo,
 		ReadRepo:       readRepo,
+		TxManager:      tokenRepo,
 		Github:         gatewayTestGitHub{},
-		EmailChan:      emailChan,
+		Publisher:      bus,
 		EmailSecretKey: "test-secret",
-		BaseURL:        baseURL,
 		Log:            platformlogger.NoopLogger{},
 	})
 
@@ -181,7 +201,7 @@ func postJSON(t *testing.T, target string, body any, wantStatus int) {
 	if err != nil {
 		t.Fatalf("POST %s: %v", target, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	assertGatewayStatus(t, resp, wantStatus)
 }
@@ -189,11 +209,11 @@ func postJSON(t *testing.T, target string, body any, wantStatus int) {
 func getJSON(t *testing.T, target string, wantStatus int, dst any) {
 	t.Helper()
 
-	resp, err := http.Get(target)
+	resp, err := http.Get(target) //nolint:gosec,noctx // test helper; URL is constructed from test server, not user input
 	if err != nil {
 		t.Fatalf("GET %s: %v", target, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	assertGatewayStatus(t, resp, wantStatus)
 	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
@@ -204,11 +224,11 @@ func getJSON(t *testing.T, target string, wantStatus int, dst any) {
 func getStatus(t *testing.T, target string, wantStatus int) {
 	t.Helper()
 
-	resp, err := http.Get(target)
+	resp, err := http.Get(target) //nolint:gosec,noctx // test helper; URL is constructed from test server, not user input
 	if err != nil {
 		t.Fatalf("GET %s: %v", target, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // error from Close in defer is not actionable
 
 	assertGatewayStatus(t, resp, wantStatus)
 }

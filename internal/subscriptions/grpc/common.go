@@ -3,7 +3,7 @@ package subscriptiongrpc
 
 import (
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
@@ -24,11 +24,11 @@ type GithubRepoValidator = subscriptionapp.GithubRepoValidator
 // ServiceDeps bundles the external dependencies injected into SubscriptionService.
 type ServiceDeps struct {
 	TokenRepo      SubscriptionTokenWorkflowRepo
+	TxManager      subscriptionapp.TransactionManager
 	ReadRepo       SubscriptionReadRepo
 	Github         GithubRepoValidator
-	EmailChan      chan<- mail.Message
+	Publisher      events.Publisher
 	EmailSecretKey string
-	BaseURL        string
 	Log            logger.Logger
 }
 
@@ -52,11 +52,10 @@ func NewSubscriptionService(deps *ServiceDeps) *SubscriptionService {
 	return &SubscriptionService{
 		subscribeUseCase: subscriptionapp.NewSubscribeService(&subscriptionapp.SubscribeDeps{
 			Repo:           deps.TokenRepo,
+			TxManager:      deps.TxManager,
 			Github:         deps.Github,
-			EmailChan:      deps.EmailChan,
+			Publisher:      deps.Publisher,
 			EmailSecretKey: deps.EmailSecretKey,
-			BaseURL:        deps.BaseURL,
-			Log:            log,
 		}),
 		confirmUseCase:     subscriptionapp.NewConfirmService(deps.TokenRepo),
 		unsubscribeUseCase: subscriptionapp.NewUnsubscribeService(deps.TokenRepo),

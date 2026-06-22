@@ -1,0 +1,153 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/google/uuid"
+
+	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
+	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
+	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
+	notificationworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
+	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
+	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/streams"
+)
+
+func main() {
+	log := platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{})
+	if err := run(log); err != nil {
+		log.Error("notifications service startup failed", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run(log platformlogger.Logger) error {
+	contractevents.RegisterTypes(func(event contractevents.Event) {
+		events.RegisterType(event)
+	})
+
+	cfg, err := platformconfig.LoadNotificationsConfig()
+	if err != nil {
+		return err
+	}
+
+	log = platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{
+		Level:       cfg.LogLevel,
+		ServiceName: cfg.ServiceName,
+		Environment: cfg.Environment,
+	})
+
+	db, err := platformpostgres.NewDB(cfg.DatabaseURL, log)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	redisClient, err := platformredis.NewClient(cfg.RedisURL, log)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			log.Error("close redis", "err", err)
+		}
+	}()
+
+	notificationJobRepo := notificationpostgres.NewRepository(db, cfg.JobInsertBatchSize)
+	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, log)
+
+	bus := events.NewBus()
+	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.BaseURL, log)
+	notificationHandlers.Register(bus)
+
+	consumer := streams.NewConsumerWithOptions(
+		redisClient,
+		cfg.StreamKey,
+		cfg.StreamGroup,
+		uuid.NewString(),
+		streams.ConsumerOptions{
+			BatchSize:     int64(cfg.StreamBatchSize),
+			ReclaimAfter:  cfg.StreamReclaimAfter,
+			ReclaimTick:   cfg.StreamReclaimTick,
+			AckTimeout:    cfg.StreamAckTimeout,
+			MaxDeliveries: int64(cfg.StreamMaxDeliveries),
+			DLQStreamKey:  cfg.StreamDLQKey,
+		},
+		log,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := consumer.Run(ctx, bus); err != nil {
+			log.Error("stream consumer error", "err", err)
+			cancel()
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		notificationworker.StartSender(ctx, resendClient, notificationJobRepo, cfg.ResendMaxWait, log)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		notificationworker.StartCleanup(ctx, notificationJobRepo, cfg.JobCleanupInterval, cfg.JobRetention, log)
+	}()
+
+	// Minimal health endpoint for container orchestration readiness probes.
+	healthSrv := &http.Server{
+		Addr:         ":" + cfg.HTTPPort,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+	}
+	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		log.Info("notifications health server listening", "port", cfg.HTTPPort)
+		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("health server error", "err", err)
+			cancel()
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Info("shutdown signal received")
+	cancel()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := healthSrv.Shutdown(shutdownCtx); err != nil {
+		log.Error("health server shutdown", "err", err)
+	}
+
+	wg.Wait()
+	log.Info("shutdown complete")
+	return nil
+}

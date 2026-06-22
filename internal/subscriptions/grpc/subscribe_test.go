@@ -3,6 +3,7 @@ package subscriptiongrpc_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,8 +12,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/mail"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
+	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
+	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 )
 
@@ -21,19 +24,36 @@ const (
 	validRepo  = "owner/repo"
 )
 
+type fakeConfirmationMessage struct {
+	To string
+}
+
 func newService(
 	gh subscriptiongrpc.GithubRepoValidator,
 	tokenRepo subscriptiongrpc.SubscriptionTokenWorkflowRepo,
 	readRepo subscriptiongrpc.SubscriptionReadRepo,
-	ch chan mail.Message,
+	ch chan fakeConfirmationMessage,
 ) *subscriptiongrpc.SubscriptionService {
+	bus := events.NewBus()
+	bus.Subscribe(subscriptionevents.SubscriptionRequested{}.EventName(), func(_ context.Context, event events.Event) error {
+		requested, ok := event.(subscriptionevents.SubscriptionRequested)
+		if !ok {
+			return fmt.Errorf("event type = %T, want %T", event, subscriptionevents.SubscriptionRequested{})
+		}
+		select {
+		case ch <- fakeConfirmationMessage{To: requested.Email}:
+		default:
+		}
+		return nil
+	})
+
 	return subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      tokenRepo,
 		ReadRepo:       readRepo,
+		TxManager:      fakeTxManager{},
 		Github:         gh,
-		EmailChan:      ch,
+		Publisher:      bus,
 		EmailSecretKey: "test-secret",
-		BaseURL:        "http://localhost",
 	})
 }
 
@@ -48,8 +68,8 @@ func TestSubscribe_StatusMapping(t *testing.T) {
 	}{
 		{"invalid email", "notanemail", validRepo, nil, nil, codes.InvalidArgument},
 		{"invalid repo", validEmail, "owneronly", nil, nil, codes.InvalidArgument},
-		{"repo not found", validEmail, validRepo, subscriptions.ErrRepoNotFound, nil, codes.NotFound},
-		{"already subscribed", validEmail, validRepo, nil, subscriptions.ErrAlreadySubscribed, codes.AlreadyExists},
+		{"repo not found", validEmail, validRepo, contracts.ErrRepoNotFound, nil, codes.NotFound},
+		{"already subscribed", validEmail, validRepo, nil, subscriptionsdomain.ErrAlreadySubscribed, codes.AlreadyExists},
 		{"unexpected github error", validEmail, validRepo, errors.New("connection timeout"), nil, codes.Internal},
 		{"unexpected db error", validEmail, validRepo, nil, errors.New("connection reset by peer"), codes.Internal},
 		{"success", validEmail, validRepo, nil, nil, codes.OK},
@@ -57,7 +77,7 @@ func TestSubscribe_StatusMapping(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := make(chan mail.Message, 1)
+			ch := make(chan fakeConfirmationMessage, 1)
 			repo := &fakeSubscriptionRepo{subscribeErr: tc.db}
 			svc := newService(&fakeGithubClient{validateRepoErr: tc.github}, repo, repo, ch)
 
@@ -74,10 +94,10 @@ func TestSubscribe_StatusMapping(t *testing.T) {
 }
 
 func TestSubscribe_RateLimit(t *testing.T) {
-	ch := make(chan mail.Message, 1)
+	ch := make(chan fakeConfirmationMessage, 1)
 	repo := &fakeSubscriptionRepo{}
 	svc := newService(
-		&fakeGithubClient{validateRepoErr: &subscriptions.RateLimitError{Service: "GitHub", RetryAfter: 30 * time.Second}},
+		&fakeGithubClient{validateRepoErr: &contracts.RateLimitError{Service: "GitHub", RetryAfter: 30 * time.Second}},
 		repo,
 		repo,
 		ch,
