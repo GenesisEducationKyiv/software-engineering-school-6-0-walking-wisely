@@ -8,43 +8,50 @@ import (
 	"time"
 )
 
+// OutboxConfig holds outbox worker configuration.
+type OutboxConfig struct {
+	CleanupInterval time.Duration
+	Retention       time.Duration
+}
+
 // AppConfig holds all environment-driven configuration for the API service.
 type AppConfig struct {
-	RestPort              string
-	GrpcPort              string
-	DatabaseURL           string
-	RedisURL              string
-	NATSURL               string
-	EmailSecretKey        string
-	GithubToken           string // optional - raises GitHub API rate limit
-	NATSStreamName        string
-	NATSSubjectPrefix     string
-	LogLevel              string
-	ServiceName           string
-	Environment           string
-	ScannerInterval       time.Duration
-	OutboxCleanupInterval time.Duration
-	OutboxRetention       time.Duration
+	RestPort        string
+	GrpcPort        string
+	DatabaseURL     string
+	RedisURL        string
+	EmailSecretKey  string
+	GithubToken     string // optional - raises GitHub API rate limit
+	LogLevel        string
+	ServiceName     string
+	Environment     string
+	ScannerInterval time.Duration
+	NATS            NATSConfig
+	Outbox          OutboxConfig
 }
 
 // LoadAppConfig reads all configuration from environment variables and returns a validated AppConfig.
 func LoadAppConfig() (*AppConfig, error) {
 	cfg := &AppConfig{
-		RestPort:              envOrDefault("REST_PORT", "8080"),
-		GrpcPort:              envOrDefault("GRPC_PORT", "9090"),
-		DatabaseURL:           os.Getenv("DATABASE_URL"),
-		RedisURL:              os.Getenv("REDIS_URL"),
-		NATSURL:               os.Getenv("NATS_URL"),
-		EmailSecretKey:        os.Getenv("EMAIL_SECRET_KEY"),
-		GithubToken:           os.Getenv("GITHUB_TOKEN"),
-		NATSStreamName:        envOrDefault("NATS_STREAM_NAME", "EVENTS"),
-		NATSSubjectPrefix:     envOrDefault("NATS_SUBJECT_PREFIX", "events"),
-		LogLevel:              envOrDefault("LOG_LEVEL", "info"),
-		ServiceName:           envOrDefault("SERVICE_NAME", "github-release-notifier"),
-		Environment:           envOrDefault("ENVIRONMENT", "local"),
-		ScannerInterval:       parseDurationOrDefault("SCANNER_INTERVAL", 5*time.Minute),
-		OutboxCleanupInterval: parseDurationOrDefault("OUTBOX_CLEANUP_INTERVAL", 30*time.Minute),
-		OutboxRetention:       parseDurationOrDefault("OUTBOX_RETENTION", 7*24*time.Hour),
+		RestPort:        envOrDefault("REST_PORT", "8080"),
+		GrpcPort:        envOrDefault("GRPC_PORT", "9090"),
+		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		RedisURL:        os.Getenv("REDIS_URL"),
+		EmailSecretKey:  os.Getenv("EMAIL_SECRET_KEY"),
+		GithubToken:     os.Getenv("GITHUB_TOKEN"),
+		LogLevel:        envOrDefault("LOG_LEVEL", "info"),
+		ServiceName:     envOrDefault("SERVICE_NAME", "github-release-notifier"),
+		Environment:     envOrDefault("ENVIRONMENT", "local"),
+		ScannerInterval: parseDurationOrDefault("SCANNER_INTERVAL", 5*time.Minute),
+		NATS: NATSConfig{
+			URL:           os.Getenv("NATS_URL"),
+			StreamName:    envOrDefault("NATS_STREAM_NAME", "EVENTS"),
+			SubjectPrefix: envOrDefault("NATS_SUBJECT_PREFIX", "events"),
+		},
+		Outbox: OutboxConfig{
+			CleanupInterval: parseDurationOrDefault("OUTBOX_CLEANUP_INTERVAL", 30*time.Minute),
+			Retention:       parseDurationOrDefault("OUTBOX_RETENTION", 7*24*time.Hour),
+		},
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -56,7 +63,7 @@ func (c *AppConfig) validate() error {
 	required := []struct{ key, val string }{
 		{"DATABASE_URL", c.DatabaseURL},
 		{"REDIS_URL", c.RedisURL},
-		{"NATS_URL", c.NATSURL},
+		{"NATS_URL", c.NATS.URL},
 		{"EMAIL_SECRET_KEY", c.EmailSecretKey},
 	}
 	for _, r := range required {
