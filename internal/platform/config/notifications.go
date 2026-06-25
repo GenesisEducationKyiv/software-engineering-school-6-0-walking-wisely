@@ -31,6 +31,7 @@ type NotificationsConfig struct {
 	NotificationsOutboxInterval  time.Duration
 	NotificationsOutboxRetention time.Duration
 	GRPCPort                     string // port for the internal notification gRPC server
+	EmailSink                    string // "noop" disables real email delivery (bench / dev)
 }
 
 // LoadNotificationsConfig reads configuration from environment variables.
@@ -59,6 +60,7 @@ func LoadNotificationsConfig() (*NotificationsConfig, error) {
 		NotificationsOutboxInterval:  parseDurationOrDefault("NOTIFICATIONS_OUTBOX_INTERVAL", 200*time.Millisecond),
 		NotificationsOutboxRetention: parseDurationOrDefault("NOTIFICATIONS_OUTBOX_RETENTION", 7*24*time.Hour),
 		GRPCPort:                     envOrDefault("GRPC_PORT", "9091"),
+		EmailSink:                    os.Getenv("EMAIL_SINK"),
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -70,9 +72,14 @@ func (c *NotificationsConfig) validate() error {
 	required := []struct{ key, val string }{
 		{"DATABASE_URL", c.DatabaseURL},
 		{"NATS_URL", c.NATSURL},
-		{"RESEND_API_KEY", c.ResendAPIKey},
-		{"FROM_EMAIL", c.FromEmail},
 		{"BASE_URL", c.BaseURL},
+	}
+	if c.EmailSink != "noop" {
+		required = append(
+			required,
+			struct{ key, val string }{"RESEND_API_KEY", c.ResendAPIKey},
+			struct{ key, val string }{"FROM_EMAIL", c.FromEmail},
+		)
 	}
 	for _, r := range required {
 		if r.val == "" {

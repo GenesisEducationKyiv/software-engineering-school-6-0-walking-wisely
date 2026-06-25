@@ -283,11 +283,17 @@ func run(appLogger platformlogger.Logger) error {
 		}
 	}()
 
+	var repoValidator subscriptionapp.GithubRepoValidator = githubClient
+	if cfg.GithubSkipRepoValidation {
+		appLogger.Info("GitHub repo validation disabled (GITHUB_SKIP_REPO_VALIDATION=true)")
+		repoValidator = github.NoopRepoValidator{}
+	}
+
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      subTokenRepo,
 		TxManager:      subTokenRepo,
 		ReadRepo:       subReadRepo,
-		Github:         githubClient,
+		Github:         repoValidator,
 		Orchestrator:   sagaOrchestrator,
 		EmailSecretKey: cfg.EmailSecretKey,
 		Log:            appLogger,

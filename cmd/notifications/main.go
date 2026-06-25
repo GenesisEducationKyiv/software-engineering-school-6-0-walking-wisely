@@ -17,6 +17,7 @@ import (
 	notificationv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/notification/v1"
 	contractcommands "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
 	notificationgrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/grpc"
@@ -84,7 +85,14 @@ func run(log platformlogger.Logger) error {
 	}
 
 	notificationJobRepo := notificationpostgres.NewRepository(db, notificationsOutboxRepo, cfg.JobInsertBatchSize)
-	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, log)
+
+	var emailSender mail.Sender
+	if cfg.EmailSink == "noop" {
+		log.Info("email sink is noop — emails will be discarded")
+		emailSender = mail.NoopSender{}
+	} else {
+		emailSender = resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, log)
+	}
 
 	bus := events.NewBus()
 	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.BaseURL, log)
@@ -120,7 +128,7 @@ func run(log platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		notificationworker.StartSender(ctx, resendClient, notificationJobRepo, cfg.ResendMaxWait, log)
+		notificationworker.StartSender(ctx, emailSender, notificationJobRepo, cfg.ResendMaxWait, log)
 	}()
 
 	wg.Add(1)
