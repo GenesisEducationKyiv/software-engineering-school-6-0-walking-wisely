@@ -112,7 +112,7 @@ func run(appLogger platformlogger.Logger) error {
 		}
 	}()
 
-	natsClient, err := platformnats.NewClient(cfg.NATSURL, cfg.ServiceName, appLogger)
+	natsClient, err := platformnats.NewClient(cfg.NATS.URL, cfg.ServiceName, appLogger)
 	if err != nil {
 		return fmt.Errorf("init nats: %w", err)
 	}
@@ -132,8 +132,8 @@ func run(appLogger platformlogger.Logger) error {
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 
 	eventPublisher, err := platformnats.NewPublisher(natsClient, platformnats.PublisherOptions{
-		StreamName:    cfg.NATSStreamName,
-		SubjectPrefix: cfg.NATSSubjectPrefix,
+		StreamName:    cfg.NATS.StreamName,
+		SubjectPrefix: cfg.NATS.SubjectPrefix,
 	})
 	if err != nil {
 		return fmt.Errorf("init jetstream publisher: %w", err)
@@ -195,7 +195,7 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartCleanup(ctx, outboxRepo, cfg.OutboxCleanupInterval, cfg.OutboxRetention, appLogger)
+		outbox.StartCleanup(ctx, outboxRepo, cfg.Outbox.CleanupInterval, cfg.Outbox.Retention, appLogger)
 	}()
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
