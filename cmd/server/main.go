@@ -165,7 +165,7 @@ func run(appLogger platformlogger.Logger) error {
 		if err != nil {
 			return fmt.Errorf("connect to notifications grpc at %s: %w", cfg.NotificationsGRPCAddr, err)
 		}
-		defer notifConn.Close()
+		defer func() { _ = notifConn.Close() }()
 		notifGRPCClient := notificationv1.NewNotificationServiceClient(notifConn)
 		grpcPub := subscriptionnotify.NewGRPCPublisher(notifGRPCClient, 32)
 		instrumentedGRPC := subscriptionnotify.NewInstrumentedPublisher(grpcPub, "grpc", sagaMetrics)
