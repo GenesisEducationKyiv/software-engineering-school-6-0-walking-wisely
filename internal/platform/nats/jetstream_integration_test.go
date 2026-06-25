@@ -81,7 +81,7 @@ func newNATSClient(t *testing.T) *gonats.Conn {
 	return nc
 }
 
-func TestJetStreamPublisherConsumer_DispatchesAndAcksEvent(t *testing.T) {
+func TestIntegration_JetStreamPublisherConsumer_DispatchesAndAcksEvent(t *testing.T) {
 	nc := newNATSClient(t)
 	streamName := fmt.Sprintf("TEST_EVENTS_%d", time.Now().UnixNano())
 	subjectPrefix := "events_test"
@@ -94,15 +94,16 @@ func TestJetStreamPublisherConsumer_DispatchesAndAcksEvent(t *testing.T) {
 		t.Fatalf("NewPublisher: %v", err)
 	}
 
-	consumer, err := platformnats.NewConsumer(nc, &platformnats.ConsumerOptions{
-		StreamName:    streamName,
-		SubjectPrefix: subjectPrefix,
-		ConsumerName:  "notifications",
-		BatchSize:     1,
-		AckWait:       500 * time.Millisecond,
-		MaxDeliveries: 3,
-		DLQSubject:    "events_test_dlq.notifications",
-	}, platformlogger.NoopLogger{})
+	consumer, err := platformnats.NewConsumer(
+		nc, platformlogger.NoopLogger{},
+		platformnats.WithStreamName(streamName),
+		platformnats.WithSubjectPrefix(subjectPrefix),
+		platformnats.WithConsumerName("notifications"),
+		platformnats.WithBatchSize(1),
+		platformnats.WithAckWait(500*time.Millisecond),
+		platformnats.WithMaxDeliveries(3),
+		platformnats.WithDLQSubject("events_test_dlq.notifications"),
+	)
 	if err != nil {
 		t.Fatalf("NewConsumer: %v", err)
 	}
@@ -132,20 +133,21 @@ func TestJetStreamPublisherConsumer_DispatchesAndAcksEvent(t *testing.T) {
 	}
 }
 
-func TestJetStreamConsumer_UnknownEventIsAcked(t *testing.T) {
+func TestIntegration_JetStreamConsumer_UnknownEventIsAcked(t *testing.T) {
 	nc := newNATSClient(t)
 	streamName := fmt.Sprintf("TEST_UNKNOWN_%d", time.Now().UnixNano())
 	subjectPrefix := "events_unknown"
 
-	consumer, err := platformnats.NewConsumer(nc, &platformnats.ConsumerOptions{
-		StreamName:    streamName,
-		SubjectPrefix: subjectPrefix,
-		ConsumerName:  "notifications",
-		BatchSize:     1,
-		AckWait:       500 * time.Millisecond,
-		MaxDeliveries: 2,
-		DLQSubject:    "events_unknown_dlq.notifications",
-	}, platformlogger.NoopLogger{})
+	consumer, err := platformnats.NewConsumer(
+		nc, platformlogger.NoopLogger{},
+		platformnats.WithStreamName(streamName),
+		platformnats.WithSubjectPrefix(subjectPrefix),
+		platformnats.WithConsumerName("notifications"),
+		platformnats.WithBatchSize(1),
+		platformnats.WithAckWait(500*time.Millisecond),
+		platformnats.WithMaxDeliveries(2),
+		platformnats.WithDLQSubject("events_unknown_dlq.notifications"),
+	)
 	if err != nil {
 		t.Fatalf("NewConsumer: %v", err)
 	}
@@ -185,7 +187,7 @@ func TestJetStreamConsumer_UnknownEventIsAcked(t *testing.T) {
 	t.Fatal("unknown event was not acked")
 }
 
-func TestJetStreamConsumer_MovesExhaustedMessageToDLQ(t *testing.T) {
+func TestIntegration_JetStreamConsumer_MovesExhaustedMessageToDLQ(t *testing.T) {
 	nc := newNATSClient(t)
 	streamName := fmt.Sprintf("TEST_DLQ_%d", time.Now().UnixNano())
 	subjectPrefix := "events_dlq_test"
@@ -198,15 +200,16 @@ func TestJetStreamConsumer_MovesExhaustedMessageToDLQ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPublisher: %v", err)
 	}
-	consumer, err := platformnats.NewConsumer(nc, &platformnats.ConsumerOptions{
-		StreamName:    streamName,
-		SubjectPrefix: subjectPrefix,
-		ConsumerName:  "notifications",
-		BatchSize:     1,
-		AckWait:       200 * time.Millisecond,
-		MaxDeliveries: 2,
-		DLQSubject:    dlqSubject,
-	}, platformlogger.NoopLogger{})
+	consumer, err := platformnats.NewConsumer(
+		nc, platformlogger.NoopLogger{},
+		platformnats.WithStreamName(streamName),
+		platformnats.WithSubjectPrefix(subjectPrefix),
+		platformnats.WithConsumerName("notifications"),
+		platformnats.WithBatchSize(1),
+		platformnats.WithAckWait(200*time.Millisecond),
+		platformnats.WithMaxDeliveries(2),
+		platformnats.WithDLQSubject(dlqSubject),
+	)
 	if err != nil {
 		t.Fatalf("NewConsumer: %v", err)
 	}
@@ -268,15 +271,16 @@ func TestIntegration_JetStreamConsumer_ReconnectsAfterServerRestart(t *testing.T
 	}
 	defer consNC.Close()
 
-	consumer, err := platformnats.NewConsumer(consNC, &platformnats.ConsumerOptions{
-		StreamName:    streamName,
-		SubjectPrefix: subjectPrefix,
-		ConsumerName:  "notifications",
-		BatchSize:     1,
-		AckWait:       2 * time.Second,
-		MaxDeliveries: 5,
-		DLQSubject:    subjectPrefix + "_dlq.notifications",
-	}, log)
+	consumer, err := platformnats.NewConsumer(
+		consNC, log,
+		platformnats.WithStreamName(streamName),
+		platformnats.WithSubjectPrefix(subjectPrefix),
+		platformnats.WithConsumerName("notifications"),
+		platformnats.WithBatchSize(1),
+		platformnats.WithAckWait(2*time.Second),
+		platformnats.WithMaxDeliveries(5),
+		platformnats.WithDLQSubject(subjectPrefix+"_dlq.notifications"),
+	)
 	if err != nil {
 		t.Fatalf("NewConsumer: %v", err)
 	}

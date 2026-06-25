@@ -36,23 +36,8 @@ func NewClientWithRetry(
 	var lastErr error
 	wait := retry.InitialWait
 	for attempt := 1; attempt <= retry.MaxAttempts; attempt++ {
-		nc, err := gonats.Connect(
-			natsURL,
-			gonats.Name(clientName),
-			gonats.Timeout(5*time.Second),
-			gonats.MaxReconnects(-1),
-			gonats.ReconnectWait(2*time.Second),
-			gonats.ReconnectJitter(500*time.Millisecond, 2*time.Second),
-			gonats.DisconnectErrHandler(func(_ *gonats.Conn, err error) {
-				log.Warn("nats disconnected", "err", err)
-			}),
-			gonats.ReconnectHandler(func(_ *gonats.Conn) {
-				log.Info("nats reconnected")
-			}),
-			gonats.ClosedHandler(func(_ *gonats.Conn) {
-				log.Info("nats connection closed")
-			}),
-		)
+		opts := append([]gonats.Option{gonats.Name(clientName)}, connectOptions(log)...)
+		nc, err := gonats.Connect(natsURL, opts...)
 		if err == nil {
 			if err := nc.FlushTimeout(5 * time.Second); err == nil {
 				return nc, nil
@@ -76,6 +61,24 @@ func NewClientWithRetry(
 	}
 
 	return nil, fmt.Errorf("connect nats after %d attempts: %w", retry.MaxAttempts, lastErr)
+}
+
+func connectOptions(log logger.Logger) []gonats.Option {
+	return []gonats.Option{
+		gonats.Timeout(5 * time.Second),
+		gonats.MaxReconnects(-1),
+		gonats.ReconnectWait(2 * time.Second),
+		gonats.ReconnectJitter(500*time.Millisecond, 2*time.Second),
+		gonats.DisconnectErrHandler(func(_ *gonats.Conn, err error) {
+			log.Warn("nats disconnected", "err", err)
+		}),
+		gonats.ReconnectHandler(func(_ *gonats.Conn) {
+			log.Info("nats reconnected")
+		}),
+		gonats.ClosedHandler(func(_ *gonats.Conn) {
+			log.Info("nats connection closed")
+		}),
+	}
 }
 
 func validateRetry(retry platformconfig.RetryConfig) error {

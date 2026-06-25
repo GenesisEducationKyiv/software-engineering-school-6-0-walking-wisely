@@ -238,15 +238,16 @@ func buildCrossServiceStack(
 	bus := events.NewBus()
 	notificationapp.NewEventHandlers(notifJobRepo, baseURL, platformlogger.NoopLogger{}).Register(bus)
 
-	consumer, err := platformnats.NewConsumer(natsClient, &platformnats.ConsumerOptions{
-		StreamName:    streamName,
-		SubjectPrefix: subjectPrefix,
-		ConsumerName:  "notifications",
-		BatchSize:     32,
-		AckWait:       500 * time.Millisecond,
-		MaxDeliveries: 5,
-		DLQSubject:    "e2e_dlq.notifications." + strings.ReplaceAll(uuid.NewString(), "-", ""),
-	}, platformlogger.NoopLogger{})
+	consumer, err := platformnats.NewConsumer(
+		natsClient, platformlogger.NoopLogger{},
+		platformnats.WithStreamName(streamName),
+		platformnats.WithSubjectPrefix(subjectPrefix),
+		platformnats.WithConsumerName("notifications"),
+		platformnats.WithBatchSize(32),
+		platformnats.WithAckWait(500*time.Millisecond),
+		platformnats.WithMaxDeliveries(5),
+		platformnats.WithDLQSubject("e2e_dlq.notifications."+strings.ReplaceAll(uuid.NewString(), "-", "")),
+	)
 	if err != nil {
 		t.Fatalf("init jetstream consumer: %v", err)
 	}
