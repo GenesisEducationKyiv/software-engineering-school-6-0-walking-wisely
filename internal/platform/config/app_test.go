@@ -61,17 +61,17 @@ func TestLoadAppConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
 	}
-	if cfg.OutboxCleanupInterval != 30*time.Minute {
-		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.OutboxCleanupInterval)
+	if cfg.Outbox.CleanupInterval != 30*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.Outbox.CleanupInterval)
 	}
-	if cfg.OutboxRetention != 7*24*time.Hour {
-		t.Fatalf("OutboxRetention = %s, want 168h", cfg.OutboxRetention)
+	if cfg.Outbox.Retention != 7*24*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 168h", cfg.Outbox.Retention)
 	}
-	if cfg.NATSStreamName != "EVENTS" {
-		t.Fatalf("NATSStreamName = %q, want EVENTS", cfg.NATSStreamName)
+	if cfg.NATS.StreamName != "EVENTS" {
+		t.Fatalf("NATSStreamName = %q, want EVENTS", cfg.NATS.StreamName)
 	}
-	if cfg.NATSSubjectPrefix != "events" {
-		t.Fatalf("NATSSubjectPrefix = %q, want events", cfg.NATSSubjectPrefix)
+	if cfg.NATS.SubjectPrefix != "events" {
+		t.Fatalf("NATSSubjectPrefix = %q, want events", cfg.NATS.SubjectPrefix)
 	}
 }
 
@@ -116,17 +116,17 @@ func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
 	if cfg.ScannerInterval != 10*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 10m", cfg.ScannerInterval)
 	}
-	if cfg.OutboxCleanupInterval != 15*time.Minute {
-		t.Fatalf("OutboxCleanupInterval = %s, want 15m", cfg.OutboxCleanupInterval)
+	if cfg.Outbox.CleanupInterval != 15*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 15m", cfg.Outbox.CleanupInterval)
 	}
-	if cfg.OutboxRetention != 48*time.Hour {
-		t.Fatalf("OutboxRetention = %s, want 48h", cfg.OutboxRetention)
+	if cfg.Outbox.Retention != 48*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 48h", cfg.Outbox.Retention)
 	}
-	if cfg.NATSStreamName != "DOMAIN" {
-		t.Fatalf("NATSStreamName = %q, want DOMAIN", cfg.NATSStreamName)
+	if cfg.NATS.StreamName != "DOMAIN" {
+		t.Fatalf("NATSStreamName = %q, want DOMAIN", cfg.NATS.StreamName)
 	}
-	if cfg.NATSSubjectPrefix != "domain_events" {
-		t.Fatalf("NATSSubjectPrefix = %q, want domain_events", cfg.NATSSubjectPrefix)
+	if cfg.NATS.SubjectPrefix != "domain_events" {
+		t.Fatalf("NATSSubjectPrefix = %q, want domain_events", cfg.NATS.SubjectPrefix)
 	}
 }
 
@@ -168,11 +168,11 @@ func TestLoadAppConfig_InvalidOptionalValuesFallBackToDefaults(t *testing.T) {
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
 	}
-	if cfg.OutboxCleanupInterval != 30*time.Minute {
-		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.OutboxCleanupInterval)
+	if cfg.Outbox.CleanupInterval != 30*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.Outbox.CleanupInterval)
 	}
-	if cfg.OutboxRetention != 7*24*time.Hour {
-		t.Fatalf("OutboxRetention = %s, want 168h", cfg.OutboxRetention)
+	if cfg.Outbox.Retention != 7*24*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 168h", cfg.Outbox.Retention)
 	}
 }
 
@@ -191,10 +191,10 @@ func TestLoadAppConfig_NonPositiveOptionalValuesFallBackToDefaults(t *testing.T)
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
 	}
-	if cfg.OutboxCleanupInterval != 30*time.Minute {
-		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.OutboxCleanupInterval)
+	if cfg.Outbox.CleanupInterval != 30*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.Outbox.CleanupInterval)
 	}
-	if cfg.OutboxRetention != 7*24*time.Hour {
-		t.Fatalf("OutboxRetention = %s, want 168h", cfg.OutboxRetention)
+	if cfg.Outbox.Retention != 7*24*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 168h", cfg.Outbox.Retention)
 	}
 }

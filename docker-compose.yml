@@ -117,7 +117,7 @@ services:
       NOTIFICATION_JOB_RETENTION: ${NOTIFICATION_JOB_RETENTION:-168h}
       HTTP_PORT: "8081"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

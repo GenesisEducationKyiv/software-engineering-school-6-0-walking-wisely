@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,6 +22,7 @@ import (
 	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 
 	// Register event types so the JetStream consumer can decode them.
 	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
@@ -60,7 +62,11 @@ func run(log platformlogger.Logger) error {
 	}
 	defer db.Close()
 
-	natsClient, err := platformnats.NewClient(cfg.NATSURL, cfg.ServiceName, log)
+	if err := platformmigrations.Run(cfg.DatabaseURL, log); err != nil {
+		return fmt.Errorf("run database migrations: %w", err)
+	}
+
+	natsClient, err := platformnats.NewClient(cfg.NATS.URL, cfg.ServiceName, log)
 	if err != nil {
 		return err
 	}
@@ -69,29 +75,30 @@ func run(log platformlogger.Logger) error {
 	// Outbox for saga reply events (notifications_outbox => NATS).
 	notificationsOutboxRepo := outbox.NewRepository(db, "notifications_outbox")
 	notificationsOutboxPublisher, err := platformnats.NewPublisher(natsClient, platformnats.PublisherOptions{
-		StreamName:    cfg.NATSStreamName,
-		SubjectPrefix: cfg.NATSSubjectPrefix,
+		StreamName:    cfg.NATS.StreamName,
+		SubjectPrefix: cfg.NATS.SubjectPrefix,
 	})
 	if err != nil {
 		return err
 	}
 
-	notificationJobRepo := notificationpostgres.NewRepository(db, notificationsOutboxRepo, cfg.JobInsertBatchSize)
-	resendClient := resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, log)
+	notificationJobRepo := notificationpostgres.NewRepository(db, notificationsOutboxRepo, cfg.Job.InsertBatchSize)
+	resendClient := resend.NewClient(cfg.Resend.APIKey, cfg.Resend.From, log)
 
 	bus := events.NewBus()
-	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.BaseURL, log)
+	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.Resend.BaseURL, log)
 	notificationHandlers.Register(bus)
 
-	consumer, err := platformnats.NewConsumer(natsClient, &platformnats.ConsumerOptions{
-		StreamName:    cfg.NATSStreamName,
-		SubjectPrefix: cfg.NATSSubjectPrefix,
-		ConsumerName:  cfg.NATSConsumerName,
-		BatchSize:     cfg.NATSBatchSize,
-		AckWait:       cfg.NATSAckWait,
-		MaxDeliveries: cfg.NATSMaxDeliveries,
-		DLQSubject:    cfg.NATSDLQSubject,
-	}, log)
+	consumer, err := platformnats.NewConsumer(
+		natsClient, log,
+		platformnats.WithStreamName(cfg.NATS.StreamName),
+		platformnats.WithSubjectPrefix(cfg.NATS.SubjectPrefix),
+		platformnats.WithConsumerName(cfg.NATS.ConsumerName),
+		platformnats.WithBatchSize(cfg.NATS.BatchSize),
+		platformnats.WithAckWait(cfg.NATS.AckWait),
+		platformnats.WithMaxDeliveries(cfg.NATS.MaxDeliveries),
+		platformnats.WithDLQSubject(cfg.NATS.DLQSubject),
+	)
 	if err != nil {
 		return err
 	}
@@ -113,27 +120,27 @@ func run(log platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		notificationworker.StartSender(ctx, resendClient, notificationJobRepo, cfg.ResendMaxWait, log)
+		notificationworker.StartSender(ctx, resendClient, notificationJobRepo, cfg.Resend.MaxWait, log)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		notificationworker.StartCleanup(ctx, notificationJobRepo, cfg.JobCleanupInterval, cfg.JobRetention, log)
+		notificationworker.StartCleanup(ctx, notificationJobRepo, cfg.Job.CleanupInterval, cfg.Job.Retention, log)
 	}()
 
 	// Dispatcher for the notifications outbox — publishes saga reply events to NATS.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartDispatcher(ctx, notificationsOutboxRepo, notificationsOutboxPublisher, cfg.NotificationsOutboxInterval, 32, 5, log)
+		outbox.StartDispatcher(ctx, notificationsOutboxRepo, notificationsOutboxPublisher, cfg.Outbox.CleanupInterval, 32, 5, log)
 	}()
 
 	// Cleanup for the notifications outbox.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartCleanup(ctx, notificationsOutboxRepo, cfg.NotificationsOutboxInterval, cfg.NotificationsOutboxRetention, log)
+		outbox.StartCleanup(ctx, notificationsOutboxRepo, cfg.Outbox.CleanupInterval, cfg.Outbox.Retention, log)
 	}()
 
 	// Minimal health endpoint for container orchestration readiness probes.

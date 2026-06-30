@@ -221,7 +221,7 @@ func TestIntegration_RecordReleaseNotificationsInsertsAcrossBatchBoundary(t *tes
 	defer cancel()
 
 	_, pool := newNotificationTestDB(t, ctx)
-	repo := NewRepository(pool, 2)
+	repo := NewRepository(pool, nil, 2)
 	truncateNotificationTables(t, ctx, pool)
 
 	eventID := uuid.NewString()
@@ -303,7 +303,7 @@ func TestIntegration_ClaimPendingFieldsRoundTrip(t *testing.T) {
 	subID := insertSubscription(t, ctx, pool)
 	eventID := uuid.NewString()
 	confirmToken := uuid.NewString()
-	if err := repo.RecordConfirmation(ctx, "handler.test", eventID, subID, "to@example.com", "My Subject", "<p>body</p>", confirmToken); err != nil {
+	if err := repo.RecordConfirmation(ctx, "handler.test", eventID, subID, "", "to@example.com", "My Subject", "<p>body</p>", confirmToken); err != nil {
 		t.Fatalf("RecordConfirmation: %v", err)
 	}
 
@@ -339,7 +339,7 @@ func TestIntegration_ClaimPendingSkipsInFlightRows(t *testing.T) {
 	repo, pool := newNotificationTestDB(t, ctx)
 	truncateNotificationTables(t, ctx, pool)
 	subID := insertSubscription(t, ctx, pool)
-	if err := repo.RecordConfirmation(ctx, "handler.test", uuid.NewString(), subID, "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
+	if err := repo.RecordConfirmation(ctx, "handler.test", uuid.NewString(), subID, "", "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
 		t.Fatalf("RecordConfirmation: %v", err)
 	}
 	first, err := repo.ClaimPending(ctx, "worker-1", 10)
@@ -368,7 +368,7 @@ func TestIntegration_MarkSent(t *testing.T) {
 	repo, pool := newNotificationTestDB(t, ctx)
 	truncateNotificationTables(t, ctx, pool)
 	subID := insertSubscription(t, ctx, pool)
-	if err := repo.RecordConfirmation(ctx, "handler.test", uuid.NewString(), subID, "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
+	if err := repo.RecordConfirmation(ctx, "handler.test", uuid.NewString(), subID, "", "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
 		t.Fatalf("RecordConfirmation: %v", err)
 	}
 	jobs, err := repo.ClaimPending(ctx, "worker-1", 10)
@@ -421,7 +421,7 @@ func TestIntegration_MarkFailedBelowMaxKeepsPending(t *testing.T) {
 	repo, pool := newNotificationTestDB(t, ctx)
 	truncateNotificationTables(t, ctx, pool)
 	subID := insertSubscription(t, ctx, pool)
-	if err := repo.RecordConfirmation(ctx, "handler.test", uuid.NewString(), subID, "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
+	if err := repo.RecordConfirmation(ctx, "handler.test", uuid.NewString(), subID, "", "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
 		t.Fatalf("RecordConfirmation: %v", err)
 	}
 	jobs, err := repo.ClaimPending(ctx, "worker-1", 10)
@@ -477,7 +477,7 @@ func TestIntegration_MarkFailedAtMaxMovesToFailed(t *testing.T) {
 	repo, pool := newNotificationTestDB(t, ctx)
 	truncateNotificationTables(t, ctx, pool)
 	subID := insertSubscription(t, ctx, pool)
-	if err := repo.RecordConfirmation(ctx, "handler.test", uuid.NewString(), subID, "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
+	if err := repo.RecordConfirmation(ctx, "handler.test", uuid.NewString(), subID, "", "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
 		t.Fatalf("RecordConfirmation: %v", err)
 	}
 	// Artificially set attempt_count to maxAttempts-1 so the next failure crosses the threshold.
@@ -564,7 +564,7 @@ func insertNotificationJob(t *testing.T, ctx context.Context, repo *Repository, 
 	t.Helper()
 
 	subID := insertSubscription(t, ctx, pool)
-	if err := repo.RecordConfirmation(ctx, "handler."+uuid.NewString(), uuid.NewString(), subID, "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
+	if err := repo.RecordConfirmation(ctx, "handler."+uuid.NewString(), uuid.NewString(), subID, "", "to@example.com", "Subject", "<p>body</p>", uuid.NewString()); err != nil {
 		t.Fatalf("RecordConfirmation: %v", err)
 	}
 

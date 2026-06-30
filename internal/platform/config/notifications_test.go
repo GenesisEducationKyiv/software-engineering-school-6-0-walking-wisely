@@ -48,38 +48,38 @@ func TestLoadNotificationsConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
 	if cfg.HTTPPort != "8081" {
 		t.Fatalf("HTTPPort = %q, want 8081", cfg.HTTPPort)
 	}
-	if cfg.NATSStreamName != "EVENTS" {
-		t.Fatalf("NATSStreamName = %q, want EVENTS", cfg.NATSStreamName)
+	if cfg.NATS.StreamName != "EVENTS" {
+		t.Fatalf("NATSStreamName = %q, want EVENTS", cfg.NATS.StreamName)
 	}
-	if cfg.NATSSubjectPrefix != "events" {
-		t.Fatalf("NATSSubjectPrefix = %q, want events", cfg.NATSSubjectPrefix)
+	if cfg.NATS.SubjectPrefix != "events" {
+		t.Fatalf("NATSSubjectPrefix = %q, want events", cfg.NATS.SubjectPrefix)
 	}
-	if cfg.NATSConsumerName != "notifications" {
-		t.Fatalf("NATSConsumerName = %q, want notifications", cfg.NATSConsumerName)
+	if cfg.NATS.ConsumerName != "notifications" {
+		t.Fatalf("NATSConsumerName = %q, want notifications", cfg.NATS.ConsumerName)
 	}
-	if cfg.NATSBatchSize != 32 {
-		t.Fatalf("NATSBatchSize = %d, want 32", cfg.NATSBatchSize)
+	if cfg.NATS.BatchSize != 32 {
+		t.Fatalf("NATSBatchSize = %d, want 32", cfg.NATS.BatchSize)
 	}
-	if cfg.NATSAckWait != 5*time.Second {
-		t.Fatalf("NATSAckWait = %s, want 5s", cfg.NATSAckWait)
+	if cfg.NATS.AckWait != 5*time.Second {
+		t.Fatalf("NATSAckWait = %s, want 5s", cfg.NATS.AckWait)
 	}
-	if cfg.NATSMaxDeliveries != 5 {
-		t.Fatalf("NATSMaxDeliveries = %d, want 5", cfg.NATSMaxDeliveries)
+	if cfg.NATS.MaxDeliveries != 5 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 5", cfg.NATS.MaxDeliveries)
 	}
-	if cfg.NATSDLQSubject != "events_dlq.notifications" {
-		t.Fatalf("NATSDLQSubject = %q, want events_dlq.notifications", cfg.NATSDLQSubject)
+	if cfg.NATS.DLQSubject != "events_dlq.notifications" {
+		t.Fatalf("NATSDLQSubject = %q, want events_dlq.notifications", cfg.NATS.DLQSubject)
 	}
-	if cfg.ResendMaxWait != 200*time.Millisecond {
-		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.ResendMaxWait)
+	if cfg.Resend.MaxWait != 200*time.Millisecond {
+		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.Resend.MaxWait)
 	}
-	if cfg.JobInsertBatchSize != 500 {
-		t.Fatalf("JobInsertBatchSize = %d, want 500", cfg.JobInsertBatchSize)
+	if cfg.Job.InsertBatchSize != 500 {
+		t.Fatalf("JobInsertBatchSize = %d, want 500", cfg.Job.InsertBatchSize)
 	}
-	if cfg.JobCleanupInterval != 30*time.Minute {
-		t.Fatalf("JobCleanupInterval = %s, want 30m", cfg.JobCleanupInterval)
+	if cfg.Job.CleanupInterval != 30*time.Minute {
+		t.Fatalf("JobCleanupInterval = %s, want 30m", cfg.Job.CleanupInterval)
 	}
-	if cfg.JobRetention != 7*24*time.Hour {
-		t.Fatalf("JobRetention = %s, want 168h", cfg.JobRetention)
+	if cfg.Job.Retention != 7*24*time.Hour {
+		t.Fatalf("JobRetention = %s, want 168h", cfg.Job.Retention)
 	}
 }
 
@@ -110,26 +110,26 @@ func TestLoadNotificationsConfig_UsesEnvOverrides(t *testing.T) {
 	if cfg.HTTPPort != "8082" {
 		t.Fatalf("HTTPPort = %q, want 8082", cfg.HTTPPort)
 	}
-	if cfg.NATSStreamName != "DOMAIN" {
-		t.Fatalf("NATSStreamName = %q, want DOMAIN", cfg.NATSStreamName)
+	if cfg.NATS.StreamName != "DOMAIN" {
+		t.Fatalf("NATSStreamName = %q, want DOMAIN", cfg.NATS.StreamName)
 	}
-	if cfg.NATSSubjectPrefix != "domain_events" {
-		t.Fatalf("NATSSubjectPrefix = %q, want domain_events", cfg.NATSSubjectPrefix)
+	if cfg.NATS.SubjectPrefix != "domain_events" {
+		t.Fatalf("NATSSubjectPrefix = %q, want domain_events", cfg.NATS.SubjectPrefix)
 	}
-	if cfg.NATSConsumerName != "email-workers" {
-		t.Fatalf("NATSConsumerName = %q, want email-workers", cfg.NATSConsumerName)
+	if cfg.NATS.ConsumerName != "email-workers" {
+		t.Fatalf("NATSConsumerName = %q, want email-workers", cfg.NATS.ConsumerName)
 	}
-	if cfg.NATSBatchSize != 64 {
-		t.Fatalf("NATSBatchSize = %d, want 64", cfg.NATSBatchSize)
+	if cfg.NATS.BatchSize != 64 {
+		t.Fatalf("NATSBatchSize = %d, want 64", cfg.NATS.BatchSize)
 	}
-	if cfg.NATSAckWait != 2*time.Second {
-		t.Fatalf("NATSAckWait = %s, want 2s", cfg.NATSAckWait)
+	if cfg.NATS.AckWait != 2*time.Second {
+		t.Fatalf("NATSAckWait = %s, want 2s", cfg.NATS.AckWait)
 	}
-	if cfg.NATSMaxDeliveries != 9 {
-		t.Fatalf("NATSMaxDeliveries = %d, want 9", cfg.NATSMaxDeliveries)
+	if cfg.NATS.MaxDeliveries != 9 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 9", cfg.NATS.MaxDeliveries)
 	}
-	if cfg.NATSDLQSubject != "domain_events_dlq.notifications" {
-		t.Fatalf("NATSDLQSubject = %q, want domain_events_dlq.notifications", cfg.NATSDLQSubject)
+	if cfg.NATS.DLQSubject != "domain_events_dlq.notifications" {
+		t.Fatalf("NATSDLQSubject = %q, want domain_events_dlq.notifications", cfg.NATS.DLQSubject)
 	}
 	if cfg.LogLevel != "debug" {
 		t.Fatalf("LogLevel = %q, want debug", cfg.LogLevel)
@@ -140,17 +140,17 @@ func TestLoadNotificationsConfig_UsesEnvOverrides(t *testing.T) {
 	if cfg.Environment != "prod" {
 		t.Fatalf("Environment = %q, want prod", cfg.Environment)
 	}
-	if cfg.ResendMaxWait != 500*time.Millisecond {
-		t.Fatalf("ResendMaxWait = %s, want 500ms", cfg.ResendMaxWait)
+	if cfg.Resend.MaxWait != 500*time.Millisecond {
+		t.Fatalf("ResendMaxWait = %s, want 500ms", cfg.Resend.MaxWait)
 	}
-	if cfg.JobInsertBatchSize != 250 {
-		t.Fatalf("JobInsertBatchSize = %d, want 250", cfg.JobInsertBatchSize)
+	if cfg.Job.InsertBatchSize != 250 {
+		t.Fatalf("JobInsertBatchSize = %d, want 250", cfg.Job.InsertBatchSize)
 	}
-	if cfg.JobCleanupInterval != 15*time.Minute {
-		t.Fatalf("JobCleanupInterval = %s, want 15m", cfg.JobCleanupInterval)
+	if cfg.Job.CleanupInterval != 15*time.Minute {
+		t.Fatalf("JobCleanupInterval = %s, want 15m", cfg.Job.CleanupInterval)
 	}
-	if cfg.JobRetention != 48*time.Hour {
-		t.Fatalf("JobRetention = %s, want 48h", cfg.JobRetention)
+	if cfg.Job.Retention != 48*time.Hour {
+		t.Fatalf("JobRetention = %s, want 48h", cfg.Job.Retention)
 	}
 }
 
@@ -194,26 +194,26 @@ func TestLoadNotificationsConfig_InvalidOptionalValuesFallBackToDefaults(t *test
 		t.Fatalf("LoadNotificationsConfig returned error: %v", err)
 	}
 
-	if cfg.NATSBatchSize != 32 {
-		t.Fatalf("NATSBatchSize = %d, want 32", cfg.NATSBatchSize)
+	if cfg.NATS.BatchSize != 32 {
+		t.Fatalf("NATSBatchSize = %d, want 32", cfg.NATS.BatchSize)
 	}
-	if cfg.NATSAckWait != 5*time.Second {
-		t.Fatalf("NATSAckWait = %s, want 5s", cfg.NATSAckWait)
+	if cfg.NATS.AckWait != 5*time.Second {
+		t.Fatalf("NATSAckWait = %s, want 5s", cfg.NATS.AckWait)
 	}
-	if cfg.NATSMaxDeliveries != 5 {
-		t.Fatalf("NATSMaxDeliveries = %d, want 5", cfg.NATSMaxDeliveries)
+	if cfg.NATS.MaxDeliveries != 5 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 5", cfg.NATS.MaxDeliveries)
 	}
-	if cfg.ResendMaxWait != 200*time.Millisecond {
-		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.ResendMaxWait)
+	if cfg.Resend.MaxWait != 200*time.Millisecond {
+		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.Resend.MaxWait)
 	}
-	if cfg.JobInsertBatchSize != 500 {
-		t.Fatalf("JobInsertBatchSize = %d, want 500", cfg.JobInsertBatchSize)
+	if cfg.Job.InsertBatchSize != 500 {
+		t.Fatalf("JobInsertBatchSize = %d, want 500", cfg.Job.InsertBatchSize)
 	}
-	if cfg.JobCleanupInterval != 30*time.Minute {
-		t.Fatalf("JobCleanupInterval = %s, want 30m", cfg.JobCleanupInterval)
+	if cfg.Job.CleanupInterval != 30*time.Minute {
+		t.Fatalf("JobCleanupInterval = %s, want 30m", cfg.Job.CleanupInterval)
 	}
-	if cfg.JobRetention != 7*24*time.Hour {
-		t.Fatalf("JobRetention = %s, want 168h", cfg.JobRetention)
+	if cfg.Job.Retention != 7*24*time.Hour {
+		t.Fatalf("JobRetention = %s, want 168h", cfg.Job.Retention)
 	}
 }
 
@@ -228,8 +228,8 @@ func TestLoadNotificationsConfig_NegativeMaxDeliveriesFallsBackToDefault(t *test
 		t.Fatalf("LoadNotificationsConfig returned error: %v", err)
 	}
 
-	if cfg.NATSMaxDeliveries != 5 {
-		t.Fatalf("NATSMaxDeliveries = %d, want 5", cfg.NATSMaxDeliveries)
+	if cfg.NATS.MaxDeliveries != 5 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 5", cfg.NATS.MaxDeliveries)
 	}
 }
 
@@ -249,25 +249,25 @@ func TestLoadNotificationsConfig_NonPositiveOptionalValuesFallBackToDefaults(t *
 		t.Fatalf("LoadNotificationsConfig returned error: %v", err)
 	}
 
-	if cfg.NATSBatchSize != 32 {
-		t.Fatalf("NATSBatchSize = %d, want 32", cfg.NATSBatchSize)
+	if cfg.NATS.BatchSize != 32 {
+		t.Fatalf("NATSBatchSize = %d, want 32", cfg.NATS.BatchSize)
 	}
-	if cfg.NATSAckWait != 5*time.Second {
-		t.Fatalf("NATSAckWait = %s, want 5s", cfg.NATSAckWait)
+	if cfg.NATS.AckWait != 5*time.Second {
+		t.Fatalf("NATSAckWait = %s, want 5s", cfg.NATS.AckWait)
 	}
-	if cfg.NATSMaxDeliveries != 0 {
-		t.Fatalf("NATSMaxDeliveries = %d, want 0", cfg.NATSMaxDeliveries)
+	if cfg.NATS.MaxDeliveries != 0 {
+		t.Fatalf("NATSMaxDeliveries = %d, want 0", cfg.NATS.MaxDeliveries)
 	}
-	if cfg.ResendMaxWait != 200*time.Millisecond {
-		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.ResendMaxWait)
+	if cfg.Resend.MaxWait != 200*time.Millisecond {
+		t.Fatalf("ResendMaxWait = %s, want 200ms", cfg.Resend.MaxWait)
 	}
-	if cfg.JobInsertBatchSize != 500 {
-		t.Fatalf("JobInsertBatchSize = %d, want 500", cfg.JobInsertBatchSize)
+	if cfg.Job.InsertBatchSize != 500 {
+		t.Fatalf("JobInsertBatchSize = %d, want 500", cfg.Job.InsertBatchSize)
 	}
-	if cfg.JobCleanupInterval != 30*time.Minute {
-		t.Fatalf("JobCleanupInterval = %s, want 30m", cfg.JobCleanupInterval)
+	if cfg.Job.CleanupInterval != 30*time.Minute {
+		t.Fatalf("JobCleanupInterval = %s, want 30m", cfg.Job.CleanupInterval)
 	}
-	if cfg.JobRetention != 7*24*time.Hour {
-		t.Fatalf("JobRetention = %s, want 168h", cfg.JobRetention)
+	if cfg.Job.Retention != 7*24*time.Hour {
+		t.Fatalf("JobRetention = %s, want 168h", cfg.Job.Retention)
 	}
 }
