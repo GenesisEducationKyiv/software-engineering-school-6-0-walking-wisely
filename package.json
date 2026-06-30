@@ -1,0 +1,11 @@
+{
+  "name": "walking-wisely",
+  "private": true,
+  "scripts": {
+    "test-markdown-links": "remark --frail --use remark-validate-links"
+  },
+  "devDependencies": {
+    "remark-cli": "^12.0.1",
+    "remark-validate-links": "^13.1.0"
+  }
+}

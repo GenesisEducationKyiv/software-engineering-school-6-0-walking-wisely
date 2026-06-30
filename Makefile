@@ -1,7 +1,7 @@
 BUF_VERSION ?= v1.65.0
 PLAYWRIGHT_GO_VERSION ?= v0.5700.1
 
-.PHONY: setup generate playwright-install playwright-install-ci test test-all test-unit test-unit-strict test-unit-ci test-integration test-e2e
+.PHONY: setup generate playwright-install playwright-install-ci test test-all test-unit test-unit-strict test-unit-ci test-integration test-e2e test-markdown-links
 
 setup:
 	@echo "Installing project dependencies..."
@@ -59,3 +59,6 @@ test-integration:
 test-e2e:
 	go test -count=1 -tags=e2e -run '^TestE2E_' ./cmd/server
 	go test -count=1 -tags=e2e -run '^TestIndexPageSubscriptionFlow$$' ./cmd/server
+
+test-markdown-links:
+	npm run test-markdown-links -- .
