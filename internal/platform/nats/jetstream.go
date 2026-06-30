@@ -26,9 +26,18 @@ type eventEnvelope struct {
 	Payload   json.RawMessage `json:"payload"`
 }
 
+type dlqMessage struct {
+	OriginalSubject string          `json:"original_subject"`
+	EventType       string          `json:"event_type"`
+	Payload         json.RawMessage `json:"payload"`
+	Deliveries      uint64          `json:"deliveries"`
+	Error           string          `json:"error"`
+	DeadLetteredAt  time.Time       `json:"dead_lettered_at"`
+}
+
 // Publisher writes domain events to a NATS JetStream stream.
 type Publisher struct {
-	js            gonats.JetStreamContext
+	jsctx         gonats.JetStreamContext
 	streamName    string
 	subjectPrefix string
 }
@@ -47,17 +56,17 @@ func NewPublisher(nc *gonats.Conn, opts PublisherOptions) (*Publisher, error) {
 	}
 	opts.SubjectPrefix = strings.Trim(opts.SubjectPrefix, ".")
 
-	js, err := nc.JetStream()
+	jsctx, err := nc.JetStream()
 	if err != nil {
 		return nil, fmt.Errorf("init jetstream: %w", err)
 	}
 
-	if err := ensureStream(js, opts.StreamName, opts.SubjectPrefix+".>"); err != nil {
+	if err := ensureStream(jsctx, opts.StreamName, opts.SubjectPrefix+".>"); err != nil {
 		return nil, err
 	}
 
 	return &Publisher{
-		js:            js,
+		jsctx:         jsctx,
 		streamName:    opts.StreamName,
 		subjectPrefix: opts.SubjectPrefix,
 	}, nil
@@ -78,7 +87,7 @@ func (p *Publisher) Publish(ctx context.Context, event events.Event) error {
 	}
 
 	subject := p.subjectPrefix + "." + event.EventName()
-	if _, err := p.js.PublishMsg(&gonats.Msg{
+	if _, err := p.jsctx.PublishMsg(&gonats.Msg{
 		Subject: subject,
 		Data:    envelope,
 		Header: gonats.Header{
@@ -94,7 +103,7 @@ func (p *Publisher) Publish(ctx context.Context, event events.Event) error {
 // Consumer reads events from a JetStream durable pull consumer and dispatches
 // them to the provided in-process event bus.
 type Consumer struct {
-	js            gonats.JetStreamContext
+	jsctx         gonats.JetStreamContext
 	streamName    string
 	subjectPrefix string
 	consumerName  string
@@ -103,76 +112,91 @@ type Consumer struct {
 	maxDeliveries int
 	dlqSubject    string
 	fetchWait     time.Duration
-	subscription  *gonats.Subscription
 	log           logger.Logger
 }
 
-type ConsumerOptions struct {
-	StreamName    string
-	SubjectPrefix string
-	ConsumerName  string
-	BatchSize     int
-	AckWait       time.Duration
-	MaxDeliveries int
-	DLQSubject    string
-	FetchWait     time.Duration
+// Option configures a Consumer.
+type Option func(*Consumer)
+
+func WithStreamName(name string) Option {
+	return func(c *Consumer) { c.streamName = name }
 }
 
-func NewConsumer(nc *gonats.Conn, opts *ConsumerOptions, log logger.Logger) (*Consumer, error) {
+func WithSubjectPrefix(prefix string) Option {
+	return func(c *Consumer) { c.subjectPrefix = strings.Trim(prefix, ".") }
+}
+
+func WithConsumerName(name string) Option {
+	return func(c *Consumer) { c.consumerName = name }
+}
+
+func WithBatchSize(n int) Option {
+	return func(c *Consumer) {
+		if n >= 1 {
+			c.batchSize = n
+		}
+	}
+}
+
+func WithAckWait(d time.Duration) Option {
+	return func(c *Consumer) {
+		if d > 0 {
+			c.ackWait = d
+		}
+	}
+}
+
+func WithMaxDeliveries(n int) Option {
+	return func(c *Consumer) { c.maxDeliveries = n }
+}
+
+func WithDLQSubject(subject string) Option {
+	return func(c *Consumer) { c.dlqSubject = subject }
+}
+
+func WithFetchWait(d time.Duration) Option {
+	return func(c *Consumer) {
+		if d > 0 {
+			c.fetchWait = d
+		}
+	}
+}
+
+func NewConsumer(nc *gonats.Conn, log logger.Logger, opts ...Option) (*Consumer, error) {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
-	if opts == nil {
-		opts = &ConsumerOptions{}
-	}
-	if opts.StreamName == "" {
-		opts.StreamName = "EVENTS"
-	}
-	if opts.SubjectPrefix == "" {
-		opts.SubjectPrefix = "events"
-	}
-	if opts.ConsumerName == "" {
-		opts.ConsumerName = "notifications"
-	}
-	if opts.BatchSize < 1 {
-		opts.BatchSize = defaultBatchSize
-	}
-	if opts.AckWait <= 0 {
-		opts.AckWait = defaultAckWait
-	}
-	if opts.FetchWait <= 0 {
-		opts.FetchWait = defaultFetchWait
-	}
-	if opts.DLQSubject == "" {
-		opts.DLQSubject = "events_dlq.notifications"
-	}
-	opts.SubjectPrefix = strings.Trim(opts.SubjectPrefix, ".")
 
-	js, err := nc.JetStream()
+	c := &Consumer{
+		streamName:    "EVENTS",
+		subjectPrefix: "events",
+		consumerName:  "notifications",
+		batchSize:     defaultBatchSize,
+		ackWait:       defaultAckWait,
+		fetchWait:     defaultFetchWait,
+		dlqSubject:    "events_dlq.notifications",
+		log:           log,
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	jsctx, err := nc.JetStream()
 	if err != nil {
 		return nil, fmt.Errorf("init jetstream: %w", err)
 	}
-	if err := ensureStream(js, opts.StreamName, opts.SubjectPrefix+".>"); err != nil {
+	c.jsctx = jsctx
+
+	if err := ensureStream(jsctx, c.streamName, c.subjectPrefix+".>"); err != nil {
 		return nil, err
 	}
-	if opts.DLQSubject != "" {
-		if err := ensureStream(js, opts.StreamName+"_DLQ", opts.DLQSubject); err != nil {
+	if c.dlqSubject != "" {
+		if err := ensureStream(jsctx, c.streamName+"_DLQ", c.dlqSubject); err != nil {
 			return nil, err
 		}
 	}
 
-	return &Consumer{
-		js:            js,
-		streamName:    opts.StreamName,
-		subjectPrefix: opts.SubjectPrefix,
-		consumerName:  opts.ConsumerName,
-		batchSize:     opts.BatchSize,
-		ackWait:       opts.AckWait,
-		maxDeliveries: opts.MaxDeliveries,
-		dlqSubject:    opts.DLQSubject,
-		fetchWait:     opts.FetchWait,
-		log:           log,
-	}, nil
+	return c, nil
 }
 
 func (c *Consumer) Run(ctx context.Context, bus events.Publisher) error {
@@ -180,7 +204,6 @@ func (c *Consumer) Run(ctx context.Context, bus events.Publisher) error {
 	if err != nil {
 		return err
 	}
-	c.subscription = sub
 	defer func() {
 		if err := sub.Drain(); err != nil {
 			c.log.Error("jetstream consumer drain failed", "err", err)
@@ -211,6 +234,14 @@ func (c *Consumer) Run(ctx context.Context, bus events.Publisher) error {
 				return nil
 			}
 			c.log.Error("jetstream consumer fetch failed", "err", err)
+			if !sub.IsValid() {
+				c.log.Warn("jetstream subscription invalid, resubscribing")
+				if newSub, subErr := c.ensureSubscription(); subErr != nil {
+					c.log.Error("jetstream resubscribe failed", "err", subErr)
+				} else {
+					sub = newSub
+				}
+			}
 			select {
 			case <-ctx.Done():
 				return nil
@@ -236,7 +267,7 @@ func (c *Consumer) ensureSubscription() (*gonats.Subscription, error) {
 		opts = append(opts, gonats.MaxDeliver(c.maxDeliveries))
 	}
 
-	sub, err := c.js.PullSubscribe(subject, c.consumerName, opts...)
+	sub, err := c.jsctx.PullSubscribe(subject, c.consumerName, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create jetstream pull consumer %s: %w", c.consumerName, err)
 	}
@@ -262,7 +293,7 @@ func (c *Consumer) dispatch(ctx context.Context, bus events.Publisher, msg *gona
 		return
 	}
 
-	if err := c.safePublish(ctx, bus, event); err != nil {
+	if err := bus.Publish(ctx, event); err != nil {
 		c.log.Error(
 			"jetstream consumer handler failed, message will be redelivered",
 			"event_type", envelope.EventType,
@@ -274,20 +305,6 @@ func (c *Consumer) dispatch(ctx context.Context, bus events.Publisher, msg *gona
 	}
 
 	c.ack(ctx, msg)
-}
-
-// safePublish dispatches the event to the bus, recovering from any panic in a handler
-// so one poisoned message cannot crash the consumer goroutine (and the whole replica).
-// A recovered panic is converted to an error: the message is not acked and is
-// redelivered / dead-lettered like any other handler failure.
-func (c *Consumer) safePublish(ctx context.Context, bus events.Publisher, event events.Event) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("panic in event handler: %v", r)
-			c.log.Error("jetstream consumer handler panicked", "event", event.EventName(), "panic", r)
-		}
-	}()
-	return bus.Publish(ctx, event)
 }
 
 func (c *Consumer) ack(ctx context.Context, msg *gonats.Msg) {
@@ -316,14 +333,7 @@ func (c *Consumer) moveToDLQIfExhausted(ctx context.Context, msg *gonats.Msg, en
 		return
 	}
 
-	dlqPayload, err := json.Marshal(struct {
-		OriginalSubject string          `json:"original_subject"`
-		EventType       string          `json:"event_type"`
-		Payload         json.RawMessage `json:"payload"`
-		Deliveries      uint64          `json:"deliveries"`
-		Error           string          `json:"error"`
-		DeadLetteredAt  time.Time       `json:"dead_lettered_at"`
-	}{
+	dlqPayload, err := json.Marshal(dlqMessage{
 		OriginalSubject: msg.Subject,
 		EventType:       envelope.EventType,
 		Payload:         envelope.Payload,
@@ -338,7 +348,7 @@ func (c *Consumer) moveToDLQIfExhausted(ctx context.Context, msg *gonats.Msg, en
 
 	dlqCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.ackWait)
 	defer cancel()
-	if _, err := c.js.Publish(c.dlqSubject, dlqPayload, gonats.Context(dlqCtx)); err != nil {
+	if _, err := c.jsctx.Publish(c.dlqSubject, dlqPayload, gonats.Context(dlqCtx)); err != nil {
 		c.log.Error("jetstream consumer dlq publish failed", "subject", msg.Subject, "dlq_subject", c.dlqSubject, "err", err)
 		return
 	}
@@ -354,21 +364,21 @@ func (c *Consumer) moveToDLQIfExhausted(ctx context.Context, msg *gonats.Msg, en
 	)
 }
 
-func ensureStream(js gonats.JetStreamContext, name, subject string) error {
+func ensureStream(jsctx gonats.JetStreamContext, name, subject string) error {
 	cfg := &gonats.StreamConfig{
 		Name:     name,
 		Subjects: []string{subject},
 		Storage:  gonats.FileStorage,
 	}
 
-	if _, err := js.StreamInfo(name); err != nil {
-		if _, addErr := js.AddStream(cfg); addErr != nil {
+	if _, err := jsctx.StreamInfo(name); err != nil {
+		if _, addErr := jsctx.AddStream(cfg); addErr != nil {
 			return fmt.Errorf("create jetstream stream %s: %w", name, addErr)
 		}
 		return nil
 	}
 
-	if _, err := js.UpdateStream(cfg); err != nil {
+	if _, err := jsctx.UpdateStream(cfg); err != nil {
 		return fmt.Errorf("update jetstream stream %s: %w", name, err)
 	}
 	return nil
