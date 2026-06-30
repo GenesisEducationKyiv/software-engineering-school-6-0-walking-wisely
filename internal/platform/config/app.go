@@ -22,19 +22,22 @@ type SagaConfig struct {
 
 // AppConfig holds all environment-driven configuration for the API service.
 type AppConfig struct {
-	RestPort        string
-	GrpcPort        string
-	DatabaseURL     string
-	RedisURL        string
-	EmailSecretKey  string
-	GithubToken     string // optional - raises GitHub API rate limit
-	LogLevel        string
-	ServiceName     string
-	Environment     string
-	ScannerInterval time.Duration
-	NATS            NATSConfig
-	Outbox          OutboxConfig
-	Saga            SagaConfig
+	RestPort                 string
+	GrpcPort                 string
+	DatabaseURL              string
+	RedisURL                 string
+	EmailSecretKey           string
+	GithubToken              string // optional - raises GitHub API rate limit
+	LogLevel                 string
+	ServiceName              string
+	Environment              string
+	ScannerInterval          time.Duration
+	NATS                     NATSConfig
+	Outbox                   OutboxConfig
+	Saga                     SagaConfig
+	SagaTransport            string // "nats" (default) or "grpc"
+	NotificationsGRPCAddr    string // address of the notifications gRPC server, used when SagaTransport=grpc
+	GithubSkipRepoValidation bool   // skips GitHub repo existence check (bench / dev)
 }
 
 // LoadAppConfig reads all configuration from environment variables and returns a validated AppConfig.
@@ -68,6 +71,9 @@ func LoadAppConfig() (*AppConfig, error) {
 			SweepInterval: parseDurationOrDefault("SAGA_SWEEP_INTERVAL", 5*time.Minute),
 			StuckAfter:    parseDurationOrDefault("SAGA_STUCK_AFTER", 10*time.Minute),
 		},
+		SagaTransport:            envOrDefault("SAGA_TRANSPORT", "nats"),
+		NotificationsGRPCAddr:    envOrDefault("NOTIFICATIONS_GRPC_ADDR", "localhost:9091"),
+		GithubSkipRepoValidation: os.Getenv("GITHUB_SKIP_REPO_VALIDATION") == "true",
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err

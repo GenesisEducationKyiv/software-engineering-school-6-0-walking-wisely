@@ -92,6 +92,86 @@ func TestIntegration_RepositoryClaimPending(t *testing.T) {
 	}
 }
 
+// TestIntegration_RepositoryMetrics exercises the real Metrics() SQL against
+// Postgres. Regression guard for the FILTER-after-EXTRACT syntax error that
+// silently dropped every outbox_* gauge — unit coverage used a fake snapshot and
+// never ran the query.
+func TestIntegration_RepositoryMetrics(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	repo, pool := newTestRepository(t, ctx)
+	truncateOutboxEvents(t, ctx, pool)
+
+	// pending (oldest), failed+retried, processing+retried, delivered.
+	insertOutboxRow(t, ctx, pool, outboxSeed{
+		ID:             "00000000-0000-0000-0000-0000000000a1",
+		EventType:      "event.pending",
+		AggregateType:  "subscription",
+		AggregateID:    "sub-a1",
+		PayloadJSON:    `{}`,
+		OccurredAt:     time.Now().UTC().Add(-5 * time.Minute),
+		AvailableAt:    time.Now().UTC().Add(-1 * time.Minute),
+		Status:         StatusPending,
+		IdempotencyKey: "m-pending",
+	})
+	insertOutboxRow(t, ctx, pool, outboxSeed{
+		ID:             "00000000-0000-0000-0000-0000000000a2",
+		EventType:      "event.failed",
+		AggregateType:  "subscription",
+		AggregateID:    "sub-a2",
+		PayloadJSON:    `{}`,
+		OccurredAt:     time.Now().UTC().Add(-2 * time.Minute),
+		AvailableAt:    time.Now().UTC().Add(-1 * time.Minute),
+		Status:         StatusFailed,
+		AttemptCount:   3,
+		IdempotencyKey: "m-failed",
+	})
+	insertOutboxRow(t, ctx, pool, outboxSeed{
+		ID:             "00000000-0000-0000-0000-0000000000a3",
+		EventType:      "event.processing",
+		AggregateType:  "subscription",
+		AggregateID:    "sub-a3",
+		PayloadJSON:    `{}`,
+		OccurredAt:     time.Now().UTC().Add(-1 * time.Minute),
+		AvailableAt:    time.Now().UTC().Add(-1 * time.Minute),
+		Status:         StatusProcessing,
+		AttemptCount:   1,
+		IdempotencyKey: "m-processing",
+	})
+	insertOutboxRow(t, ctx, pool, outboxSeed{
+		ID:             "00000000-0000-0000-0000-0000000000a4",
+		EventType:      "event.delivered",
+		AggregateType:  "subscription",
+		AggregateID:    "sub-a4",
+		PayloadJSON:    `{}`,
+		OccurredAt:     time.Now().UTC().Add(-1 * time.Minute),
+		AvailableAt:    time.Now().UTC().Add(-1 * time.Minute),
+		Status:         StatusDelivered,
+		AttemptCount:   2,
+		IdempotencyKey: "m-delivered",
+	})
+
+	snapshot, err := repo.Metrics(ctx)
+	if err != nil {
+		t.Fatalf("Metrics returned error: %v", err)
+	}
+	if snapshot.PendingCount != 1 {
+		t.Errorf("PendingCount = %d, want 1", snapshot.PendingCount)
+	}
+	if snapshot.FailedCount != 1 {
+		t.Errorf("FailedCount = %d, want 1", snapshot.FailedCount)
+	}
+	// retry = attempt_count > 0 AND status <> 'delivered' → failed + processing.
+	if snapshot.RetryCount != 2 {
+		t.Errorf("RetryCount = %d, want 2", snapshot.RetryCount)
+	}
+	// oldest pending age comes from the -5m row; allow slack for test runtime.
+	if snapshot.OldestPendingAge < 250 {
+		t.Errorf("OldestPendingAge = %f, want >= 250s", snapshot.OldestPendingAge)
+	}
+}
+
 func TestIntegration_RepositoryClaimPendingConcurrentClaimersDoNotOverlap(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

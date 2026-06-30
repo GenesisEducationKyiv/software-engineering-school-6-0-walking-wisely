@@ -44,6 +44,8 @@ type NotificationsConfig struct {
 	Resend      ResendConfig
 	Job         JobConfig
 	Outbox      OutboxConfig // for the notifications_outbox saga-reply pipeline
+	GRPCPort    string       // port for the internal notification gRPC server
+	EmailSink   string       // "noop" disables real email delivery (bench / dev)
 }
 
 // LoadNotificationsConfig reads configuration from environment variables.
@@ -79,6 +81,8 @@ func LoadNotificationsConfig() (*NotificationsConfig, error) {
 			CleanupInterval: parseDurationOrDefault("NOTIFICATIONS_OUTBOX_INTERVAL", 200*time.Millisecond),
 			Retention:       parseDurationOrDefault("NOTIFICATIONS_OUTBOX_RETENTION", 7*24*time.Hour),
 		},
+		GRPCPort:  envOrDefault("GRPC_PORT", "9091"),
+		EmailSink: os.Getenv("EMAIL_SINK"),
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -90,9 +94,14 @@ func (c *NotificationsConfig) validate() error {
 	required := []struct{ key, val string }{
 		{"DATABASE_URL", c.DatabaseURL},
 		{"NATS_URL", c.NATS.URL},
-		{"RESEND_API_KEY", c.Resend.APIKey},
-		{"FROM_EMAIL", c.Resend.From},
 		{"BASE_URL", c.Resend.BaseURL},
+	}
+	if c.EmailSink != "noop" {
+		required = append(
+			required,
+			struct{ key, val string }{"RESEND_API_KEY", c.Resend.APIKey},
+			struct{ key, val string }{"FROM_EMAIL", c.Resend.From},
+		)
 	}
 	for _, r := range required {
 		if r.val == "" {

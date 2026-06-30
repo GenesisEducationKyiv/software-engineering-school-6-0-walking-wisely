@@ -1,9 +1,18 @@
+//go:build bench
+
+// cmd/notifications-bench is a bench-only binary: identical to cmd/notifications
+// but registers a SlowServer decorator that injects synthetic service-time into
+// SendConfirmation. Compiled only with -tags bench — never shipped to production.
+//
+// Usage:
+//
+//	go build -tags bench ./cmd/notifications-bench
+//	BENCH_SERVICE_TIME=5ms ./notifications-bench
 package main
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -12,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
@@ -30,19 +40,49 @@ import (
 	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
-	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
-
-	// Register event types so the JetStream consumer can decode them.
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
 func main() {
 	log := platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{})
 	if err := run(log); err != nil {
-		log.Error("notifications service startup failed", "err", err)
+		log.Error("notifications-bench startup failed", "err", err)
 		os.Exit(1)
 	}
+}
+
+// benchSubscriptionID is a fixed, well-known subscription row seeded at startup.
+// notification_jobs.subscription_id has a FK to subscriptions(id), so the ghz
+// load scripts send this constant as subscription_id to satisfy the constraint
+// while event_id/confirm_token still vary per request for real inserts.
+const benchSubscriptionID = "11111111-1111-1111-1111-111111111111"
+
+// seedBenchSubscription inserts the fixed bench subscription if absent so the
+// SendConfirmation handler's job insert does not violate the FK. Idempotent.
+func seedBenchSubscription(ctx context.Context, db *pgxpool.Pool) error {
+	_, err := db.Exec(
+		ctx,
+		`INSERT INTO subscriptions (id, email, repo, confirmed, confirm_token, unsubscribe_token)
+		 VALUES ($1::uuid, 'bench@example.com', 'owner/repo', true, 'bench-confirm-token', 'bench-unsub-token')
+		 ON CONFLICT (id) DO NOTHING`,
+		benchSubscriptionID,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func serviceDelay(log platformlogger.Logger) time.Duration {
+	raw := os.Getenv("BENCH_SERVICE_TIME")
+	if raw == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		log.Error("BENCH_SERVICE_TIME: invalid duration", "value", raw, "err", err)
+		os.Exit(1)
+	}
+	return d
 }
 
 func run(log platformlogger.Logger) error {
@@ -60,9 +100,16 @@ func run(log platformlogger.Logger) error {
 
 	log = platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{
 		Level:       cfg.LogLevel,
-		ServiceName: cfg.ServiceName,
+		ServiceName: cfg.ServiceName + "-bench",
 		Environment: cfg.Environment,
 	})
+
+	delay := serviceDelay(log)
+	if delay > 0 {
+		log.Info("bench mode: synthetic service-time active", "delay", delay)
+	} else {
+		log.Info("bench mode: synthetic service-time disabled (BENCH_SERVICE_TIME not set)")
+	}
 
 	db, err := platformpostgres.NewDB(cfg.DatabaseURL, log)
 	if err != nil {
@@ -70,50 +117,48 @@ func run(log platformlogger.Logger) error {
 	}
 	defer db.Close()
 
-	if err := platformmigrations.Run(cfg.DatabaseURL, log); err != nil {
-		return fmt.Errorf("run database migrations: %w", err)
+	if err := seedBenchSubscription(context.Background(), db); err != nil {
+		return err
 	}
+	log.Info("bench mode: seeded subscription", "subscription_id", benchSubscriptionID)
 
-	natsClient, err := platformnats.NewClient(cfg.NATS.URL, cfg.ServiceName, log)
+	natsClient, err := platformnats.NewClient(cfg.NATSURL, cfg.ServiceName, log)
 	if err != nil {
 		return err
 	}
 	defer natsClient.Close()
 
-	// Outbox for saga reply events (notifications_outbox => NATS).
 	notificationsOutboxRepo := outbox.NewRepository(db, "notifications_outbox")
 	notificationsOutboxPublisher, err := platformnats.NewPublisher(natsClient, platformnats.PublisherOptions{
-		StreamName:    cfg.NATS.StreamName,
-		SubjectPrefix: cfg.NATS.SubjectPrefix,
+		StreamName:    cfg.NATSStreamName,
+		SubjectPrefix: cfg.NATSSubjectPrefix,
 	})
 	if err != nil {
 		return err
 	}
 
-	notificationJobRepo := notificationpostgres.NewRepository(db, notificationsOutboxRepo, cfg.Job.InsertBatchSize)
+	notificationJobRepo := notificationpostgres.NewRepository(db, notificationsOutboxRepo, cfg.JobInsertBatchSize)
 
 	var emailSender mail.Sender
 	if cfg.EmailSink == "noop" {
-		log.Info("email sink is noop — emails will be discarded")
 		emailSender = mail.NoopSender{}
 	} else {
-		emailSender = resend.NewClient(cfg.Resend.APIKey, cfg.Resend.From, log)
+		emailSender = resend.NewClient(cfg.ResendAPIKey, cfg.FromEmail, log)
 	}
 
 	bus := events.NewBus()
-	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.Resend.BaseURL, log)
+	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.BaseURL, log)
 	notificationHandlers.Register(bus)
 
-	consumer, err := platformnats.NewConsumer(
-		natsClient, log,
-		platformnats.WithStreamName(cfg.NATS.StreamName),
-		platformnats.WithSubjectPrefix(cfg.NATS.SubjectPrefix),
-		platformnats.WithConsumerName(cfg.NATS.ConsumerName),
-		platformnats.WithBatchSize(cfg.NATS.BatchSize),
-		platformnats.WithAckWait(cfg.NATS.AckWait),
-		platformnats.WithMaxDeliveries(cfg.NATS.MaxDeliveries),
-		platformnats.WithDLQSubject(cfg.NATS.DLQSubject),
-	)
+	consumer, err := platformnats.NewConsumer(natsClient, &platformnats.ConsumerOptions{
+		StreamName:    cfg.NATSStreamName,
+		SubjectPrefix: cfg.NATSSubjectPrefix,
+		ConsumerName:  cfg.NATSConsumerName,
+		BatchSize:     cfg.NATSBatchSize,
+		AckWait:       cfg.NATSAckWait,
+		MaxDeliveries: cfg.NATSMaxDeliveries,
+		DLQSubject:    cfg.NATSDLQSubject,
+	}, log)
 	if err != nil {
 		return err
 	}
@@ -135,33 +180,38 @@ func run(log platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		notificationworker.StartSender(ctx, emailSender, notificationJobRepo, cfg.Resend.MaxWait, log)
+		notificationworker.StartSender(ctx, emailSender, notificationJobRepo, cfg.ResendMaxWait, log)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		notificationworker.StartCleanup(ctx, notificationJobRepo, cfg.Job.CleanupInterval, cfg.Job.Retention, log)
+		notificationworker.StartCleanup(ctx, notificationJobRepo, cfg.JobCleanupInterval, cfg.JobRetention, log)
 	}()
 
-	// Dispatcher for the notifications outbox — publishes saga reply events to NATS.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartDispatcher(ctx, notificationsOutboxRepo, notificationsOutboxPublisher, cfg.Outbox.CleanupInterval, 32, 5, log)
+		outbox.StartDispatcher(ctx, notificationsOutboxRepo, notificationsOutboxPublisher, cfg.NotificationsOutboxInterval, 32, 5, log)
 	}()
 
-	// Cleanup for the notifications outbox.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartCleanup(ctx, notificationsOutboxRepo, cfg.Outbox.CleanupInterval, cfg.Outbox.Retention, log)
+		outbox.StartCleanup(ctx, notificationsOutboxRepo, cfg.NotificationsOutboxInterval, cfg.NotificationsOutboxRetention, log)
 	}()
 
-	// Internal gRPC server — accepts SendConfirmation calls from the subscriptions
-	// service when SAGA_TRANSPORT=grpc is set on that side.
+	// Register the slow-handler decorator (bench tag only — excluded from prod build).
+	inner := notificationgrpc.NewServer(notificationHandlers)
+	var handler notificationv1.NotificationServiceServer
+	if delay > 0 {
+		handler = notificationgrpc.NewSlowServer(inner, delay)
+	} else {
+		handler = inner
+	}
+
 	grpcSrv := grpc.NewServer()
-	notificationv1.RegisterNotificationServiceServer(grpcSrv, notificationgrpc.NewServer(notificationHandlers))
+	notificationv1.RegisterNotificationServiceServer(grpcSrv, handler)
 	reflection.Register(grpcSrv)
 
 	grpcLis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
@@ -172,14 +222,13 @@ func run(log platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Info("notifications gRPC server listening", "port", cfg.GRPCPort)
+		log.Info("notifications-bench gRPC server listening", "port", cfg.GRPCPort)
 		if err := grpcSrv.Serve(grpcLis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			log.Error("notifications gRPC server error", "err", err)
+			log.Error("notifications-bench gRPC server error", "err", err)
 			cancel()
 		}
 	}()
 
-	// Minimal health endpoint for container orchestration readiness probes.
 	healthSrv := &http.Server{
 		Addr:         ":" + cfg.HTTPPort,
 		ReadTimeout:  5 * time.Second,
@@ -193,7 +242,7 @@ func run(log platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Info("notifications health server listening", "port", cfg.HTTPPort)
+		log.Info("notifications-bench health server listening", "port", cfg.HTTPPort)
 		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("health server error", "err", err)
 			cancel()
