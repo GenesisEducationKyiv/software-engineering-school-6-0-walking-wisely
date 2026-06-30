@@ -1,0 +1,59 @@
+@startuml
+title GitHub Release Notifications System - Current Architecture
+
+!global RELATIVE_INCLUDE = .
+!include ./plantuml/C4_Component.puml
+
+LAYOUT_LEFT_RIGHT()
+
+Person(user, "User / Browser", "Subscribes to GitHub repository release notifications.")
+
+System_Ext(github, "GitHub API", "Repository validation and latest release lookup.")
+System_Ext(email_provider, "Email Provider", "Delivers confirmation and release emails.")
+
+System_Boundary(system, "GitHub Release Notifications System") {
+  Container_Boundary(api_service, "API Service (cmd/server)") {
+    Component(subscriptions, "subscriptions", "Bounded context", "Owns subscription lifecycle: subscribe, confirm, unsubscribe, list.")
+    Component(release_monitoring, "release_monitoring", "Bounded context", "Owns release polling and new-release detection.")
+    Component(api_outbox, "Transactional outbox + dispatcher", "Infrastructure component", "Publishes subscription and release events after database commit.")
+  }
+
+  Container_Boundary(notifications_service, "Notifications Service (cmd/notifications)") {
+    Component(notifications_consumer, "NATS consumer + handlers", "Infrastructure component", "Consumes subscription and release events.")
+    Component(notifications_domain, "notifications", "Bounded context", "Creates durable notification jobs for confirmation and release emails.")
+    Component(notification_sender, "Notification jobs + sender worker", "Infrastructure component", "Claims jobs, sends emails, and records outcomes.")
+    Component(notifications_outbox, "Notifications outbox", "Infrastructure component", "Publishes saga reply events.")
+    Component(notifications_grpc, "Internal gRPC server", "Infrastructure component", "Optional confirmation-email saga transport.")
+  }
+
+  ContainerDb(postgres, "Postgres", "PostgreSQL", "Stores subscriptions, outbox events, notification jobs, and saga state.")
+  ContainerDb(redis, "Redis", "Redis", "Caches latest GitHub release responses.")
+  ContainerQueue(nats, "NATS JetStream", "NATS JetStream", "Asynchronous broker between the API and notifications services.")
+}
+
+Rel(user, subscriptions, "Uses via HTTP / gRPC-Gateway")
+
+Rel(subscriptions, postgres, "Persists and queries subscription state")
+Rel(release_monitoring, github, "Validates repositories and checks latest releases")
+Rel(release_monitoring, redis, "Reads and writes release cache")
+Rel(release_monitoring, postgres, "Reads confirmed subscribers and updates release state")
+Rel(subscriptions, api_outbox, "Appends subscription events / commands")
+Rel(release_monitoring, api_outbox, "Appends release-detected events")
+Rel(api_outbox, postgres, "Stores durable outbox entries")
+Rel(api_outbox, nats, "Publishes subscription and release events")
+
+Rel(nats, notifications_consumer, "Delivers subscription_requested and release_detected")
+Rel(notifications_consumer, notifications_domain, "Invokes event reactions")
+Rel(notifications_domain, notification_sender, "Creates durable email jobs")
+Rel(notification_sender, postgres, "Claims jobs, marks sent, records failures")
+Rel(notification_sender, email_provider, "Sends confirmation and release emails")
+Rel(notifications_domain, notifications_outbox, "Appends confirmation_email_* replies")
+Rel(notifications_outbox, postgres, "Stores durable reply events")
+Rel(notifications_outbox, nats, "Publishes saga reply events")
+
+Rel(subscriptions, notifications_grpc, "Calls when gRPC saga transport is enabled")
+Rel(notifications_grpc, notifications_domain, "Triggers confirmation-email handling")
+
+SHOW_LEGEND()
+
+@enduml
