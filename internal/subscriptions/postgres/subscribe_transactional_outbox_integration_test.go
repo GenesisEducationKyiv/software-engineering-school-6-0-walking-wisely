@@ -23,10 +23,15 @@ func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
 		truncateAsyncDeliveryState(t, ctx, repos.pool)
 
 		service := subscriptionapp.NewSubscribeService(&subscriptionapp.SubscribeDeps{
-			Repo:           repos.token,
-			TxManager:      repos.token,
-			Github:         testGithubValidator{},
-			Publisher:      outbox.NewPublisher(outbox.NewRepository(repos.pool)),
+			Repo:      repos.token,
+			TxManager: repos.token,
+			Github:    testGithubValidator{},
+			Orchestrator: subscriptionapp.NewSagaOrchestrator(&subscriptionapp.SagaOrchestratorDeps{
+				SagaRepo:  NewSagaRepository(repos.pool),
+				SubRepo:   repos.token,
+				TxManager: repos.token,
+				Publisher: outbox.NewPublisher(outbox.NewRepository(repos.pool)),
+			}),
 			EmailSecretKey: "test-secret",
 		})
 
@@ -42,17 +47,17 @@ func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
 		}
 
 		assertSubscriptionCount(t, ctx, repos.pool, "user@example.com", "owner/repo", 1)
-		assertOutboxCount(t, ctx, repos.pool, "subscriptions.subscription_requested", 1)
+		assertOutboxCount(t, ctx, repos.pool, "subscriptions.send_confirmation_email", 1)
 
-		event := loadSubscriptionRequestedEvent(t, ctx, repos.pool)
-		if event.SubscriptionID != result.SubscriptionID {
-			t.Fatalf("event subscription_id = %q, want %q", event.SubscriptionID, result.SubscriptionID)
+		cmd := loadSendConfirmationEmailCommand(t, ctx, repos.pool)
+		if cmd.SubscriptionID != result.SubscriptionID {
+			t.Fatalf("cmd subscription_id = %q, want %q", cmd.SubscriptionID, result.SubscriptionID)
 		}
-		if event.Email != "user@example.com" || event.Repo != "owner/repo" {
-			t.Fatalf("event = %#v, want normalized email/repo payload", event)
+		if cmd.Email != "user@example.com" || cmd.Repo != "owner/repo" {
+			t.Fatalf("cmd = %#v, want normalized email/repo payload", cmd)
 		}
-		if event.ConfirmToken == "" || event.UnsubToken == "" {
-			t.Fatalf("event tokens should be populated: %#v", event)
+		if cmd.ConfirmToken == "" || cmd.UnsubToken == "" {
+			t.Fatalf("cmd tokens should be populated: %#v", cmd)
 		}
 	})
 
@@ -60,10 +65,15 @@ func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
 		truncateAsyncDeliveryState(t, ctx, repos.pool)
 
 		service := subscriptionapp.NewSubscribeService(&subscriptionapp.SubscribeDeps{
-			Repo:           repos.token,
-			TxManager:      repos.token,
-			Github:         testGithubValidator{},
-			Publisher:      failAfterPublish(t, outbox.NewPublisher(outbox.NewRepository(repos.pool)), errors.New("boom")),
+			Repo:      repos.token,
+			TxManager: repos.token,
+			Github:    testGithubValidator{},
+			Orchestrator: subscriptionapp.NewSagaOrchestrator(&subscriptionapp.SagaOrchestratorDeps{
+				SagaRepo:  NewSagaRepository(repos.pool),
+				SubRepo:   repos.token,
+				TxManager: repos.token,
+				Publisher: failAfterPublish(t, outbox.NewPublisher(outbox.NewRepository(repos.pool)), errors.New("boom")),
+			}),
 			EmailSecretKey: "test-secret",
 		})
 
@@ -71,22 +81,27 @@ func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
 			Email: "user@example.com",
 			Repo:  "owner/repo",
 		})
-		if err == nil || !strings.Contains(err.Error(), "publish subscription requested") {
-			t.Fatalf("Subscribe error = %v, want publish failure", err)
+		if err == nil || !strings.Contains(err.Error(), "enqueue saga") {
+			t.Fatalf("Subscribe error = %v, want enqueue failure", err)
 		}
 
 		assertSubscriptionCount(t, ctx, repos.pool, "user@example.com", "owner/repo", 0)
-		assertOutboxCount(t, ctx, repos.pool, "subscriptions.subscription_requested", 0)
+		assertOutboxCount(t, ctx, repos.pool, "subscriptions.send_confirmation_email", 0)
 	})
 
 	t.Run("retrying same unconfirmed subscription keeps one logical row and records refreshed confirmation event", func(t *testing.T) {
 		truncateAsyncDeliveryState(t, ctx, repos.pool)
 
 		service := subscriptionapp.NewSubscribeService(&subscriptionapp.SubscribeDeps{
-			Repo:           repos.token,
-			TxManager:      repos.token,
-			Github:         testGithubValidator{},
-			Publisher:      outbox.NewPublisher(outbox.NewRepository(repos.pool)),
+			Repo:      repos.token,
+			TxManager: repos.token,
+			Github:    testGithubValidator{},
+			Orchestrator: subscriptionapp.NewSagaOrchestrator(&subscriptionapp.SagaOrchestratorDeps{
+				SagaRepo:  NewSagaRepository(repos.pool),
+				SubRepo:   repos.token,
+				TxManager: repos.token,
+				Publisher: outbox.NewPublisher(outbox.NewRepository(repos.pool)),
+			}),
 			EmailSecretKey: "test-secret",
 		})
 
@@ -113,7 +128,7 @@ func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
 		}
 
 		assertSubscriptionCount(t, ctx, repos.pool, "user@example.com", "owner/repo", 1)
-		assertOutboxCount(t, ctx, repos.pool, "subscriptions.subscription_requested", 2)
+		assertOutboxCount(t, ctx, repos.pool, "subscriptions.send_confirmation_email", 2)
 	})
 }
 
