@@ -23,6 +23,8 @@ import (
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
+	contractcommands "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
+	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
@@ -33,18 +35,19 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
 	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
+	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 
-	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
-
 	// Register event types so the outbox decoder and JetStream consumer can decode them.
 	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
 func init() {
 	contractevents.RegisterTypes(func(event contractevents.Event) {
+		events.RegisterType(event)
+	})
+	contractcommands.RegisterTypes(func(event contractevents.Event) {
 		events.RegisterType(event)
 	})
 }
@@ -183,17 +186,26 @@ func buildCrossServiceStack(
 		t.Fatalf("init jetstream publisher: %v", err)
 	}
 
-	// API — subscription service uses the transactional outbox as its publisher.
+	// API — subscription service uses the saga orchestrator.
 	tokenRepo := postgres.NewTokenRepo(db, platformlogger.NoopLogger{})
+	sagaRepo := postgres.NewSagaRepository(db)
 	readRepo := postgres.NewReadRepo(db, platformlogger.NoopLogger{})
 	releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(db, platformlogger.NoopLogger{})
+
+	sagaOrch := subscriptionapp.NewSagaOrchestrator(&subscriptionapp.SagaOrchestratorDeps{
+		SagaRepo:  sagaRepo,
+		SubRepo:   tokenRepo,
+		TxManager: tokenRepo,
+		Publisher: outboxPub,
+		Log:       platformlogger.NoopLogger{},
+	})
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      tokenRepo,
 		TxManager:      tokenRepo,
 		ReadRepo:       readRepo,
 		Github:         gh,
-		Publisher:      outboxPub,
+		Orchestrator:   sagaOrch,
 		EmailSecretKey: "e2e-test-secret",
 		Log:            platformlogger.NoopLogger{},
 	})
@@ -233,8 +245,9 @@ func buildCrossServiceStack(
 	t.Cleanup(srv.Close)
 
 	// Notifications service reads from JetStream, records jobs, and sends emails.
+	// Pass nil for the notifications outbox — saga replies are not exercised here.
 	fakeSender := &crossServiceFakeSender{}
-	notifJobRepo := notificationpostgres.NewRepository(db)
+	notifJobRepo := notificationpostgres.NewRepository(db, nil)
 	bus := events.NewBus()
 	notificationapp.NewEventHandlers(notifJobRepo, baseURL, platformlogger.NoopLogger{}).Register(bus)
 

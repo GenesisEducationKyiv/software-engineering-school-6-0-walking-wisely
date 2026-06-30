@@ -14,6 +14,12 @@ type OutboxConfig struct {
 	Retention       time.Duration
 }
 
+// SagaConfig holds saga orchestrator configuration.
+type SagaConfig struct {
+	SweepInterval time.Duration
+	StuckAfter    time.Duration
+}
+
 // AppConfig holds all environment-driven configuration for the API service.
 type AppConfig struct {
 	RestPort        string
@@ -28,6 +34,7 @@ type AppConfig struct {
 	ScannerInterval time.Duration
 	NATS            NATSConfig
 	Outbox          OutboxConfig
+	Saga            SagaConfig
 }
 
 // LoadAppConfig reads all configuration from environment variables and returns a validated AppConfig.
@@ -47,10 +54,19 @@ func LoadAppConfig() (*AppConfig, error) {
 			URL:           os.Getenv("NATS_URL"),
 			StreamName:    envOrDefault("NATS_STREAM_NAME", "EVENTS"),
 			SubjectPrefix: envOrDefault("NATS_SUBJECT_PREFIX", "events"),
+			ConsumerName:  envOrDefault("NATS_CONSUMER_NAME", "subscriptions"),
+			BatchSize:     parseIntOrDefault("NATS_BATCH_SIZE", 32),
+			AckWait:       parseDurationOrDefault("NATS_ACK_WAIT", 5*time.Second),
+			MaxDeliveries: int(parseNonNegativeInt64OrDefault("NATS_MAX_DELIVERIES", 5)),
+			DLQSubject:    envOrDefault("NATS_DLQ_SUBJECT", "events_dlq.subscriptions"),
 		},
 		Outbox: OutboxConfig{
 			CleanupInterval: parseDurationOrDefault("OUTBOX_CLEANUP_INTERVAL", 30*time.Minute),
 			Retention:       parseDurationOrDefault("OUTBOX_RETENTION", 7*24*time.Hour),
+		},
+		Saga: SagaConfig{
+			SweepInterval: parseDurationOrDefault("SAGA_SWEEP_INTERVAL", 5*time.Minute),
+			StuckAfter:    parseDurationOrDefault("SAGA_STUCK_AFTER", 10*time.Minute),
 		},
 	}
 	if err := cfg.validate(); err != nil {

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// NATSConfig holds NATS-specific configuration for the notifications service.
+// NATSConfig holds NATS configuration shared by all services.
 type NATSConfig struct {
 	URL           string
 	StreamName    string
@@ -43,6 +43,7 @@ type NotificationsConfig struct {
 	NATS        NATSConfig
 	Resend      ResendConfig
 	Job         JobConfig
+	Outbox      OutboxConfig // for the notifications_outbox saga-reply pipeline
 }
 
 // LoadNotificationsConfig reads configuration from environment variables.
@@ -73,6 +74,10 @@ func LoadNotificationsConfig() (*NotificationsConfig, error) {
 			InsertBatchSize: parseIntOrDefault("NOTIFICATION_JOB_INSERT_BATCH_SIZE", 500),
 			CleanupInterval: parseDurationOrDefault("NOTIFICATION_JOB_CLEANUP_INTERVAL", 30*time.Minute),
 			Retention:       parseDurationOrDefault("NOTIFICATION_JOB_RETENTION", 7*24*time.Hour),
+		},
+		Outbox: OutboxConfig{
+			CleanupInterval: parseDurationOrDefault("NOTIFICATIONS_OUTBOX_INTERVAL", 200*time.Millisecond),
+			Retention:       parseDurationOrDefault("NOTIFICATIONS_OUTBOX_RETENTION", 7*24*time.Hour),
 		},
 	}
 	if err := cfg.validate(); err != nil {

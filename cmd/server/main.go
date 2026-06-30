@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	contractcommands "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github"
 	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github/redis"
@@ -36,12 +37,12 @@ import (
 	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
 	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
 	releasemonitoringworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/worker"
+	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 
 	// Register event types so outbox can decode them for JetStream publishing.
 	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
@@ -60,6 +61,9 @@ func main() {
 
 func run(appLogger platformlogger.Logger) error {
 	contractevents.RegisterTypes(func(event contractevents.Event) {
+		platformevents.RegisterType(event)
+	})
+	contractcommands.RegisterTypes(func(event contractevents.Event) {
 		platformevents.RegisterType(event)
 	})
 
@@ -120,6 +124,7 @@ func run(appLogger platformlogger.Logger) error {
 
 	subTokenRepo := postgres.NewTokenRepo(db, appLogger)
 	subReadRepo := postgres.NewReadRepo(db, appLogger)
+	subSagaRepo := postgres.NewSagaRepository(db)
 	releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(db, appLogger)
 	outboxRepo := outbox.NewRepository(db)
 	outboxPublisher := outbox.NewPublisher(outboxRepo)
@@ -198,12 +203,64 @@ func run(appLogger platformlogger.Logger) error {
 		outbox.StartCleanup(ctx, outboxRepo, cfg.Outbox.CleanupInterval, cfg.Outbox.Retention, appLogger)
 	}()
 
+	// Saga orchestrator — drives the subscribe confirmation saga.
+	sagaOrchestrator := subscriptionapp.NewSagaOrchestrator(&subscriptionapp.SagaOrchestratorDeps{
+		SagaRepo:  subSagaRepo,
+		SubRepo:   subTokenRepo,
+		TxManager: subTokenRepo,
+		Publisher: outboxPublisher,
+		Log:       appLogger,
+	})
+
+	// Reply consumer — receives ConfirmationEmailSent / ConfirmationEmailFailed from NATS.
+	replyBus := platformevents.NewBus()
+	sagaOrchestrator.RegisterReplyHandlers(replyBus)
+
+	replyConsumer, err := platformnats.NewConsumer(
+		natsClient, appLogger,
+		platformnats.WithStreamName(cfg.NATS.StreamName),
+		platformnats.WithSubjectPrefix(cfg.NATS.SubjectPrefix),
+		platformnats.WithConsumerName(cfg.NATS.ConsumerName),
+		platformnats.WithBatchSize(cfg.NATS.BatchSize),
+		platformnats.WithAckWait(cfg.NATS.AckWait),
+		platformnats.WithMaxDeliveries(cfg.NATS.MaxDeliveries),
+		platformnats.WithDLQSubject(cfg.NATS.DLQSubject),
+	)
+	if err != nil {
+		return fmt.Errorf("init saga reply consumer: %w", err)
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := replyConsumer.Run(ctx, replyBus); err != nil {
+			appLogger.Error("saga reply consumer error", "err", err)
+			cancel()
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(cfg.Saga.SweepInterval)
+		defer ticker.Stop()
+		sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter)
+			}
+		}
+	}()
+
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      subTokenRepo,
 		TxManager:      subTokenRepo,
 		ReadRepo:       subReadRepo,
 		Github:         githubClient,
-		Publisher:      outboxPublisher,
+		Orchestrator:   sagaOrchestrator,
 		EmailSecretKey: cfg.EmailSecretKey,
 		Log:            appLogger,
 	})

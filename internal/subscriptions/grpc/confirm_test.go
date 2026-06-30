@@ -17,7 +17,7 @@ import (
 
 func TestConfirm_HappyPath(t *testing.T) {
 	repo := &fakeSubscriptionRepo{confirmByTokenID: "sub-123"}
-	svc := newService(&fakeGithubClient{}, repo, repo, nil)
+	svc := newService(&fakeGithubClient{}, repo, repo)
 
 	resp, err := svc.ConfirmSubscription(context.Background(), &pb.ConfirmSubscriptionRequest{Token: validToken})
 	if err != nil {
@@ -32,7 +32,7 @@ func TestConfirm_InvalidToken(t *testing.T) {
 	// One representative bad token to exercise gRPC status mapping.
 	// Exhaustive token-format cases live in the app package validation tests.
 	repo := &fakeSubscriptionRepo{}
-	svc := newService(&fakeGithubClient{}, repo, repo, nil)
+	svc := newService(&fakeGithubClient{}, repo, repo)
 
 	_, err := svc.ConfirmSubscription(context.Background(), &pb.ConfirmSubscriptionRequest{Token: "not-a-valid-token"}) // #nosec G101 -- test-only invalid token.
 
@@ -55,7 +55,7 @@ func TestConfirm_RepoErrors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeSubscriptionRepo{confirmByTokenErr: tc.repoErr}
-			svc := newService(&fakeGithubClient{}, repo, repo, nil)
+			svc := newService(&fakeGithubClient{}, repo, repo)
 
 			_, err := svc.ConfirmSubscription(context.Background(), &pb.ConfirmSubscriptionRequest{Token: validToken})
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	subscriptioncmds "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 )
 
@@ -45,19 +45,19 @@ func assertOutboxCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ev
 	}
 }
 
-func loadSubscriptionRequestedEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool) subscriptionevents.SubscriptionRequested {
+func loadSendConfirmationEmailCommand(t *testing.T, ctx context.Context, pool *pgxpool.Pool) subscriptioncmds.SendConfirmationEmail {
 	t.Helper()
 
 	var payload []byte
-	if err := pool.QueryRow(ctx, `SELECT payload_json FROM outbox_events WHERE event_type=$1`, "subscriptions.subscription_requested").Scan(&payload); err != nil {
-		t.Fatalf("select subscription payload: %v", err)
+	if err := pool.QueryRow(ctx, `SELECT payload_json FROM outbox_events WHERE event_type=$1`, "subscriptions.send_confirmation_email").Scan(&payload); err != nil {
+		t.Fatalf("select send_confirmation_email payload: %v", err)
 	}
 
-	var event subscriptionevents.SubscriptionRequested
-	if err := json.Unmarshal(payload, &event); err != nil {
-		t.Fatalf("unmarshal subscription payload: %v", err)
+	var cmd subscriptioncmds.SendConfirmationEmail
+	if err := json.Unmarshal(payload, &cmd); err != nil {
+		t.Fatalf("unmarshal send_confirmation_email payload: %v", err)
 	}
-	return event
+	return cmd
 }
 
 type failAfterPublishPublisher struct {
