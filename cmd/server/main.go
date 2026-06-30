@@ -119,7 +119,7 @@ func run(appLogger platformlogger.Logger) error {
 		}
 	}()
 
-	natsClient, err := platformnats.NewClient(cfg.NATSURL, cfg.ServiceName, appLogger)
+	natsClient, err := platformnats.NewClient(cfg.NATS.URL, cfg.ServiceName, appLogger)
 	if err != nil {
 		return fmt.Errorf("init nats: %w", err)
 	}
@@ -140,8 +140,8 @@ func run(appLogger platformlogger.Logger) error {
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 
 	eventPublisher, err := platformnats.NewPublisher(natsClient, platformnats.PublisherOptions{
-		StreamName:    cfg.NATSStreamName,
-		SubjectPrefix: cfg.NATSSubjectPrefix,
+		StreamName:    cfg.NATS.StreamName,
+		SubjectPrefix: cfg.NATS.SubjectPrefix,
 	})
 	if err != nil {
 		return fmt.Errorf("init jetstream publisher: %w", err)
@@ -229,7 +229,7 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartCleanup(ctx, outboxRepo, cfg.OutboxCleanupInterval, cfg.OutboxRetention, appLogger)
+		outbox.StartCleanup(ctx, outboxRepo, cfg.Outbox.CleanupInterval, cfg.Outbox.Retention, appLogger)
 	}()
 
 	// Saga orchestrator — drives the subscribe confirmation saga.
@@ -245,15 +245,16 @@ func run(appLogger platformlogger.Logger) error {
 	replyBus := platformevents.NewBus()
 	sagaOrchestrator.RegisterReplyHandlers(replyBus)
 
-	replyConsumer, err := platformnats.NewConsumer(natsClient, &platformnats.ConsumerOptions{
-		StreamName:    cfg.NATSStreamName,
-		SubjectPrefix: cfg.NATSSubjectPrefix,
-		ConsumerName:  cfg.NATSConsumerName,
-		BatchSize:     cfg.NATSBatchSize,
-		AckWait:       cfg.NATSAckWait,
-		MaxDeliveries: cfg.NATSMaxDeliveries,
-		DLQSubject:    cfg.NATSDLQSubject,
-	}, appLogger)
+	replyConsumer, err := platformnats.NewConsumer(
+		natsClient, appLogger,
+		platformnats.WithStreamName(cfg.NATS.StreamName),
+		platformnats.WithSubjectPrefix(cfg.NATS.SubjectPrefix),
+		platformnats.WithConsumerName(cfg.NATS.ConsumerName),
+		platformnats.WithBatchSize(cfg.NATS.BatchSize),
+		platformnats.WithAckWait(cfg.NATS.AckWait),
+		platformnats.WithMaxDeliveries(cfg.NATS.MaxDeliveries),
+		platformnats.WithDLQSubject(cfg.NATS.DLQSubject),
+	)
 	if err != nil {
 		return fmt.Errorf("init saga reply consumer: %w", err)
 	}
@@ -270,15 +271,15 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ticker := time.NewTicker(cfg.SagaSweepInterval)
+		ticker := time.NewTicker(cfg.Saga.SweepInterval)
 		defer ticker.Stop()
-		sagaOrchestrator.Sweep(ctx, cfg.SagaStuckAfter)
+		sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				sagaOrchestrator.Sweep(ctx, cfg.SagaStuckAfter)
+				sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter)
 			}
 		}
 	}()
