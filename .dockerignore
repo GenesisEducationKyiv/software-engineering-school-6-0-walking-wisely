@@ -1,0 +1,32 @@
+# Git
+.git/
+.gitignore
+
+# Environment files — never bake secrets into the image
+.env
+.env.*
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Local dev tooling
+.air.toml
+docker-compose.dev.yml
+Makefile
+lefthook.yml
+nuke-config.yaml
+aws-nuke.exe
+
+# Build artefacts and test output
+tmp/
+*.exe
+*.out
+coverage.*
+*.coverprofile
+
+# Documentation
+*.md
+
+# GitHub Actions
+.github/

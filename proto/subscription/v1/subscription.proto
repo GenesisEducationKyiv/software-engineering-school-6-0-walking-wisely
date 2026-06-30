@@ -1,0 +1,70 @@
+syntax = "proto3";
+package subscription.v1;
+
+option go_package = "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1;subscriptionv1";
+
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+message SubscribeRequest {
+    string email = 1;
+    string repo = 2;
+}
+
+message SubscribeResponse {}
+
+message ConfirmSubscriptionRequest {
+    string token = 1;
+}
+
+message ConfirmSubscriptionResponse {}
+
+message UnsubscribeRequest {
+    string token = 1;
+}
+
+message UnsubscribeResponse {}
+
+message GetSubscriptionsRequest {
+    string email = 1;
+}
+
+message Subscription {
+    string email = 1;
+    string repo = 2;
+    bool confirmed = 3;
+    string last_seen_tag = 4;
+}
+
+message GetSubscriptionsResponse {
+    repeated Subscription subscriptions = 1;
+}
+
+service SubscribeService {
+    rpc Subscribe (SubscribeRequest) returns (SubscribeResponse) {
+        option (google.api.http) = {
+            post: "/api/subscribe"
+            body: "*"
+        };
+    }
+
+    rpc ConfirmSubscription (ConfirmSubscriptionRequest) returns (ConfirmSubscriptionResponse) {
+        option (google.api.http) = {
+            get: "/api/confirm/{token}"
+        };
+    }
+
+    rpc Unsubscribe (UnsubscribeRequest) returns (UnsubscribeResponse) {
+        option (google.api.http) = {
+            get: "/api/unsubscribe/{token}"
+        };
+    }
+
+    rpc GetSubscriptions (GetSubscriptionsRequest) returns (GetSubscriptionsResponse) {
+        option (google.api.http) = {
+            get: "/api/subscriptions",
+            response_body: "subscriptions"
+        };
+    }
+}
