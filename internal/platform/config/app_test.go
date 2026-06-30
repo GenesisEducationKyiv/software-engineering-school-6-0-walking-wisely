@@ -11,6 +11,7 @@ func setRequiredAppEnv(t *testing.T) {
 
 	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/app")
 	t.Setenv("REDIS_URL", "redis://localhost:6379")
+	t.Setenv("NATS_URL", "nats://localhost:4222")
 	t.Setenv("EMAIL_SECRET_KEY", "email-secret")
 }
 
@@ -26,8 +27,8 @@ func clearOptionalAppEnv(t *testing.T) {
 	t.Setenv("SCANNER_INTERVAL", "")
 	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "")
 	t.Setenv("OUTBOX_RETENTION", "")
-	t.Setenv("STREAM_KEY", "")
-	t.Setenv("STREAM_MAX_LEN", "")
+	t.Setenv("NATS_STREAM_NAME", "")
+	t.Setenv("NATS_SUBJECT_PREFIX", "")
 }
 
 func TestLoadAppConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
@@ -60,17 +61,17 @@ func TestLoadAppConfig_UsesDefaultsForOptionalEnv(t *testing.T) {
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
 	}
-	if cfg.OutboxCleanupInterval != 30*time.Minute {
-		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.OutboxCleanupInterval)
+	if cfg.Outbox.CleanupInterval != 30*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.Outbox.CleanupInterval)
 	}
-	if cfg.OutboxRetention != 7*24*time.Hour {
-		t.Fatalf("OutboxRetention = %s, want 168h", cfg.OutboxRetention)
+	if cfg.Outbox.Retention != 7*24*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 168h", cfg.Outbox.Retention)
 	}
-	if cfg.StreamKey != "events" {
-		t.Fatalf("StreamKey = %q, want events", cfg.StreamKey)
+	if cfg.NATS.StreamName != "EVENTS" {
+		t.Fatalf("NATSStreamName = %q, want EVENTS", cfg.NATS.StreamName)
 	}
-	if cfg.StreamMaxLen != 100_000 {
-		t.Fatalf("StreamMaxLen = %d, want 100000", cfg.StreamMaxLen)
+	if cfg.NATS.SubjectPrefix != "events" {
+		t.Fatalf("NATSSubjectPrefix = %q, want events", cfg.NATS.SubjectPrefix)
 	}
 }
 
@@ -86,8 +87,8 @@ func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
 	t.Setenv("SCANNER_INTERVAL", "10m")
 	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "15m")
 	t.Setenv("OUTBOX_RETENTION", "48h")
-	t.Setenv("STREAM_KEY", "my-events")
-	t.Setenv("STREAM_MAX_LEN", "250000")
+	t.Setenv("NATS_STREAM_NAME", "DOMAIN")
+	t.Setenv("NATS_SUBJECT_PREFIX", "domain_events")
 
 	cfg, err := LoadAppConfig()
 	if err != nil {
@@ -115,17 +116,17 @@ func TestLoadAppConfig_UsesEnvOverrides(t *testing.T) {
 	if cfg.ScannerInterval != 10*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 10m", cfg.ScannerInterval)
 	}
-	if cfg.OutboxCleanupInterval != 15*time.Minute {
-		t.Fatalf("OutboxCleanupInterval = %s, want 15m", cfg.OutboxCleanupInterval)
+	if cfg.Outbox.CleanupInterval != 15*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 15m", cfg.Outbox.CleanupInterval)
 	}
-	if cfg.OutboxRetention != 48*time.Hour {
-		t.Fatalf("OutboxRetention = %s, want 48h", cfg.OutboxRetention)
+	if cfg.Outbox.Retention != 48*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 48h", cfg.Outbox.Retention)
 	}
-	if cfg.StreamKey != "my-events" {
-		t.Fatalf("StreamKey = %q, want my-events", cfg.StreamKey)
+	if cfg.NATS.StreamName != "DOMAIN" {
+		t.Fatalf("NATSStreamName = %q, want DOMAIN", cfg.NATS.StreamName)
 	}
-	if cfg.StreamMaxLen != 250_000 {
-		t.Fatalf("StreamMaxLen = %d, want 250000", cfg.StreamMaxLen)
+	if cfg.NATS.SubjectPrefix != "domain_events" {
+		t.Fatalf("NATSSubjectPrefix = %q, want domain_events", cfg.NATS.SubjectPrefix)
 	}
 }
 
@@ -133,6 +134,7 @@ func TestLoadAppConfig_MissingRequiredEnvReturnsError(t *testing.T) {
 	required := []string{
 		"DATABASE_URL",
 		"REDIS_URL",
+		"NATS_URL",
 		"EMAIL_SECRET_KEY",
 	}
 
@@ -157,7 +159,6 @@ func TestLoadAppConfig_InvalidOptionalValuesFallBackToDefaults(t *testing.T) {
 	t.Setenv("SCANNER_INTERVAL", "soon")
 	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "often")
 	t.Setenv("OUTBOX_RETENTION", "long")
-	t.Setenv("STREAM_MAX_LEN", "many")
 
 	cfg, err := LoadAppConfig()
 	if err != nil {
@@ -167,14 +168,11 @@ func TestLoadAppConfig_InvalidOptionalValuesFallBackToDefaults(t *testing.T) {
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
 	}
-	if cfg.OutboxCleanupInterval != 30*time.Minute {
-		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.OutboxCleanupInterval)
+	if cfg.Outbox.CleanupInterval != 30*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.Outbox.CleanupInterval)
 	}
-	if cfg.OutboxRetention != 7*24*time.Hour {
-		t.Fatalf("OutboxRetention = %s, want 168h", cfg.OutboxRetention)
-	}
-	if cfg.StreamMaxLen != 100_000 {
-		t.Fatalf("StreamMaxLen = %d, want 100000", cfg.StreamMaxLen)
+	if cfg.Outbox.Retention != 7*24*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 168h", cfg.Outbox.Retention)
 	}
 }
 
@@ -184,7 +182,6 @@ func TestLoadAppConfig_NonPositiveOptionalValuesFallBackToDefaults(t *testing.T)
 	t.Setenv("SCANNER_INTERVAL", "-1s")
 	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "0s")
 	t.Setenv("OUTBOX_RETENTION", "-1h")
-	t.Setenv("STREAM_MAX_LEN", "-1")
 
 	cfg, err := LoadAppConfig()
 	if err != nil {
@@ -194,29 +191,10 @@ func TestLoadAppConfig_NonPositiveOptionalValuesFallBackToDefaults(t *testing.T)
 	if cfg.ScannerInterval != 5*time.Minute {
 		t.Fatalf("ScannerInterval = %s, want 5m", cfg.ScannerInterval)
 	}
-	if cfg.OutboxCleanupInterval != 30*time.Minute {
-		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.OutboxCleanupInterval)
+	if cfg.Outbox.CleanupInterval != 30*time.Minute {
+		t.Fatalf("OutboxCleanupInterval = %s, want 30m", cfg.Outbox.CleanupInterval)
 	}
-	if cfg.OutboxRetention != 7*24*time.Hour {
-		t.Fatalf("OutboxRetention = %s, want 168h", cfg.OutboxRetention)
-	}
-	if cfg.StreamMaxLen != 100_000 {
-		t.Fatalf("StreamMaxLen = %d, want 100000", cfg.StreamMaxLen)
-	}
-}
-
-func TestLoadAppConfig_ZeroStreamMaxLenDisablesTrimming(t *testing.T) {
-	setRequiredAppEnv(t)
-	clearOptionalAppEnv(t)
-
-	t.Setenv("STREAM_MAX_LEN", "0")
-
-	cfg, err := LoadAppConfig()
-	if err != nil {
-		t.Fatalf("LoadAppConfig returned error: %v", err)
-	}
-
-	if cfg.StreamMaxLen != 0 {
-		t.Fatalf("StreamMaxLen = %d, want 0", cfg.StreamMaxLen)
+	if cfg.Outbox.Retention != 7*24*time.Hour {
+		t.Fatalf("OutboxRetention = %s, want 168h", cfg.Outbox.Retention)
 	}
 }

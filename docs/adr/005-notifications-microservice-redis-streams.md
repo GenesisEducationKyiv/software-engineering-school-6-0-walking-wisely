@@ -1,7 +1,7 @@
 # ADR 005: Extract Notifications as a Separate Microservice via Redis Streams
 
 **Date:** 2026-06-09  
-**Status:** Accepted
+**Status:** Superseded by ADR 006
 
 ---
 

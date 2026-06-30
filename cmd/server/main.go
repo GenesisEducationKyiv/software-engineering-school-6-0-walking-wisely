@@ -28,16 +28,20 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
 	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
+	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/streams"
 	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
 	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
 	releasemonitoringworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/worker"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
+
+	// Register event types so outbox can decode them for JetStream publishing.
+	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
+	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 
 	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
@@ -108,6 +112,12 @@ func run(appLogger platformlogger.Logger) error {
 		}
 	}()
 
+	natsClient, err := platformnats.NewClient(cfg.NATS.URL, cfg.ServiceName, appLogger)
+	if err != nil {
+		return fmt.Errorf("init nats: %w", err)
+	}
+	defer natsClient.Close()
+
 	subTokenRepo := postgres.NewTokenRepo(db, appLogger)
 	subReadRepo := postgres.NewReadRepo(db, appLogger)
 	releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(db, appLogger)
@@ -121,10 +131,13 @@ func run(appLogger platformlogger.Logger) error {
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 
-	streamPublisher := streams.NewPublisherWithOptions(redisClient, cfg.StreamKey, streams.PublisherOptions{
-		MaxLen:     cfg.StreamMaxLen,
-		ApproxTrim: true,
+	eventPublisher, err := platformnats.NewPublisher(natsClient, platformnats.PublisherOptions{
+		StreamName:    cfg.NATS.StreamName,
+		SubjectPrefix: cfg.NATS.SubjectPrefix,
 	})
+	if err != nil {
+		return fmt.Errorf("init jetstream publisher: %w", err)
+	}
 
 	if err := metricsRecorder.RegisterOutboxMetrics(func(ctx context.Context) (int64, float64, int64, int64, error) {
 		snapshot, err := outboxRepo.Metrics(ctx)
@@ -176,13 +189,13 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartDispatcher(ctx, outboxRepo, streamPublisher, 200*time.Millisecond, 32, 5, appLogger)
+		outbox.StartDispatcher(ctx, outboxRepo, eventPublisher, 200*time.Millisecond, 32, 5, appLogger)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartCleanup(ctx, outboxRepo, cfg.OutboxCleanupInterval, cfg.OutboxRetention, appLogger)
+		outbox.StartCleanup(ctx, outboxRepo, cfg.Outbox.CleanupInterval, cfg.Outbox.Retention, appLogger)
 	}()
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{

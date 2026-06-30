@@ -46,3 +46,8 @@ func DBRetryConfigFromEnv() RetryConfig {
 func RedisRetryConfigFromEnv() RetryConfig {
 	return retryConfigFromEnv("REDIS_RETRY", 5, 500*time.Millisecond, 30*time.Second)
 }
+
+// NATSRetryConfigFromEnv reads NATS_RETRY_* environment variables and returns a RetryConfig for NATS.
+func NATSRetryConfigFromEnv() RetryConfig {
+	return retryConfigFromEnv("NATS_RETRY", 5, 500*time.Millisecond, 30*time.Second)
+}
