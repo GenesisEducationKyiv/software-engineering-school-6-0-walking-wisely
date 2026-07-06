@@ -66,6 +66,12 @@ Or everything at once:
 make test-all
 ```
 
+For architecture boundary checks alone (fast, no Docker):
+
+```bash
+make test-architecture
+```
+
 Notes:
 - Generated protobuf/gRPC lives in `gen/` (not committed). From a clean clone run
   `make generate` before testing.
@@ -104,6 +110,8 @@ A context (`subscriptions`, `notifications`, `release_monitoring`) may depend on
 context's `internal/<other-context>/*`. If `go list` shows such an edge, the
 boundary is broken — fix before committing.
 
+This check is also automated — run `make test-architecture` (fast, no Docker).
+
 ## Repository layout
 
 ```
@@ -129,6 +137,7 @@ internal/
     config/  events/  logger/  metrics/  outbox/  redis/  streams/
     http/middleware/
     postgres/  postgres/migrations/
+test/architecture/          architecture dependency tests (rules.go + _test.go)
 proto/subscription/v1/      protobuf sources (generated -> gen/, not committed)
 deploy/observability/       grafana dashboards, datasources
 docs/  docs/adr/            documentation, architecture decision records
@@ -140,5 +149,6 @@ docs/  docs/adr/            documentation, architecture decision records
 make setup                 # install toolchain (lint, buf, lefthook, playwright)
 make generate              # regenerate protobuf/gRPC into gen/
 make playwright-install    # install Chromium for e2e (first run)
-make test-all              # unit-strict + integration + e2e
+make test-all              # unit-strict + integration + e2e + architecture
+make test-architecture     # architecture boundary checks only (fast, no Docker)
 ```
