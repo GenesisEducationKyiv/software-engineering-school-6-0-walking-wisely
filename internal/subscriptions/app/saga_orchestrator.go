@@ -170,8 +170,8 @@ func (o *SagaOrchestrator) OnConfirmationEmailFailed(ctx context.Context, event 
 	})
 }
 
-// Sweep re-drives sagas stuck in AWAITING_EMAIL (timed-out) or COMPENSATING (crashed
-// mid-compensation). Each saga is processed in its own transaction.
+// Sweep re-drives sagas stuck in COMPENSATING (crashed mid-compensation).
+// Each saga is processed in its own transaction.
 func (o *SagaOrchestrator) Sweep(ctx context.Context, stuckAfter time.Duration) {
 	sagas, err := o.sagaRepo.StuckSagas(ctx, stuckAfter)
 	if err != nil {

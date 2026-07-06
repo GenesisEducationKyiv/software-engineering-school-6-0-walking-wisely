@@ -118,13 +118,13 @@ func (r *SagaRepository) GetForUpdate(ctx context.Context, sagaID string) (subsc
 	return state, nil
 }
 
-// StuckSagas returns sagas in non-terminal steps whose updated_at is older than olderThan.
+// StuckSagas returns sagas stuck in COMPENSATING whose updated_at is older than olderThan.
 func (r *SagaRepository) StuckSagas(ctx context.Context, olderThan time.Duration) ([]subscriptionapp.SagaRow, error) {
 	rows, err := r.db.Query(
 		ctx,
 		`SELECT saga_id::text, subscription_id::text, step
 		 FROM subscription_sagas
-		 WHERE step IN ('AWAITING_EMAIL', 'COMPENSATING')
+		 WHERE step = 'COMPENSATING'
 		   AND updated_at < NOW() - make_interval(secs => $1)`,
 		int64(olderThan.Seconds()),
 	)

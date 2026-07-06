@@ -255,23 +255,6 @@ func TestOnConfirmationEmailFailed_StuckCompensating_Redriven(t *testing.T) {
 
 // ---- Sweep ----
 
-func TestSweep_StuckAwaitingEmail_Compensated(t *testing.T) {
-	repo := newFakeSagaRepo()
-	repo.seed("saga-1", "sub-1", SagaStepAwaitingEmail)
-	repo.stuckSagas = []SagaRow{{SagaID: "saga-1", SubscriptionID: "sub-1", Step: SagaStepAwaitingEmail}}
-	del := &fakeSubDeleter{}
-	orch := newOrchestrator(repo, del)
-
-	orch.Sweep(context.Background(), 10*time.Minute)
-
-	if repo.sagas["saga-1"].step != SagaStepCompensated {
-		t.Errorf("step = %q, want COMPENSATED", repo.sagas["saga-1"].step)
-	}
-	if len(del.deleted) != 1 || del.deleted[0] != "sub-1" {
-		t.Errorf("deleted = %v, want [sub-1]", del.deleted)
-	}
-}
-
 func TestSweep_StuckCompensating_Redriven(t *testing.T) {
 	repo := newFakeSagaRepo()
 	repo.seed("saga-2", "sub-2", SagaStepCompensating)
@@ -308,10 +291,10 @@ func TestSweep_AlreadyTerminal_NoOp(t *testing.T) {
 
 func TestSweep_MultipleStuck_AllProcessed(t *testing.T) {
 	repo := newFakeSagaRepo()
-	repo.seed("s1", "sub-1", SagaStepAwaitingEmail)
+	repo.seed("s1", "sub-1", SagaStepCompensating)
 	repo.seed("s2", "sub-2", SagaStepCompensating)
 	repo.stuckSagas = []SagaRow{
-		{SagaID: "s1", SubscriptionID: "sub-1", Step: SagaStepAwaitingEmail},
+		{SagaID: "s1", SubscriptionID: "sub-1", Step: SagaStepCompensating},
 		{SagaID: "s2", SubscriptionID: "sub-2", Step: SagaStepCompensating},
 	}
 	del := &fakeSubDeleter{}
@@ -395,8 +378,8 @@ func TestOnConfirmationEmailFailed_DeadLettered_NoOp(t *testing.T) {
 
 func TestSweep_DeleteFails_StaysCompensating(t *testing.T) {
 	repo := newFakeSagaRepo()
-	repo.seed("saga-1", "sub-1", SagaStepAwaitingEmail)
-	repo.stuckSagas = []SagaRow{{SagaID: "saga-1", SubscriptionID: "sub-1", Step: SagaStepAwaitingEmail}}
+	repo.seed("saga-1", "sub-1", SagaStepCompensating)
+	repo.stuckSagas = []SagaRow{{SagaID: "saga-1", SubscriptionID: "sub-1", Step: SagaStepCompensating}}
 	del := &fakeSubDeleter{err: errors.New("db unreachable")}
 	orch := newOrchestrator(repo, del)
 
