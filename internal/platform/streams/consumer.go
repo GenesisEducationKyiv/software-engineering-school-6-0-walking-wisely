@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	goredis "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
@@ -27,7 +27,7 @@ const (
 // Idle messages (claimed but not ACKed within reclaimAfter) are reclaimed
 // periodically to handle crashes without external intervention.
 type Consumer struct {
-	client        *goredis.Client
+	client        *redis.Client
 	streamKey     string
 	group         string
 	consumerID    string
@@ -50,7 +50,7 @@ type ConsumerOptions struct {
 }
 
 func NewConsumer(
-	client *goredis.Client,
+	client *redis.Client,
 	streamKey, group, consumerID string,
 	batchSize int64,
 	log logger.Logger,
@@ -61,7 +61,7 @@ func NewConsumer(
 }
 
 func NewConsumerWithOptions(
-	client *goredis.Client,
+	client *redis.Client,
 	streamKey, group, consumerID string,
 	opts ConsumerOptions,
 	log logger.Logger,
@@ -147,7 +147,7 @@ func (c *Consumer) ensureGroup(ctx context.Context) error {
 }
 
 func (c *Consumer) readBatch(ctx context.Context, bus events.Publisher) error {
-	result, err := c.client.XReadGroup(ctx, &goredis.XReadGroupArgs{
+	result, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    c.group,
 		Consumer: c.consumerID,
 		Streams:  []string{c.streamKey, ">"},
@@ -155,7 +155,7 @@ func (c *Consumer) readBatch(ctx context.Context, bus events.Publisher) error {
 		Block:    blockDuration,
 	}).Result()
 	if err != nil {
-		if errors.Is(err, goredis.Nil) {
+		if errors.Is(err, redis.Nil) {
 			return nil // block timeout, no new messages
 		}
 		return err
@@ -170,7 +170,7 @@ func (c *Consumer) readBatch(ctx context.Context, bus events.Publisher) error {
 }
 
 func (c *Consumer) reclaimIdle(ctx context.Context, bus events.Publisher) {
-	msgs, _, err := c.client.XAutoClaim(ctx, &goredis.XAutoClaimArgs{
+	msgs, _, err := c.client.XAutoClaim(ctx, &redis.XAutoClaimArgs{
 		Stream:   c.streamKey,
 		Group:    c.group,
 		Consumer: c.consumerID,
@@ -193,7 +193,7 @@ func (c *Consumer) reclaimIdle(ctx context.Context, bus events.Publisher) {
 // On success it ACKs the message. On handler failure it leaves the message
 // unACKed so it will be redelivered (via reclaimIdle).
 // Unknown event types are ACKed immediately to prevent blocking the stream.
-func (c *Consumer) dispatch(ctx context.Context, bus events.Publisher, msg goredis.XMessage) {
+func (c *Consumer) dispatch(ctx context.Context, bus events.Publisher, msg redis.XMessage) {
 	eventType, _ := msg.Values["event_type"].(string)
 	payloadStr, _ := msg.Values["payload"].(string)
 
@@ -228,7 +228,7 @@ func (c *Consumer) ack(ctx context.Context, msgID string) {
 	}
 }
 
-func (c *Consumer) moveToDLQIfExhausted(ctx context.Context, msg goredis.XMessage, eventType string, cause error) {
+func (c *Consumer) moveToDLQIfExhausted(ctx context.Context, msg redis.XMessage, eventType string, cause error) {
 	if c.maxDeliveries < 1 || c.dlqStreamKey == "" {
 		return
 	}
@@ -247,7 +247,7 @@ func (c *Consumer) moveToDLQIfExhausted(ctx context.Context, msg goredis.XMessag
 	dlqCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.ackTimeout)
 	defer cancel()
 
-	if err := c.client.XAdd(dlqCtx, &goredis.XAddArgs{
+	if err := c.client.XAdd(dlqCtx, &redis.XAddArgs{
 		Stream: c.dlqStreamKey,
 		ID:     "*",
 		Values: map[string]any{
@@ -277,7 +277,7 @@ func (c *Consumer) moveToDLQIfExhausted(ctx context.Context, msg goredis.XMessag
 }
 
 func (c *Consumer) deliveryCount(ctx context.Context, msgID string) (int64, error) {
-	pending, err := c.client.XPendingExt(ctx, &goredis.XPendingExtArgs{
+	pending, err := c.client.XPendingExt(ctx, &redis.XPendingExtArgs{
 		Stream: c.streamKey,
 		Group:  c.group,
 		Start:  msgID,

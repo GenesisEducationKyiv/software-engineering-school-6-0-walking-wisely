@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
@@ -32,7 +32,7 @@ func (r *SagaRepository) CreateSaga(ctx context.Context, sagaID, subscriptionID 
 	if err != nil {
 		return fmt.Errorf("parse subscription id: %w", err)
 	}
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	if _, err := exec.Exec(
 		ctx,
 		`INSERT INTO subscription_sagas (saga_id, subscription_id, step)
@@ -49,7 +49,7 @@ func (r *SagaRepository) CreateSaga(ctx context.Context, sagaID, subscriptionID 
 // SetStep unconditionally updates step + last_error. Must be called within a transaction
 // that holds a FOR UPDATE lock on the row (via GetForUpdate).
 func (r *SagaRepository) SetStep(ctx context.Context, sagaID, step string, lastErr *string) error {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	if _, err := exec.Exec(
 		ctx,
 		`UPDATE subscription_sagas
@@ -67,7 +67,7 @@ func (r *SagaRepository) SetStep(ctx context.Context, sagaID, step string, lastE
 // SetCompensateOutcome updates step, compensate_attempts and last_error together. Must be
 // called within a transaction that holds a FOR UPDATE lock on the row (via GetForUpdate).
 func (r *SagaRepository) SetCompensateOutcome(ctx context.Context, sagaID, step string, attempts int, lastErr *string) error {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	if _, err := exec.Exec(
 		ctx,
 		`UPDATE subscription_sagas
@@ -85,7 +85,7 @@ func (r *SagaRepository) SetCompensateOutcome(ctx context.Context, sagaID, step 
 
 // Get returns (subscriptionID, step, lastError) for the given sagaID (read-only).
 func (r *SagaRepository) Get(ctx context.Context, sagaID string) (subscriptionID, step string, lastErr *string, err error) {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	err = exec.QueryRow(
 		ctx,
 		`SELECT subscription_id::text, step, last_error
@@ -102,7 +102,7 @@ func (r *SagaRepository) Get(ctx context.Context, sagaID string) (subscriptionID
 // GetForUpdate locks the saga row (SELECT ... FOR UPDATE) and returns its current
 // state. Must be called inside an active transaction — use within WithinTransaction.
 func (r *SagaRepository) GetForUpdate(ctx context.Context, sagaID string) (subscriptionapp.SagaState, error) {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	var state subscriptionapp.SagaState
 	err := exec.QueryRow(
 		ctx,

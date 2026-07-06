@@ -55,6 +55,13 @@ func RegisterType(event Event) {
 	codecs[event.EventName()] = t
 }
 
+// RegisterTypes registers multiple concrete event types at once.
+func RegisterTypes(events ...Event) {
+	for _, e := range events {
+		RegisterType(e)
+	}
+}
+
 // Decode reconstructs a registered concrete event from JSON payload.
 func Decode(eventType string, payload []byte) (Event, error) {
 	codecMu.RLock()

@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
 )
 
-func StartScanner(ctx context.Context, service *releasemonitoringapp.ScannerService, interval time.Duration, log logger.Logger) {
+func StartScanner(ctx context.Context, service *app.ScannerService, interval time.Duration, log logger.Logger) {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}

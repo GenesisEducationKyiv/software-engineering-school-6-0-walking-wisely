@@ -8,19 +8,19 @@ import (
 	"math"
 	"time"
 
-	goredis "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 
-	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 // NewClient creates a Redis client and pings it, using retry defaults read from the environment.
-func NewClient(redisURL string, log logger.Logger) (*goredis.Client, error) {
-	return NewClientWithRetry(redisURL, platformconfig.RedisRetryConfigFromEnv(), log)
+func NewClient(redisURL string, log logger.Logger) (*redis.Client, error) {
+	return NewClientWithRetry(redisURL, config.RedisRetryConfigFromEnv(), log)
 }
 
 // NewClientWithRetry creates a Redis client and pings it, retrying on transient failures according to retry.
-func NewClientWithRetry(redisURL string, retry platformconfig.RetryConfig, log logger.Logger) (*goredis.Client, error) {
+func NewClientWithRetry(redisURL string, retry config.RetryConfig, log logger.Logger) (*redis.Client, error) {
 	if log == nil {
 		log = logger.NoopLogger{}
 	}
@@ -29,17 +29,17 @@ func NewClientWithRetry(redisURL string, retry platformconfig.RetryConfig, log l
 		return nil, err
 	}
 
-	opts, err := goredis.ParseURL(redisURL)
+	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse Redis URL: %w", err)
 	}
 
-	return newClientWithRetry(retry, log, func() (*goredis.Client, error) {
+	return newClientWithRetry(retry, log, func() (*redis.Client, error) {
 		return openAndPingRedisClient(opts)
 	}, time.Sleep)
 }
 
-func validateRedisRetryConfig(retry platformconfig.RetryConfig) error {
+func validateRedisRetryConfig(retry config.RetryConfig) error {
 	if retry.MaxAttempts <= 0 {
 		return errors.New("redis retry max attempts must be positive")
 	}
@@ -52,8 +52,8 @@ func validateRedisRetryConfig(retry platformconfig.RetryConfig) error {
 	return nil
 }
 
-func openAndPingRedisClient(opts *goredis.Options) (*goredis.Client, error) {
-	client := goredis.NewClient(opts)
+func openAndPingRedisClient(opts *redis.Options) (*redis.Client, error) {
+	client := redis.NewClient(opts)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -68,11 +68,11 @@ func openAndPingRedisClient(opts *goredis.Options) (*goredis.Client, error) {
 }
 
 func newClientWithRetry(
-	retry platformconfig.RetryConfig,
+	retry config.RetryConfig,
 	log logger.Logger,
-	openAndPing func() (*goredis.Client, error),
+	openAndPing func() (*redis.Client, error),
 	sleep func(time.Duration),
-) (*goredis.Client, error) {
+) (*redis.Client, error) {
 	var lastErr error
 	for attempt := 1; attempt <= retry.MaxAttempts; attempt++ {
 		client, err := openAndPing()

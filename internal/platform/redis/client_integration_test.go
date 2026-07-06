@@ -12,7 +12,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 )
 
 func TestIntegration_NewClientWithRetry_ConnectsToRedis(t *testing.T) {
@@ -46,7 +46,7 @@ func TestIntegration_NewClientWithRetry_ConnectsToRedis(t *testing.T) {
 	}
 	redisURL := "redis://" + net.JoinHostPort(host, port.Port()) + "/0"
 
-	client, err := NewClientWithRetry(redisURL, platformconfig.RetryConfig{
+	client, err := NewClientWithRetry(redisURL, config.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -76,7 +76,7 @@ func TestIntegration_NewClientWithRetry_ReturnsErrorWhenRedisUnavailable(t *test
 	hostPort := freeTCPPort(t)
 	redisURL := fmt.Sprintf("redis://127.0.0.1:%d/0", hostPort)
 
-	client, err := NewClientWithRetry(redisURL, platformconfig.RetryConfig{
+	client, err := NewClientWithRetry(redisURL, config.RetryConfig{
 		MaxAttempts: 1,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,

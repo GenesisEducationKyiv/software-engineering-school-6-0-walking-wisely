@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 )
 
 var sharedPool *pgxpool.Pool
@@ -21,13 +21,13 @@ func TestMain(m *testing.M) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	container, err := tcpostgres.Run(
+	container, err := postgres.Run(
 		ctx,
 		"postgres:16-alpine",
-		tcpostgres.WithDatabase("app"),
-		tcpostgres.WithUsername("app"),
-		tcpostgres.WithPassword("secret"),
-		tcpostgres.BasicWaitStrategies(),
+		postgres.WithDatabase("app"),
+		postgres.WithUsername("app"),
+		postgres.WithPassword("secret"),
+		postgres.BasicWaitStrategies(),
 	)
 	if err != nil {
 		// Docker unavailable or container failed to start — skip all tests.
@@ -41,7 +41,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("build postgres connection string: " + err.Error())
 	}
-	if err := platformmigrations.Run(databaseURL, logger.NoopLogger{}); err != nil {
+	if err := migrations.Run(databaseURL, logger.NoopLogger{}); err != nil {
 		panic("run migrations: " + err.Error())
 	}
 

@@ -7,13 +7,13 @@ import (
 
 	"github.com/google/uuid"
 
-	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 )
 
 // SendConfirmationEmail is sent by the subscriptions service to the notifications
 // service, requesting that a confirmation email be dispatched.
 type SendConfirmationEmail struct {
-	contractevents.Metadata
+	events.Metadata
 	SagaID         string `json:"saga_id"`
 	SubscriptionID string `json:"subscription_id"`
 	Email          string `json:"email"`
@@ -31,7 +31,7 @@ func (e SendConfirmationEmail) AggregateID() string { return e.SagaID }
 // NewSendConfirmationEmail constructs a SendConfirmationEmail command.
 func NewSendConfirmationEmail(sagaID, subscriptionID, email, repo, confirmToken, unsubToken string) SendConfirmationEmail {
 	return SendConfirmationEmail{
-		Metadata: contractevents.Metadata{
+		Metadata: events.Metadata{
 			ID:    uuid.NewString(),
 			At:    time.Now().UTC(),
 			V:     1,
@@ -49,7 +49,7 @@ func NewSendConfirmationEmail(sagaID, subscriptionID, email, repo, confirmToken,
 // ConfirmationEmailSent is sent by the notifications service when the confirmation
 // email has been successfully handed to the provider.
 type ConfirmationEmailSent struct {
-	contractevents.Metadata
+	events.Metadata
 	SagaID string `json:"saga_id"`
 }
 
@@ -62,7 +62,7 @@ func (e ConfirmationEmailSent) AggregateID() string { return e.SagaID }
 // NewConfirmationEmailSent constructs a ConfirmationEmailSent reply.
 func NewConfirmationEmailSent(sagaID string) ConfirmationEmailSent {
 	return ConfirmationEmailSent{
-		Metadata: contractevents.Metadata{
+		Metadata: events.Metadata{
 			ID:    uuid.NewString(),
 			At:    time.Now().UTC(),
 			V:     1,
@@ -75,7 +75,7 @@ func NewConfirmationEmailSent(sagaID string) ConfirmationEmailSent {
 // ConfirmationEmailFailed is sent by the notifications service when the
 // confirmation email job has exhausted all retries or was synchronously rejected.
 type ConfirmationEmailFailed struct {
-	contractevents.Metadata
+	events.Metadata
 	SagaID string `json:"saga_id"`
 	Reason string `json:"reason"`
 }
@@ -89,7 +89,7 @@ func (e ConfirmationEmailFailed) AggregateID() string { return e.SagaID }
 // NewConfirmationEmailFailed constructs a ConfirmationEmailFailed reply.
 func NewConfirmationEmailFailed(sagaID, reason string) ConfirmationEmailFailed {
 	return ConfirmationEmailFailed{
-		Metadata: contractevents.Metadata{
+		Metadata: events.Metadata{
 			ID:    uuid.NewString(),
 			At:    time.Now().UTC(),
 			V:     1,
@@ -98,11 +98,4 @@ func NewConfirmationEmailFailed(sagaID, reason string) ConfirmationEmailFailed {
 		SagaID: sagaID,
 		Reason: reason,
 	}
-}
-
-// RegisterTypes registers all saga command and reply types with the caller's codec.
-func RegisterTypes(register func(contractevents.Event)) {
-	register(SendConfirmationEmail{})
-	register(ConfirmationEmailSent{})
-	register(ConfirmationEmailFailed{})
 }

@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // fakeSubscriptionRepo implements the gRPC-facing subscription repository interfaces
@@ -17,14 +17,14 @@ type fakeSubscriptionRepo struct {
 	confirmByTokenErr     error
 	unsubscribeByTokenID  string
 	unsubscribeByTokenErr error
-	listByEmailResult     []subscriptionsdomain.Subscription
+	listByEmailResult     []domain.Subscription
 	listByEmailErr        error
 }
 
-func (f *fakeSubscriptionRepo) Subscribe(_ context.Context, _, _, _, _ string) (subscriptionsdomain.SubscribeResult, error) {
-	return subscriptionsdomain.SubscribeResult{
+func (f *fakeSubscriptionRepo) Subscribe(_ context.Context, _, _, _, _ string) (domain.SubscribeResult, error) {
+	return domain.SubscribeResult{
 		SubscriptionID: "sub-1",
-		Action:         subscriptionsdomain.SubscribeActionCreated,
+		Action:         domain.SubscribeActionCreated,
 	}, f.subscribeErr
 }
 
@@ -36,7 +36,7 @@ func (f *fakeSubscriptionRepo) UnsubscribeByToken(_ context.Context, _ string) (
 	return f.unsubscribeByTokenID, f.unsubscribeByTokenErr
 }
 
-func (f *fakeSubscriptionRepo) ListByEmail(_ context.Context, _ string) ([]subscriptionsdomain.Subscription, error) {
+func (f *fakeSubscriptionRepo) ListByEmail(_ context.Context, _ string) ([]domain.Subscription, error) {
 	return f.listByEmailResult, f.listByEmailErr
 }
 

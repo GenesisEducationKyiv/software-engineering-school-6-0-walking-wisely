@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	goredis "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 )
@@ -14,13 +14,13 @@ import (
 // It implements events.Publisher and is the outbox dispatcher's delivery target
 // in the main API service.
 type Publisher struct {
-	client     *goredis.Client
+	client     *redis.Client
 	streamKey  string
 	maxLen     int64
 	approxTrim bool
 }
 
-func NewPublisher(client *goredis.Client, streamKey string) *Publisher {
+func NewPublisher(client *redis.Client, streamKey string) *Publisher {
 	return NewPublisherWithOptions(client, streamKey, PublisherOptions{
 		MaxLen:     100_000,
 		ApproxTrim: true,
@@ -34,7 +34,7 @@ type PublisherOptions struct {
 	ApproxTrim bool
 }
 
-func NewPublisherWithOptions(client *goredis.Client, streamKey string, opts PublisherOptions) *Publisher {
+func NewPublisherWithOptions(client *redis.Client, streamKey string, opts PublisherOptions) *Publisher {
 	return &Publisher{
 		client:     client,
 		streamKey:  streamKey,
@@ -49,7 +49,7 @@ func (p *Publisher) Publish(ctx context.Context, event events.Event) error {
 		return fmt.Errorf("marshal event %s: %w", event.EventName(), err)
 	}
 
-	args := &goredis.XAddArgs{
+	args := &redis.XAddArgs{
 		Stream: p.streamKey,
 		ID:     "*",
 		Values: map[string]any{

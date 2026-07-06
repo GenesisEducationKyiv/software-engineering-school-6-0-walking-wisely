@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
-	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 )
 
 const (
@@ -69,7 +69,7 @@ func (r *Repository) Append(ctx context.Context, event events.DurableEvent) erro
 		return fmt.Errorf("marshal event payload: %w", err)
 	}
 
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	if _, err := exec.Exec(
 		ctx,
 		fmt.Sprintf(`INSERT INTO %s

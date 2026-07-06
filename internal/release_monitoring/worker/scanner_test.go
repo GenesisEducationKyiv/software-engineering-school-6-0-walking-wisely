@@ -7,8 +7,8 @@ import (
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
-	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 )
 
 type cancelOnListRepo struct {
@@ -28,7 +28,7 @@ func (r *cancelOnListRepo) ListDistinctConfirmedRepos(context.Context) ([]string
 	return nil, nil
 }
 
-func (r *cancelOnListRepo) ListConfirmedSubscribersForRepo(context.Context, string) ([]releasemonitoringdomain.Subscriber, error) {
+func (r *cancelOnListRepo) ListConfirmedSubscribersForRepo(context.Context, string) ([]domain.Subscriber, error) {
 	return nil, nil
 }
 
@@ -50,7 +50,7 @@ func TestStartScannerRunsUntilContextCancelled(t *testing.T) {
 		cancel: cancel,
 		called: make(chan struct{}),
 	}
-	service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
+	service := app.NewScannerService(&app.ScannerDeps{
 		Repo:   repo,
 		GitHub: noopReleaseClient{},
 		Log:    logger.NoopLogger{},

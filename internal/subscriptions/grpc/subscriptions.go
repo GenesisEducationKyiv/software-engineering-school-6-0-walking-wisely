@@ -7,23 +7,23 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	subscriptionv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // GetSubscriptions handles GET /api/subscriptions?email=...
 // Tokens are never included in the response.
-func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetSubscriptionsRequest) (*pb.GetSubscriptionsResponse, error) {
+func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *subscriptionv1.GetSubscriptionsRequest) (*subscriptionv1.GetSubscriptionsResponse, error) {
 	subs, err := s.listUseCase.ListByEmail(ctx, req.Email)
 	if err != nil {
-		if errors.Is(err, subscriptionsdomain.ErrInvalidEmail) {
+		if errors.Is(err, domain.ErrInvalidEmail) {
 			return nil, status.Error(codes.InvalidArgument, "invalid email format")
 		}
 		s.log.Error("subscriptions: list failed", "err", err)
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	resp := make([]*pb.Subscription, 0, len(subs))
+	resp := make([]*subscriptionv1.Subscription, 0, len(subs))
 
 	for i := range subs {
 		s := subs[i]
@@ -31,7 +31,7 @@ func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetS
 		if s.LastSeenTag != nil {
 			lastSeenTag = *s.LastSeenTag
 		}
-		resp = append(resp, &pb.Subscription{
+		resp = append(resp, &subscriptionv1.Subscription{
 			Email:       s.Email,
 			Repo:        s.Repo,
 			Confirmed:   s.Confirmed,
@@ -40,5 +40,5 @@ func (s *SubscriptionService) GetSubscriptions(ctx context.Context, req *pb.GetS
 	}
 
 	s.log.Info("subscriptions: listed", "subscriptions_count", len(resp))
-	return &pb.GetSubscriptionsResponse{Subscriptions: resp}, nil
+	return &subscriptionv1.GetSubscriptionsResponse{Subscriptions: resp}, nil
 }

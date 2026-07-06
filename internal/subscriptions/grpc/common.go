@@ -2,7 +2,7 @@
 package subscriptiongrpc
 
 import (
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	subscriptionv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
@@ -33,7 +33,7 @@ type ServiceDeps struct {
 
 // SubscriptionService implements the gRPC SubscribeServiceServer interface.
 type SubscriptionService struct {
-	pb.UnimplementedSubscribeServiceServer
+	subscriptionv1.UnimplementedSubscribeServiceServer
 	subscribeUseCase   *subscriptionapp.SubscribeService
 	confirmUseCase     *subscriptionapp.ConfirmService
 	unsubscribeUseCase *subscriptionapp.UnsubscribeService

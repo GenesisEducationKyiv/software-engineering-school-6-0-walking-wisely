@@ -15,7 +15,7 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
-	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
 )
 
 func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
@@ -34,7 +34,7 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 			UnsubscribeToken: "unsub-token",
 		})
 
-		service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
+		service := app.NewScannerService(&app.ScannerDeps{
 			Repo:      releaseScanRepo,
 			GitHub:    stubReleaseClient{release: &contracts.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3", Name: "Release 1.2.3"}},
 			TxManager: releaseScanRepo,
@@ -66,7 +66,7 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 			UnsubscribeToken: "unsub-token",
 		})
 
-		service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
+		service := app.NewScannerService(&app.ScannerDeps{
 			Repo:      releaseScanRepo,
 			GitHub:    stubReleaseClient{release: &contracts.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"}},
 			TxManager: releaseScanRepo,
@@ -92,7 +92,7 @@ func TestIntegration_ReleaseScanTransactionalOutbox(t *testing.T) {
 			LastSeenTag:      &tag,
 		})
 
-		service := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
+		service := app.NewScannerService(&app.ScannerDeps{
 			Repo:      releaseScanRepo,
 			GitHub:    stubReleaseClient{release: &contracts.Release{TagName: "v1.2.3", HTMLURL: "https://github.com/owner/repo/releases/v1.2.3"}},
 			TxManager: releaseScanRepo,

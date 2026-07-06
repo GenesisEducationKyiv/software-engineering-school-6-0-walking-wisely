@@ -9,14 +9,14 @@ import (
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
-	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 type JobQueue interface {
-	ClaimPending(ctx context.Context, workerID string, batchSize int) ([]notificationdomain.Job, error)
-	MarkSent(ctx context.Context, jobs []notificationdomain.Job) error
-	MarkFailed(ctx context.Context, jobs []notificationdomain.Job, maxAttempts int, cause error) error
+	ClaimPending(ctx context.Context, workerID string, batchSize int) ([]domain.Job, error)
+	MarkSent(ctx context.Context, jobs []domain.Job) error
+	MarkFailed(ctx context.Context, jobs []domain.Job, maxAttempts int, cause error) error
 }
 
 func StartSender(

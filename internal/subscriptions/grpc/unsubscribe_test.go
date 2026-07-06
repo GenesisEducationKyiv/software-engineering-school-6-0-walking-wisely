@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	subscriptionv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // validToken is a well-formed 64-character lowercase hex string that passes
@@ -27,7 +27,7 @@ func TestUnsubscribe_Success(t *testing.T) {
 	repo := &fakeSubscriptionRepo{unsubscribeByTokenID: "sub-42"}
 	svc := newService(&fakeGithubClient{}, repo, repo)
 
-	resp, err := svc.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{Token: validToken})
+	resp, err := svc.Unsubscribe(context.Background(), &subscriptionv1.UnsubscribeRequest{Token: validToken})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestUnsubscribe_InvalidToken(t *testing.T) {
 	repo := &fakeSubscriptionRepo{}
 	svc := newService(&fakeGithubClient{}, repo, repo)
 
-	_, err := svc.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{Token: ""})
+	_, err := svc.Unsubscribe(context.Background(), &subscriptionv1.UnsubscribeRequest{Token: ""})
 
 	if got := status.Code(err); got != codes.InvalidArgument {
 		t.Errorf("got %v, want InvalidArgument", got)
@@ -60,9 +60,9 @@ func TestUnsubscribe_RepoErrors(t *testing.T) {
 		wantCode codes.Code
 	}{
 		// Exact sentinel → NotFound.
-		{"token not found", subscriptionsdomain.ErrTokenNotFound, codes.NotFound},
+		{"token not found", domain.ErrTokenNotFound, codes.NotFound},
 		// Wrapped sentinel must still resolve via errors.Is → NotFound.
-		{"wrapped token not found", fmt.Errorf("db layer: %w", subscriptionsdomain.ErrTokenNotFound), codes.NotFound},
+		{"wrapped token not found", fmt.Errorf("db layer: %w", domain.ErrTokenNotFound), codes.NotFound},
 		// Any other error → Internal.
 		{"unexpected db error", errors.New("connection reset by peer"), codes.Internal},
 	}
@@ -72,7 +72,7 @@ func TestUnsubscribe_RepoErrors(t *testing.T) {
 			repo := &fakeSubscriptionRepo{unsubscribeByTokenErr: tc.repoErr}
 			svc := newService(&fakeGithubClient{}, repo, repo)
 
-			_, err := svc.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{Token: validToken})
+			_, err := svc.Unsubscribe(context.Background(), &subscriptionv1.UnsubscribeRequest{Token: validToken})
 
 			if got := status.Code(err); got != tc.wantCode {
 				t.Errorf("got %v, want %v", got, tc.wantCode)
@@ -86,7 +86,7 @@ func TestUnsubscribe_InternalErrorDoesNotLeakDetail(t *testing.T) {
 	repo := &fakeSubscriptionRepo{unsubscribeByTokenErr: errors.New(internalMsg)}
 	svc := newService(&fakeGithubClient{}, repo, repo)
 
-	_, err := svc.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{Token: validToken})
+	_, err := svc.Unsubscribe(context.Background(), &subscriptionv1.UnsubscribeRequest{Token: validToken})
 
 	s, _ := status.FromError(err)
 	if strings.Contains(s.Message(), "pq:") || strings.Contains(s.Message(), "deadlock") {

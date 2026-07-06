@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
-	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 )
@@ -88,7 +88,7 @@ func (r *Repository) RecordReleaseNotifications(
 	handlerName string,
 	eventID string,
 	releaseTag string,
-	jobs []notificationdomain.ReleaseNotificationJob,
+	jobs []domain.ReleaseNotificationJob,
 ) error {
 	return r.recordDelivery(ctx, handlerName, eventID, func(txCtx context.Context) error {
 		batchSize := r.releaseNotificationInsertBatch
@@ -105,7 +105,7 @@ func (r *Repository) RecordReleaseNotifications(
 	})
 }
 
-func (r *Repository) insertReleaseNotificationBatch(ctx context.Context, eventID, releaseTag string, jobs []notificationdomain.ReleaseNotificationJob) error {
+func (r *Repository) insertReleaseNotificationBatch(ctx context.Context, eventID, releaseTag string, jobs []domain.ReleaseNotificationJob) error {
 	if len(jobs) == 0 {
 		return nil
 	}
@@ -173,7 +173,7 @@ func (r *Repository) recordDelivery(ctx context.Context, handlerName, eventID st
 	})
 }
 
-func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSize int) ([]notificationdomain.Job, error) {
+func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSize int) ([]domain.Job, error) {
 	rows, err := r.db.Query(
 		ctx,
 		`WITH locked AS (
@@ -205,9 +205,9 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 	}
 	defer rows.Close()
 
-	jobs := make([]notificationdomain.Job, 0, batchSize)
+	jobs := make([]domain.Job, 0, batchSize)
 	for rows.Next() {
-		var job notificationdomain.Job
+		var job domain.Job
 		if err := rows.Scan(&job.ID, &job.EventID, &job.To, &job.Subject, &job.HTML, &job.AttemptCount, &job.SagaID); err != nil {
 			return nil, fmt.Errorf("scan notification job: %w", err)
 		}
@@ -219,7 +219,7 @@ func (r *Repository) ClaimPending(ctx context.Context, workerID string, batchSiz
 // MarkSent marks jobs as sent. For confirmation jobs that carry a SagaID, it
 // appends a ConfirmationEmailSent reply to the notifications outbox within the
 // same transaction as the status update.
-func (r *Repository) MarkSent(ctx context.Context, jobs []notificationdomain.Job) error {
+func (r *Repository) MarkSent(ctx context.Context, jobs []domain.Job) error {
 	var regularIDs []uuid.UUID
 	for _, job := range jobs {
 		if job.SagaID == "" {
@@ -265,7 +265,7 @@ func (r *Repository) MarkSent(ctx context.Context, jobs []notificationdomain.Job
 // MarkFailed marks jobs as failed (or re-queues for retry). For confirmation
 // jobs that exhaust their retries and carry a SagaID, it appends a
 // ConfirmationEmailFailed reply within the same transaction as the status update.
-func (r *Repository) MarkFailed(ctx context.Context, jobs []notificationdomain.Job, maxAttempts int, cause error) error {
+func (r *Repository) MarkFailed(ctx context.Context, jobs []domain.Job, maxAttempts int, cause error) error {
 	for _, job := range jobs {
 		attempts := job.AttemptCount + 1
 		status := StatusPending

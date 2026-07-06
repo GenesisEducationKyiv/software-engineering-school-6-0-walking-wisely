@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) {
@@ -22,11 +22,11 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 		if err != nil {
 			t.Fatalf("Subscribe returned error: %v", err)
 		}
-		if result.Action != subscriptionsdomain.SubscribeActionCreated || result.SubscriptionID == "" {
+		if result.Action != domain.SubscribeActionCreated || result.SubscriptionID == "" {
 			t.Fatalf("Subscribe result = %+v, want created subscription id", result)
 		}
 
-		var got subscriptionsdomain.Subscription
+		var got domain.Subscription
 		err = repos.pool.QueryRow(ctx, `
 			SELECT id, email, repo, confirmed, confirm_token, unsubscribe_token
 			FROM subscriptions
@@ -60,7 +60,7 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 		if err != nil {
 			t.Fatalf("Subscribe returned error: %v", err)
 		}
-		if result.SubscriptionID != id || result.Action != subscriptionsdomain.SubscribeActionConfirmationRefreshed {
+		if result.SubscriptionID != id || result.Action != domain.SubscribeActionConfirmationRefreshed {
 			t.Fatalf("Subscribe result = %+v, want refreshed id %q", result, id)
 		}
 
@@ -99,7 +99,7 @@ func testTokenRepoSubscribe(t *testing.T, ctx context.Context, repos testRepos) 
 		})
 
 		_, err := repos.token.Subscribe(ctx, "user@example.com", "owner/repo", "new-confirm-token", "new-unsub-token")
-		if !errors.Is(err, subscriptionsdomain.ErrAlreadySubscribed) {
+		if !errors.Is(err, domain.ErrAlreadySubscribed) {
 			t.Fatalf("Subscribe error = %v, want ErrAlreadySubscribed", err)
 		}
 
@@ -301,7 +301,7 @@ func testTokenRepoConfirmByToken(t *testing.T, ctx context.Context, repos testRe
 		truncateSubscriptions(t, ctx, repos.pool)
 
 		_, err := repos.token.ConfirmByToken(ctx, "missing-token")
-		if !errors.Is(err, subscriptionsdomain.ErrTokenNotFound) {
+		if !errors.Is(err, domain.ErrTokenNotFound) {
 			t.Fatalf("ConfirmByToken error = %v, want ErrTokenNotFound", err)
 		}
 	})
@@ -409,7 +409,7 @@ func testTokenRepoUnsubscribeByToken(t *testing.T, ctx context.Context, repos te
 		truncateSubscriptions(t, ctx, repos.pool)
 
 		_, err := repos.token.UnsubscribeByToken(ctx, "missing-token")
-		if !errors.Is(err, subscriptionsdomain.ErrTokenNotFound) {
+		if !errors.Is(err, domain.ErrTokenNotFound) {
 			t.Fatalf("UnsubscribeByToken error = %v, want ErrTokenNotFound", err)
 		}
 	})
