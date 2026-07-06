@@ -118,15 +118,18 @@ func (r *SagaRepository) GetForUpdate(ctx context.Context, sagaID string) (subsc
 	return state, nil
 }
 
-// StuckSagas returns sagas stuck in COMPENSATING whose updated_at is older than olderThan.
-func (r *SagaRepository) StuckSagas(ctx context.Context, olderThan time.Duration) ([]subscriptionapp.SagaRow, error) {
+// StuckSagas returns sagas stuck in non-terminal steps:
+//   - COMPENSATING: stuck longer than compensatingStuckAfter
+//   - AWAITING_EMAIL: stuck longer than awaitingStuckAfter
+func (r *SagaRepository) StuckSagas(ctx context.Context, compensatingStuckAfter, awaitingStuckAfter time.Duration) ([]subscriptionapp.SagaRow, error) {
 	rows, err := r.db.Query(
 		ctx,
-		`SELECT saga_id::text, subscription_id::text, step
+		`SELECT saga_id::text, subscription_id::text, step, compensate_attempts
 		 FROM subscription_sagas
-		 WHERE step = 'COMPENSATING'
-		   AND updated_at < NOW() - make_interval(secs => $1)`,
-		int64(olderThan.Seconds()),
+		 WHERE (step = 'COMPENSATING' AND updated_at < NOW() - make_interval(secs => $1))
+		    OR (step = 'AWAITING_EMAIL' AND updated_at < NOW() - make_interval(secs => $2))`,
+		int64(compensatingStuckAfter.Seconds()),
+		int64(awaitingStuckAfter.Seconds()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query stuck sagas: %w", err)
@@ -136,7 +139,7 @@ func (r *SagaRepository) StuckSagas(ctx context.Context, olderThan time.Duration
 	var result []subscriptionapp.SagaRow
 	for rows.Next() {
 		var s subscriptionapp.SagaRow
-		if err := rows.Scan(&s.SagaID, &s.SubscriptionID, &s.Step); err != nil {
+		if err := rows.Scan(&s.SagaID, &s.SubscriptionID, &s.Step, &s.CompensateAttempts); err != nil {
 			return nil, fmt.Errorf("scan saga row: %w", err)
 		}
 		result = append(result, s)

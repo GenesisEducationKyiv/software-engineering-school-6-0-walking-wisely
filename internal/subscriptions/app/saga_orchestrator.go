@@ -2,6 +2,7 @@ package subscriptionapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -27,11 +28,25 @@ const (
 // compensation before dead-lettering the saga (COMPENSATION_FAILED).
 const DefaultMaxCompensateAttempts = 5
 
+// deleteCompensationError signals that DeleteSubscription failed inside a
+// compensation transaction. The caller should rollback (the tx is already
+// aborted by the Postgres error) and record the failure in a fresh transaction.
+type deleteCompensationError struct {
+	cause error
+}
+
+func (e *deleteCompensationError) Error() string {
+	return fmt.Sprintf("delete subscription: %v", e.cause)
+}
+
+func (e *deleteCompensationError) Unwrap() error { return e.cause }
+
 // SagaRow is a saga record returned by queries (e.g. the sweeper scan).
 type SagaRow struct {
-	SagaID         string
-	SubscriptionID string
-	Step           string
+	SagaID             string
+	SubscriptionID     string
+	Step               string
+	CompensateAttempts int
 }
 
 // SagaState is the locked saga row read inside a compensation transaction.
@@ -55,8 +70,10 @@ type SagaRepository interface {
 	Get(ctx context.Context, sagaID string) (subscriptionID, step string, lastErr *string, err error)
 	// GetForUpdate locks the row (SELECT ... FOR UPDATE) — must be inside a transaction.
 	GetForUpdate(ctx context.Context, sagaID string) (SagaState, error)
-	// StuckSagas returns sagas in non-terminal steps older than olderThan.
-	StuckSagas(ctx context.Context, olderThan time.Duration) ([]SagaRow, error)
+	// StuckSagas returns sagas stuck in non-terminal steps:
+	//   - COMPENSATING: stuck longer than compensatingStuckAfter
+	//   - AWAITING_EMAIL: stuck longer than awaitingStuckAfter
+	StuckSagas(ctx context.Context, compensatingStuckAfter, awaitingStuckAfter time.Duration) ([]SagaRow, error)
 }
 
 // SubscriptionDeleter deletes a subscription by ID (compensation).
@@ -154,26 +171,35 @@ func (o *SagaOrchestrator) OnConfirmationEmailSent(ctx context.Context, event ev
 }
 
 // OnConfirmationEmailFailed handles the failure reply: compensates by deleting the
-// subscription. The entire COMPENSATING → delete → COMPENSATED sequence runs in one
-// transaction. SELECT FOR UPDATE serializes concurrent/duplicate deliveries.
+// subscription. The COMPENSATING → delete + COMPENSATED sequence runs in one
+// transaction. If DeleteSubscription fails the Postgres error aborts the tx, so
+// the failure is recorded in a fresh transaction to persist the retry counter.
 func (o *SagaOrchestrator) OnConfirmationEmailFailed(ctx context.Context, event events.Event) error {
 	evt, ok := event.(commands.ConfirmationEmailFailed)
 	if !ok {
 		return fmt.Errorf("unexpected event type %T", event)
 	}
-	return o.txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
+
+	err := o.txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
 		state, err := o.sagaRepo.GetForUpdate(txCtx, evt.SagaID)
 		if err != nil {
 			return fmt.Errorf("get saga for update: %w", err)
 		}
 		return o.doCompensate(txCtx, evt.SagaID, state, evt.Reason)
 	})
+
+	var delErr *deleteCompensationError
+	if errors.As(err, &delErr) {
+		return o.recordFailedCompensation(ctx, evt.SagaID, delErr.cause)
+	}
+	return err
 }
 
-// Sweep re-drives sagas stuck in COMPENSATING (crashed mid-compensation).
-// Each saga is processed in its own transaction.
-func (o *SagaOrchestrator) Sweep(ctx context.Context, stuckAfter time.Duration) {
-	sagas, err := o.sagaRepo.StuckSagas(ctx, stuckAfter)
+// Sweep re-drives sagas stuck in COMPENSATING (crashed mid-compensation) or
+// AWAITING_EMAIL (event lost, handler never replied). Each saga is processed
+// in its own transaction.
+func (o *SagaOrchestrator) Sweep(ctx context.Context, compensatingStuckAfter, awaitingStuckAfter time.Duration) {
+	sagas, err := o.sagaRepo.StuckSagas(ctx, compensatingStuckAfter, awaitingStuckAfter)
 	if err != nil {
 		o.log.Error("sweeper: list stuck sagas", "error", err)
 		return
@@ -185,15 +211,23 @@ func (o *SagaOrchestrator) Sweep(ctx context.Context, stuckAfter time.Duration) 
 		default:
 		}
 		sagaID := s.SagaID
-		if err := o.txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
+		err := o.txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
 			state, err := o.sagaRepo.GetForUpdate(txCtx, sagaID)
 			if err != nil {
 				return err
 			}
 			reason := fmt.Sprintf("sweeper re-drive from step %s", state.Step)
 			return o.doCompensate(txCtx, sagaID, state, reason)
-		}); err != nil {
-			o.log.Error("sweeper: compensate saga", "saga_id", sagaID, "error", err)
+		})
+		if err != nil {
+			var delErr *deleteCompensationError
+			if errors.As(err, &delErr) {
+				if recErr := o.recordFailedCompensation(ctx, sagaID, delErr.cause); recErr != nil {
+					o.log.Error("sweeper: record compensation failure", "saga_id", sagaID, "error", recErr)
+				}
+			} else {
+				o.log.Error("sweeper: compensate saga", "saga_id", sagaID, "error", err)
+			}
 		}
 	}
 }
@@ -201,10 +235,10 @@ func (o *SagaOrchestrator) Sweep(ctx context.Context, stuckAfter time.Duration) 
 // doCompensate executes the compensation sequence given a FOR-UPDATE-locked saga row.
 // AWAITING_EMAIL → COMPENSATING → (delete) → COMPENSATED; already-terminal = no-op.
 //
-// A failed delete does not roll back the transaction: the incremented attempt counter
-// is committed so the sweeper can re-drive with bounded retries. Once attempts reach
-// maxCompensateAttempts the saga is dead-lettered (COMPENSATION_FAILED, terminal) so
-// the sweeper stops churning on a permanently failing compensation.
+// A failed delete returns a deleteCompensationError so the caller rolls back the
+// aborted transaction and records the failure in a fresh separate transaction.
+// Once attempts reach maxCompensateAttempts the saga is dead-lettered (COMPENSATION_FAILED,
+// terminal) so the sweeper stops churning on a permanently failing compensation.
 func (o *SagaOrchestrator) doCompensate(txCtx context.Context, sagaID string, state SagaState, reason string) error {
 	switch state.Step {
 	case SagaStepCompleted:
@@ -225,7 +259,7 @@ func (o *SagaOrchestrator) doCompensate(txCtx context.Context, sagaID string, st
 	}
 
 	if err := o.subRepo.DeleteSubscription(txCtx, state.SubscriptionID); err != nil {
-		return o.recordFailedCompensation(txCtx, sagaID, state.CompensateAttempts, err)
+		return &deleteCompensationError{cause: err}
 	}
 
 	if err := o.sagaRepo.SetStep(txCtx, sagaID, SagaStepCompensated, nil); err != nil {
@@ -235,28 +269,41 @@ func (o *SagaOrchestrator) doCompensate(txCtx context.Context, sagaID string, st
 	return nil
 }
 
-// recordFailedCompensation persists a failed delete attempt. It commits (returns nil) so
-// the bumped attempt counter survives: either the saga stays COMPENSATING for the next
-// sweep, or it is dead-lettered once the retry budget is exhausted.
-func (o *SagaOrchestrator) recordFailedCompensation(txCtx context.Context, sagaID string, prevAttempts int, cause error) error {
-	attempts := prevAttempts + 1
-	if attempts >= o.maxCompensateAttempts {
-		msg := fmt.Sprintf("compensation dead-lettered after %d attempts: %v", attempts, cause)
-		if err := o.sagaRepo.SetCompensateOutcome(txCtx, sagaID, SagaStepCompensationFailed, attempts, &msg); err != nil {
-			return fmt.Errorf("dead-letter saga: %w", err)
+// recordFailedCompensation persists a failed delete attempt in its own transaction.
+// It re-reads the saga state to get the latest attempt count, then bumps it.
+// Returns nil when the outcome is committed (COMPENSATING for retry, or
+// COMPENSATION_FAILED when the retry budget is exhausted).
+func (o *SagaOrchestrator) recordFailedCompensation(ctx context.Context, sagaID string, cause error) error {
+	return o.txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
+		state, err := o.sagaRepo.GetForUpdate(txCtx, sagaID)
+		if err != nil {
+			return fmt.Errorf("re-lock saga for failure record: %w", err)
 		}
-		o.log.Error("saga: compensation dead-lettered, manual intervention required",
+
+		if isTerminal(state.Step) {
+			o.log.Info("saga: already terminal, skipping failure record", "saga_id", sagaID, "step", state.Step)
+			return nil
+		}
+
+		attempts := state.CompensateAttempts + 1
+		if attempts >= o.maxCompensateAttempts {
+			msg := fmt.Sprintf("compensation dead-lettered after %d attempts: %v", attempts, cause)
+			if err := o.sagaRepo.SetCompensateOutcome(txCtx, sagaID, SagaStepCompensationFailed, attempts, &msg); err != nil {
+				return fmt.Errorf("dead-letter saga: %w", err)
+			}
+			o.log.Error("saga: compensation dead-lettered, manual intervention required",
+				"saga_id", sagaID, "attempts", attempts, "error", cause)
+			return nil
+		}
+
+		msg := fmt.Sprintf("compensation attempt %d failed: %v", attempts, cause)
+		if err := o.sagaRepo.SetCompensateOutcome(txCtx, sagaID, SagaStepCompensating, attempts, &msg); err != nil {
+			return fmt.Errorf("record compensation attempt: %w", err)
+		}
+		o.log.Warn("saga: compensation attempt failed, will retry",
 			"saga_id", sagaID, "attempts", attempts, "error", cause)
 		return nil
-	}
-
-	msg := fmt.Sprintf("compensation attempt %d failed: %v", attempts, cause)
-	if err := o.sagaRepo.SetCompensateOutcome(txCtx, sagaID, SagaStepCompensating, attempts, &msg); err != nil {
-		return fmt.Errorf("record compensation attempt: %w", err)
-	}
-	o.log.Warn("saga: compensation attempt failed, will retry",
-		"saga_id", sagaID, "attempts", attempts, "error", cause)
-	return nil
+	})
 }
 
 // RegisterReplyHandlers attaches the two reply event handlers to the given bus.

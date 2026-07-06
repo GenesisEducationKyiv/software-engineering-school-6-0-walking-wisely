@@ -82,7 +82,7 @@ func (r *fakeSagaRepo) GetForUpdate(_ context.Context, sagaID string) (SagaState
 	}, nil
 }
 
-func (r *fakeSagaRepo) StuckSagas(_ context.Context, _ time.Duration) ([]SagaRow, error) {
+func (r *fakeSagaRepo) StuckSagas(_ context.Context, _, _ time.Duration) ([]SagaRow, error) {
 	return r.stuckSagas, nil
 }
 
@@ -262,7 +262,7 @@ func TestSweep_StuckCompensating_Redriven(t *testing.T) {
 	del := &fakeSubDeleter{}
 	orch := newOrchestrator(repo, del)
 
-	orch.Sweep(context.Background(), 10*time.Minute)
+	orch.Sweep(context.Background(), 10*time.Minute, 30*time.Minute)
 
 	if repo.sagas["saga-2"].step != SagaStepCompensated {
 		t.Errorf("step = %q, want COMPENSATED", repo.sagas["saga-2"].step)
@@ -279,7 +279,7 @@ func TestSweep_AlreadyTerminal_NoOp(t *testing.T) {
 	del := &fakeSubDeleter{}
 	orch := newOrchestrator(repo, del)
 
-	orch.Sweep(context.Background(), 10*time.Minute)
+	orch.Sweep(context.Background(), 10*time.Minute, 30*time.Minute)
 
 	if len(del.deleted) != 0 {
 		t.Errorf("unexpected deletions: %v", del.deleted)
@@ -300,7 +300,7 @@ func TestSweep_MultipleStuck_AllProcessed(t *testing.T) {
 	del := &fakeSubDeleter{}
 	orch := newOrchestrator(repo, del)
 
-	orch.Sweep(context.Background(), 10*time.Minute)
+	orch.Sweep(context.Background(), 10*time.Minute, 30*time.Minute)
 
 	if repo.sagas["s1"].step != SagaStepCompensated {
 		t.Errorf("s1 step = %q, want COMPENSATED", repo.sagas["s1"].step)
@@ -383,7 +383,7 @@ func TestSweep_DeleteFails_StaysCompensating(t *testing.T) {
 	del := &fakeSubDeleter{err: errors.New("db unreachable")}
 	orch := newOrchestrator(repo, del)
 
-	orch.Sweep(context.Background(), 10*time.Minute)
+	orch.Sweep(context.Background(), 10*time.Minute, 30*time.Minute)
 
 	s := repo.sagas["saga-1"]
 	if s.step != SagaStepCompensating {

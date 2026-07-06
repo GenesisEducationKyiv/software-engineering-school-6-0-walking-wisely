@@ -242,13 +242,13 @@ func run(appLogger logger.Logger) error {
 		defer wg.Done()
 		ticker := time.NewTicker(cfg.Saga.SweepInterval)
 		defer ticker.Stop()
-		sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter)
+		sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter, cfg.Saga.StuckAwaitingAfter)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter)
+				sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter, cfg.Saga.StuckAwaitingAfter)
 			}
 		}
 	}()
