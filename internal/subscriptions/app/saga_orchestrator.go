@@ -72,7 +72,7 @@ type SagaRepository interface {
 	GetForUpdate(ctx context.Context, sagaID string) (SagaState, error)
 	// StuckSagas returns sagas stuck in non-terminal steps:
 	//   - COMPENSATING: stuck longer than compensatingStuckAfter
-	//   - AWAITING_EMAIL: stuck longer than awaitingStuckAfter
+	//   - AWAITING_EMAIL: stuck longer than awaitingStuckAfter (low-cadence cleanup)
 	StuckSagas(ctx context.Context, compensatingStuckAfter, awaitingStuckAfter time.Duration) ([]SagaRow, error)
 }
 
@@ -196,8 +196,8 @@ func (o *SagaOrchestrator) OnConfirmationEmailFailed(ctx context.Context, event 
 }
 
 // Sweep re-drives sagas stuck in COMPENSATING (crashed mid-compensation) or
-// AWAITING_EMAIL (event lost, handler never replied). Each saga is processed
-// in its own transaction.
+// AWAITING_EMAIL (orphaned — event lost, handler never replied). Each saga
+// is processed in its own transaction.
 func (o *SagaOrchestrator) Sweep(ctx context.Context, compensatingStuckAfter, awaitingStuckAfter time.Duration) {
 	sagas, err := o.sagaRepo.StuckSagas(ctx, compensatingStuckAfter, awaitingStuckAfter)
 	if err != nil {

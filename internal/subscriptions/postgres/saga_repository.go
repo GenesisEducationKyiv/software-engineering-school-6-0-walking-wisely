@@ -120,7 +120,7 @@ func (r *SagaRepository) GetForUpdate(ctx context.Context, sagaID string) (subsc
 
 // StuckSagas returns sagas stuck in non-terminal steps:
 //   - COMPENSATING: stuck longer than compensatingStuckAfter
-//   - AWAITING_EMAIL: stuck longer than awaitingStuckAfter
+//   - AWAITING_EMAIL: stuck longer than awaitingStuckAfter (low-cadence cleanup)
 func (r *SagaRepository) StuckSagas(ctx context.Context, compensatingStuckAfter, awaitingStuckAfter time.Duration) ([]subscriptionapp.SagaRow, error) {
 	rows, err := r.db.Query(
 		ctx,

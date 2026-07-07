@@ -1,5 +1,5 @@
 BUF_VERSION ?= v1.65.0
-PLAYWRIGHT_GO_VERSION ?= v0.5700.1
+PLAYWRIGHT_GO_VERSION ?= v0.6000.0
 
 .PHONY: setup generate playwright-install playwright-install-ci test test-all test-unit test-unit-strict test-unit-ci test-integration test-e2e
 
