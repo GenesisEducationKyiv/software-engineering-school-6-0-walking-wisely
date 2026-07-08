@@ -12,7 +12,7 @@ import (
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
-	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 )
 
 type fakeMailSender struct {
@@ -54,21 +54,21 @@ type fakeJobQueue struct {
 	claimErr        error
 	markSentErr     error
 	markFailedErr   error
-	claims          [][]notificationdomain.Job
+	claims          [][]domain.Job
 	claimCalls      int
-	markSentCalls   [][]notificationdomain.Job
+	markSentCalls   [][]domain.Job
 	markFailedCalls []failedMarkCall
 	workerIDs       []string
 	ctxs            []context.Context
 }
 
 type failedMarkCall struct {
-	jobs        []notificationdomain.Job
+	jobs        []domain.Job
 	maxAttempts int
 	cause       error
 }
 
-func (f *fakeJobQueue) ClaimPending(ctx context.Context, workerID string, batchSize int) ([]notificationdomain.Job, error) {
+func (f *fakeJobQueue) ClaimPending(ctx context.Context, workerID string, batchSize int) ([]domain.Job, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -82,7 +82,7 @@ func (f *fakeJobQueue) ClaimPending(ctx context.Context, workerID string, batchS
 		return nil, nil
 	}
 
-	jobs := append([]notificationdomain.Job(nil), f.claims[0]...)
+	jobs := append([]domain.Job(nil), f.claims[0]...)
 	f.claims = f.claims[1:]
 	if len(jobs) > batchSize {
 		jobs = jobs[:batchSize]
@@ -90,18 +90,18 @@ func (f *fakeJobQueue) ClaimPending(ctx context.Context, workerID string, batchS
 	return jobs, nil
 }
 
-func (f *fakeJobQueue) MarkSent(_ context.Context, jobs []notificationdomain.Job) error {
+func (f *fakeJobQueue) MarkSent(_ context.Context, jobs []domain.Job) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.markSentCalls = append(f.markSentCalls, append([]notificationdomain.Job(nil), jobs...))
+	f.markSentCalls = append(f.markSentCalls, append([]domain.Job(nil), jobs...))
 	return f.markSentErr
 }
 
-func (f *fakeJobQueue) MarkFailed(_ context.Context, jobs []notificationdomain.Job, maxAttempts int, cause error) error {
+func (f *fakeJobQueue) MarkFailed(_ context.Context, jobs []domain.Job, maxAttempts int, cause error) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.markFailedCalls = append(f.markFailedCalls, failedMarkCall{
-		jobs:        append([]notificationdomain.Job(nil), jobs...),
+		jobs:        append([]domain.Job(nil), jobs...),
 		maxAttempts: maxAttempts,
 		cause:       cause,
 	})
@@ -190,7 +190,7 @@ func TestStartSenderFlushesClaimedJobsAtProviderBatchSize(t *testing.T) {
 
 	sender := newFakeMailSender(2)
 	jobs := &fakeJobQueue{
-		claims: [][]notificationdomain.Job{{
+		claims: [][]domain.Job{{
 			{ID: "job-1", To: "one@example.com", Subject: "one", HTML: "<p>one</p>"},
 			{ID: "job-2", To: "two@example.com", Subject: "two", HTML: "<p>two</p>"},
 		}},
@@ -238,7 +238,7 @@ func TestStartSenderPassesContextToDependencies(t *testing.T) {
 
 	sender := newFakeMailSender(1)
 	jobs := &fakeJobQueue{
-		claims: [][]notificationdomain.Job{{{
+		claims: [][]domain.Job{{{
 			ID: "job-1", To: "one@example.com", Subject: "one", HTML: "<p>one</p>",
 		}}},
 	}
@@ -272,7 +272,7 @@ func TestFlushPendingProviderErrorMarksJobsFailed(t *testing.T) {
 	sender := newFakeMailSender(2)
 	sender.err = errors.New("provider unavailable")
 	jobs := &fakeJobQueue{
-		claims: [][]notificationdomain.Job{{
+		claims: [][]domain.Job{{
 			{ID: "job-1", To: "one@example.com", Subject: "one"},
 			{ID: "job-2", To: "two@example.com", Subject: "two"},
 		}},
@@ -303,7 +303,7 @@ func TestFlushPendingSuccessfulSendMarksJobsSent(t *testing.T) {
 
 	sender := newFakeMailSender(2)
 	jobs := &fakeJobQueue{
-		claims: [][]notificationdomain.Job{{
+		claims: [][]domain.Job{{
 			{ID: "job-1", To: "one@example.com", Subject: "one", HTML: "<p>one</p>"},
 			{ID: "job-2", To: "two@example.com", Subject: "two", HTML: "<p>two</p>"},
 		}},
@@ -341,7 +341,7 @@ func TestFlushPendingMarkSentErrorIsReturned(t *testing.T) {
 	sender := newFakeMailSender(2)
 	jobs := &fakeJobQueue{
 		markSentErr: errors.New("db unavailable"),
-		claims: [][]notificationdomain.Job{{
+		claims: [][]domain.Job{{
 			{ID: "job-1", To: "one@example.com", Subject: "one"},
 		}},
 	}
@@ -359,7 +359,7 @@ func TestFlushPendingMarkFailedErrorIsReturned(t *testing.T) {
 	sender.err = errors.New("provider unavailable")
 	jobs := &fakeJobQueue{
 		markFailedErr: errors.New("db unavailable"),
-		claims: [][]notificationdomain.Job{{
+		claims: [][]domain.Job{{
 			{ID: "job-1", To: "one@example.com", Subject: "one"},
 		}},
 	}

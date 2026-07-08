@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
@@ -113,8 +113,8 @@ func TestMetricsRecordsOKWhenHandlerDoesNotWriteHeader(t *testing.T) {
 }
 
 func TestOpenTelemetryRecorderRecordsHTTPMetricsAndObservableGauges(t *testing.T) {
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	reader := metric.NewManualReader()
+	provider := metric.NewMeterProvider(metric.WithReader(reader))
 	recorder, err := middleware.NewOpenTelemetryRecorder(provider.Meter("middleware-test"))
 	if err != nil {
 		t.Fatalf("new OpenTelemetry recorder: %v", err)

@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	dockerclient "github.com/moby/moby/client"
+	"github.com/moby/moby/client"
 	gonats "github.com/nats-io/nats.go"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
-	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
 )
 
@@ -95,7 +95,7 @@ func TestIntegration_JetStreamPublisherConsumer_DispatchesAndAcksEvent(t *testin
 	}
 
 	consumer, err := platformnats.NewConsumer(
-		nc, platformlogger.NoopLogger{},
+		nc, logger.NoopLogger{},
 		platformnats.WithStreamName(streamName),
 		platformnats.WithSubjectPrefix(subjectPrefix),
 		platformnats.WithConsumerName("notifications"),
@@ -139,7 +139,7 @@ func TestIntegration_JetStreamConsumer_UnknownEventIsAcked(t *testing.T) {
 	subjectPrefix := "events_unknown"
 
 	consumer, err := platformnats.NewConsumer(
-		nc, platformlogger.NoopLogger{},
+		nc, logger.NoopLogger{},
 		platformnats.WithStreamName(streamName),
 		platformnats.WithSubjectPrefix(subjectPrefix),
 		platformnats.WithConsumerName("notifications"),
@@ -201,7 +201,7 @@ func TestIntegration_JetStreamConsumer_MovesExhaustedMessageToDLQ(t *testing.T) 
 		t.Fatalf("NewPublisher: %v", err)
 	}
 	consumer, err := platformnats.NewConsumer(
-		nc, platformlogger.NoopLogger{},
+		nc, logger.NoopLogger{},
 		platformnats.WithStreamName(streamName),
 		platformnats.WithSubjectPrefix(subjectPrefix),
 		platformnats.WithConsumerName("notifications"),
@@ -247,7 +247,7 @@ func TestIntegration_JetStreamConsumer_ReconnectsAfterServerRestart(t *testing.T
 
 	streamName := fmt.Sprintf("TEST_RECONNECT_%d", time.Now().UnixNano())
 	subjectPrefix := "events_reconnect"
-	log := platformlogger.NoopLogger{}
+	log := logger.NoopLogger{}
 
 	// Publisher uses NoReconnect — only needed for initial publish before stop.
 	pubNC, err := gonats.Connect(natsURL, gonats.NoReconnect())
@@ -290,7 +290,7 @@ func TestIntegration_JetStreamConsumer_ReconnectsAfterServerRestart(t *testing.T
 	}
 
 	// Pause container to simulate network loss without changing the mapped port.
-	dockerCli, err := dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
+	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		t.Fatalf("docker client: %v", err)
 	}
@@ -300,14 +300,14 @@ func TestIntegration_JetStreamConsumer_ReconnectsAfterServerRestart(t *testing.T
 
 	pauseCtx, pauseCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer pauseCancel()
-	if _, err := dockerCli.ContainerPause(pauseCtx, containerID, dockerclient.ContainerPauseOptions{}); err != nil {
+	if _, err := dockerCli.ContainerPause(pauseCtx, containerID, client.ContainerPauseOptions{}); err != nil {
 		t.Fatalf("pause container: %v", err)
 	}
 	time.Sleep(500 * time.Millisecond)
 
 	unpauseCtx, unpauseCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer unpauseCancel()
-	if _, err := dockerCli.ContainerUnpause(unpauseCtx, containerID, dockerclient.ContainerUnpauseOptions{}); err != nil {
+	if _, err := dockerCli.ContainerUnpause(unpauseCtx, containerID, client.ContainerUnpauseOptions{}); err != nil {
 		t.Fatalf("unpause container: %v", err)
 	}
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -9,41 +10,44 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
-	notificationworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
-	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
-	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
-
-	// Register event types so the JetStream consumer can decode them.
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 )
 
 func main() {
-	log := platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{})
+	log := logger.NewStructured(os.Stdout, logger.StructuredConfig{})
 	if err := run(log); err != nil {
 		log.Error("notifications service startup failed", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(log platformlogger.Logger) error {
-	contractevents.RegisterTypes(func(event contractevents.Event) {
-		events.RegisterType(event)
-	})
+func run(log logger.Logger) error {
+	events.RegisterTypes(
+		contractevents.SubscriptionRequested{},
+		contractevents.ReleaseDetected{},
+		commands.SendConfirmationEmail{},
+		commands.ConfirmationEmailSent{},
+		commands.ConfirmationEmailFailed{},
+	)
 
-	cfg, err := platformconfig.LoadNotificationsConfig()
+	cfg, err := config.LoadNotificationsConfig()
 	if err != nil {
 		return err
 	}
 
-	log = platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{
+	log = logger.NewStructured(os.Stdout, logger.StructuredConfig{
 		Level:       cfg.LogLevel,
 		ServiceName: cfg.ServiceName,
 		Environment: cfg.Environment,
@@ -55,28 +59,42 @@ func run(log platformlogger.Logger) error {
 	}
 	defer db.Close()
 
-	natsClient, err := platformnats.NewClient(cfg.NATS.URL, cfg.ServiceName, log)
+	if err := migrations.Run(cfg.DatabaseURL, log); err != nil {
+		return fmt.Errorf("run database migrations: %w", err)
+	}
+
+	natsClient, err := nats.NewClient(cfg.NATS.URL, cfg.ServiceName, log)
 	if err != nil {
 		return err
 	}
 	defer natsClient.Close()
 
-	notificationJobRepo := notificationpostgres.NewRepository(db, cfg.Job.InsertBatchSize)
+	// Outbox for saga reply events (notifications_outbox => NATS).
+	notificationsOutboxRepo := outbox.NewRepository(db, "notifications_outbox")
+	notificationsOutboxPublisher, err := nats.NewPublisher(natsClient, nats.PublisherOptions{
+		StreamName:    cfg.NATS.StreamName,
+		SubjectPrefix: cfg.NATS.SubjectPrefix,
+	})
+	if err != nil {
+		return err
+	}
+
+	notificationJobRepo := notificationpostgres.NewRepository(db, notificationsOutboxRepo, cfg.Job.InsertBatchSize)
 	resendClient := resend.NewClient(cfg.Resend.APIKey, cfg.Resend.From, log)
 
 	bus := events.NewBus()
 	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.Resend.BaseURL, log)
 	notificationHandlers.Register(bus)
 
-	consumer, err := platformnats.NewConsumer(
+	consumer, err := nats.NewConsumer(
 		natsClient, log,
-		platformnats.WithStreamName(cfg.NATS.StreamName),
-		platformnats.WithSubjectPrefix(cfg.NATS.SubjectPrefix),
-		platformnats.WithConsumerName(cfg.NATS.ConsumerName),
-		platformnats.WithBatchSize(cfg.NATS.BatchSize),
-		platformnats.WithAckWait(cfg.NATS.AckWait),
-		platformnats.WithMaxDeliveries(cfg.NATS.MaxDeliveries),
-		platformnats.WithDLQSubject(cfg.NATS.DLQSubject),
+		nats.WithStreamName(cfg.NATS.StreamName),
+		nats.WithSubjectPrefix(cfg.NATS.SubjectPrefix),
+		nats.WithConsumerName(cfg.NATS.ConsumerName),
+		nats.WithBatchSize(cfg.NATS.BatchSize),
+		nats.WithAckWait(cfg.NATS.AckWait),
+		nats.WithMaxDeliveries(cfg.NATS.MaxDeliveries),
+		nats.WithDLQSubject(cfg.NATS.DLQSubject),
 	)
 	if err != nil {
 		return err
@@ -99,36 +117,39 @@ func run(log platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		notificationworker.StartSender(ctx, resendClient, notificationJobRepo, cfg.Resend.MaxWait, log)
+		worker.StartSender(ctx, resendClient, notificationJobRepo, cfg.Resend.MaxWait, log)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		notificationworker.StartCleanup(ctx, notificationJobRepo, cfg.Job.CleanupInterval, cfg.Job.Retention, log)
+		worker.StartCleanup(ctx, notificationJobRepo, cfg.Job.CleanupInterval, cfg.Job.Retention, log)
 	}()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if !natsClient.IsConnected() {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"status":"unavailable","reason":"nats disconnected"}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	// Dispatcher for the notifications outbox — publishes saga reply events to NATS.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		outbox.StartDispatcher(ctx, notificationsOutboxRepo, notificationsOutboxPublisher, cfg.Outbox.CleanupInterval, 32, 5, log)
+	}()
 
+	// Cleanup for the notifications outbox.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		outbox.StartCleanup(ctx, notificationsOutboxRepo, cfg.Outbox.CleanupInterval, cfg.Outbox.Retention, log)
+	}()
+
+	// Minimal health endpoint for container orchestration readiness probes.
 	healthSrv := &http.Server{
 		Addr:         ":" + cfg.HTTPPort,
-		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
+	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 
 	wg.Add(1)
 	go func() {

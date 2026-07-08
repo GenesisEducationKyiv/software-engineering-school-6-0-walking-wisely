@@ -6,16 +6,14 @@ import (
 	"fmt"
 	"regexp"
 
-	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
-	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 var repoPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`)
 
 // SubscriptionWriter persists token-mediated subscription lifecycle changes.
 type SubscriptionWriter interface {
-	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) (subscriptionsdomain.SubscribeResult, error)
+	Subscribe(ctx context.Context, email, repo, confirmToken, unsubToken string) (domain.SubscribeResult, error)
 }
 
 type TransactionManager interface {
@@ -33,12 +31,17 @@ type SubscribeCommand struct {
 	Repo  string
 }
 
+// SubscriptionOrchestrator enqueues the saga command within an active transaction.
+type SubscriptionOrchestrator interface {
+	EnqueueWithinTx(txCtx context.Context, subscriptionID, email, repo, confirmToken, unsubToken string) error
+}
+
 // SubscribeService coordinates the subscribe use case.
 type SubscribeService struct {
 	repo           SubscriptionWriter
 	txManager      TransactionManager
 	github         GithubRepoValidator
-	publisher      events.Publisher
+	orchestrator   SubscriptionOrchestrator
 	emailSecretKey string
 }
 
@@ -47,7 +50,7 @@ type SubscribeDeps struct {
 	Repo           SubscriptionWriter
 	TxManager      TransactionManager
 	Github         GithubRepoValidator
-	Publisher      events.Publisher
+	Orchestrator   SubscriptionOrchestrator
 	EmailSecretKey string
 }
 
@@ -57,63 +60,57 @@ func NewSubscribeService(deps *SubscribeDeps) *SubscribeService {
 		repo:           deps.Repo,
 		txManager:      deps.TxManager,
 		github:         deps.Github,
-		publisher:      deps.Publisher,
+		orchestrator:   deps.Orchestrator,
 		emailSecretKey: deps.EmailSecretKey,
 	}
 }
 
 // Subscribe validates the command, verifies the repo, persists the subscription,
-// and requests a confirmation email.
-func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) (subscriptionsdomain.SubscribeResult, error) {
+// and enqueues the saga's SendConfirmationEmail command — all atomically.
+func (s *SubscribeService) Subscribe(ctx context.Context, cmd SubscribeCommand) (domain.SubscribeResult, error) {
 	email := NormalizeEmail(cmd.Email)
 	repo := NormalizeRepo(cmd.Repo)
 
 	if !IsValidEmail(email) {
-		return subscriptionsdomain.SubscribeResult{}, subscriptionsdomain.ErrInvalidEmail
+		return domain.SubscribeResult{}, domain.ErrInvalidEmail
 	}
 
 	if !IsValidRepo(repo) {
-		return subscriptionsdomain.SubscribeResult{}, subscriptionsdomain.ErrInvalidRepo
+		return domain.SubscribeResult{}, domain.ErrInvalidRepo
 	}
 
 	if err := s.github.ValidateRepo(ctx, repo); err != nil {
-		return subscriptionsdomain.SubscribeResult{}, err
+		return domain.SubscribeResult{}, err
 	}
 
 	confirmToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
-		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("generate confirm token: %w", err)
+		return domain.SubscribeResult{}, fmt.Errorf("generate confirm token: %w", err)
 	}
 	unsubToken, err := GenerateToken(s.emailSecretKey)
 	if err != nil {
-		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("generate unsub token: %w", err)
+		return domain.SubscribeResult{}, fmt.Errorf("generate unsub token: %w", err)
 	}
 
 	if s.txManager == nil {
-		return subscriptionsdomain.SubscribeResult{}, fmt.Errorf("subscribe: transaction manager is required")
+		return domain.SubscribeResult{}, fmt.Errorf("subscribe: transaction manager is required")
 	}
 
-	var result subscriptionsdomain.SubscribeResult
+	var result domain.SubscribeResult
 	if err := s.txManager.WithinTransaction(ctx, func(txCtx context.Context) error {
 		result, err = s.repo.Subscribe(txCtx, email, repo, confirmToken, unsubToken)
 		if err != nil {
 			return err
 		}
-		if s.publisher == nil {
+		if s.orchestrator == nil {
 			return nil
 		}
-		if err := s.publisher.Publish(txCtx, subscriptionevents.NewSubscriptionRequested(
-			result.SubscriptionID,
-			email,
-			repo,
-			confirmToken,
-			unsubToken,
-		)); err != nil {
-			return fmt.Errorf("publish subscription requested: %w", err)
+		if err := s.orchestrator.EnqueueWithinTx(txCtx, result.SubscriptionID, email, repo, confirmToken, unsubToken); err != nil {
+			return fmt.Errorf("enqueue saga: %w", err)
 		}
 		return nil
 	}); err != nil {
-		return subscriptionsdomain.SubscribeResult{}, err
+		return domain.SubscribeResult{}, err
 	}
 
 	return result, nil

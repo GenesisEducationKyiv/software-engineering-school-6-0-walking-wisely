@@ -20,37 +20,35 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github"
 	githubredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/github/redis"
-	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 	platformevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
-	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
-	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
-	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
 	platformredis "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/redis"
-	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
 	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
-	releasemonitoringworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/worker"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/worker"
+	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 
-	// Register event types so outbox can decode them for JetStream publishing.
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
-
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	subscriptionv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
 
 //go:embed web/index.html
 var indexHTML []byte
 
 func main() {
-	appLogger := platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{})
+	appLogger := logger.NewStructured(os.Stdout, logger.StructuredConfig{})
 
 	if err := run(appLogger); err != nil {
 		appLogger.Error("application startup failed", "err", err)
@@ -58,22 +56,26 @@ func main() {
 	}
 }
 
-func run(appLogger platformlogger.Logger) error {
-	contractevents.RegisterTypes(func(event contractevents.Event) {
-		platformevents.RegisterType(event)
-	})
+func run(appLogger logger.Logger) error {
+	platformevents.RegisterTypes(
+		contractevents.SubscriptionRequested{},
+		contractevents.ReleaseDetected{},
+		commands.SendConfirmationEmail{},
+		commands.ConfirmationEmailSent{},
+		commands.ConfirmationEmailFailed{},
+	)
 
-	cfg, err := platformconfig.LoadAppConfig()
+	cfg, err := config.LoadAppConfig()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	appLogger = platformlogger.NewStructured(os.Stdout, platformlogger.StructuredConfig{
+	appLogger = logger.NewStructured(os.Stdout, logger.StructuredConfig{
 		Level:       cfg.LogLevel,
 		ServiceName: cfg.ServiceName,
 		Environment: cfg.Environment,
 	})
 
-	meterProvider, err := platformmetrics.InitMeterProvider()
+	meterProvider, err := metrics.InitMeterProvider()
 	if err != nil {
 		return fmt.Errorf("init meter provider: %w", err)
 	}
@@ -91,7 +93,7 @@ func run(appLogger platformlogger.Logger) error {
 		return fmt.Errorf("init metrics recorder: %w", err)
 	}
 
-	if err := platformmigrations.Run(cfg.DatabaseURL, appLogger); err != nil {
+	if err := migrations.Run(cfg.DatabaseURL, appLogger); err != nil {
 		return fmt.Errorf("run database migrations: %w", err)
 	}
 
@@ -112,7 +114,7 @@ func run(appLogger platformlogger.Logger) error {
 		}
 	}()
 
-	natsClient, err := platformnats.NewClient(cfg.NATS.URL, cfg.ServiceName, appLogger)
+	natsClient, err := nats.NewClient(cfg.NATS.URL, cfg.ServiceName, appLogger)
 	if err != nil {
 		return fmt.Errorf("init nats: %w", err)
 	}
@@ -120,6 +122,7 @@ func run(appLogger platformlogger.Logger) error {
 
 	subTokenRepo := postgres.NewTokenRepo(db, appLogger)
 	subReadRepo := postgres.NewReadRepo(db, appLogger)
+	subSagaRepo := postgres.NewSagaRepository(db)
 	releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(db, appLogger)
 	outboxRepo := outbox.NewRepository(db)
 	outboxPublisher := outbox.NewPublisher(outboxRepo)
@@ -131,7 +134,7 @@ func run(appLogger platformlogger.Logger) error {
 	releaseCache := githubredis.NewGitHubReleaseCache(redisClient)
 	cachedGithubClient := github.NewCachedReleaseClient(githubClient, releaseCache, github.ReleaseCacheTTL, appLogger)
 
-	eventPublisher, err := platformnats.NewPublisher(natsClient, platformnats.PublisherOptions{
+	eventPublisher, err := nats.NewPublisher(natsClient, nats.PublisherOptions{
 		StreamName:    cfg.NATS.StreamName,
 		SubjectPrefix: cfg.NATS.SubjectPrefix,
 	})
@@ -160,7 +163,7 @@ func run(appLogger platformlogger.Logger) error {
 
 	var wg sync.WaitGroup
 
-	scannerService := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
+	scannerService := app.NewScannerService(&app.ScannerDeps{
 		Repo:      releaseScanRepo,
 		GitHub:    cachedGithubClient,
 		TxManager: releaseScanRepo,
@@ -171,7 +174,7 @@ func run(appLogger platformlogger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		releasemonitoringworker.StartScanner(ctx, scannerService, cfg.ScannerInterval, appLogger)
+		worker.StartScanner(ctx, scannerService, cfg.ScannerInterval, appLogger)
 	}()
 
 	wg.Add(1)
@@ -198,18 +201,70 @@ func run(appLogger platformlogger.Logger) error {
 		outbox.StartCleanup(ctx, outboxRepo, cfg.Outbox.CleanupInterval, cfg.Outbox.Retention, appLogger)
 	}()
 
+	// Saga orchestrator — drives the subscribe confirmation saga.
+	sagaOrchestrator := subscriptionapp.NewSagaOrchestrator(&subscriptionapp.SagaOrchestratorDeps{
+		SagaRepo:  subSagaRepo,
+		SubRepo:   subTokenRepo,
+		TxManager: subTokenRepo,
+		Publisher: outboxPublisher,
+		Log:       appLogger,
+	})
+
+	// Reply consumer — receives ConfirmationEmailSent / ConfirmationEmailFailed from NATS.
+	replyBus := platformevents.NewBus()
+	sagaOrchestrator.RegisterReplyHandlers(replyBus)
+
+	replyConsumer, err := nats.NewConsumer(
+		natsClient, appLogger,
+		nats.WithStreamName(cfg.NATS.StreamName),
+		nats.WithSubjectPrefix(cfg.NATS.SubjectPrefix),
+		nats.WithConsumerName(cfg.NATS.ConsumerName),
+		nats.WithBatchSize(cfg.NATS.BatchSize),
+		nats.WithAckWait(cfg.NATS.AckWait),
+		nats.WithMaxDeliveries(cfg.NATS.MaxDeliveries),
+		nats.WithDLQSubject(cfg.NATS.DLQSubject),
+	)
+	if err != nil {
+		return fmt.Errorf("init saga reply consumer: %w", err)
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := replyConsumer.Run(ctx, replyBus); err != nil {
+			appLogger.Error("saga reply consumer error", "err", err)
+			cancel()
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(cfg.Saga.SweepInterval)
+		defer ticker.Stop()
+		sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter, cfg.Saga.StuckAwaitingAfter)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sagaOrchestrator.Sweep(ctx, cfg.Saga.StuckAfter, cfg.Saga.StuckAwaitingAfter)
+			}
+		}
+	}()
+
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      subTokenRepo,
 		TxManager:      subTokenRepo,
 		ReadRepo:       subReadRepo,
 		Github:         githubClient,
-		Publisher:      outboxPublisher,
+		Orchestrator:   sagaOrchestrator,
 		EmailSecretKey: cfg.EmailSecretKey,
 		Log:            appLogger,
 	})
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterSubscribeServiceServer(grpcServer, subService)
+	subscriptionv1.RegisterSubscribeServiceServer(grpcServer, subService)
 	reflection.Register(grpcServer)
 
 	grpcPort := cfg.GrpcPort
@@ -234,7 +289,7 @@ func run(appLogger platformlogger.Logger) error {
 	}
 
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	err = pb.RegisterSubscribeServiceHandlerFromEndpoint(ctx, gwMux, "localhost:"+grpcPort, opts)
+	err = subscriptionv1.RegisterSubscribeServiceHandlerFromEndpoint(ctx, gwMux, "localhost:"+grpcPort, opts)
 	if err != nil {
 		return fmt.Errorf("register gRPC-Gateway: %w", err)
 	}
@@ -318,7 +373,7 @@ func newHTTPHandler(
 	gwMux http.Handler,
 	metricsHandler http.Handler,
 	recorder middleware.MetricsRecorder,
-	log platformlogger.Logger,
+	log logger.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", metricsHandler)

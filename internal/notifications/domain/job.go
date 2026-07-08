@@ -14,4 +14,5 @@ type Job struct {
 	Subject      string
 	HTML         string
 	AttemptCount int
+	SagaID       string // non-empty only for confirmation jobs that belong to a saga
 }

@@ -17,13 +17,13 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
-	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	platformmetrics "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/metrics"
 )
 
 func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	provider, err := platformmetrics.NewMeterProvider(registry)
+	provider, err := metrics.NewMeterProvider(registry)
 	if err != nil {
 		t.Fatalf("new meter provider: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestIntegration_HTTPMetricsAreExposedOnMetricsEndpoint(t *testing.T) {
 		gwMux,
 		promhttp.HandlerFor(registry, promhttp.HandlerOpts{}),
 		recorder,
-		platformlogger.NoopLogger{},
+		logger.NoopLogger{},
 	)
 
 	server := httptest.NewServer(handler)

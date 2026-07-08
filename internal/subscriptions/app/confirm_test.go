@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 const validToken = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
@@ -53,7 +53,7 @@ func TestConfirm_InvalidToken(t *testing.T) {
 	svc := NewConfirmService(repo)
 
 	_, err := svc.Confirm(context.Background(), "not-a-valid-token")
-	if !errors.Is(err, subscriptionsdomain.ErrInvalidToken) {
+	if !errors.Is(err, domain.ErrInvalidToken) {
 		t.Errorf("got %v, want ErrInvalidToken", err)
 	}
 	if repo.calls != 0 {
@@ -72,10 +72,10 @@ func TestConfirm_RepoError(t *testing.T) {
 }
 
 func TestConfirm_TokenNotFound(t *testing.T) {
-	svc := NewConfirmService(&fakeConfirmRepo{err: subscriptionsdomain.ErrTokenNotFound})
+	svc := NewConfirmService(&fakeConfirmRepo{err: domain.ErrTokenNotFound})
 
 	_, err := svc.Confirm(context.Background(), validToken)
-	if !errors.Is(err, subscriptionsdomain.ErrTokenNotFound) {
+	if !errors.Is(err, domain.ErrTokenNotFound) {
 		t.Errorf("got %v, want ErrTokenNotFound", err)
 	}
 }

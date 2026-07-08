@@ -1,4 +1,4 @@
-package releasemonitoringapp
+package app
 
 import (
 	"context"
@@ -9,12 +9,12 @@ import (
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	releasemonitoringdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 )
 
 type ReleaseScanRepo interface {
 	ListDistinctConfirmedRepos(ctx context.Context) ([]string, error)
-	ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]releasemonitoringdomain.Subscriber, error)
+	ListConfirmedSubscribersForRepo(ctx context.Context, repo string) ([]domain.Subscriber, error)
 	UpdateLastSeenTag(ctx context.Context, repo, tag string) error
 }
 
@@ -124,7 +124,7 @@ func (s *ScannerService) scanRepo(ctx context.Context, repo string) (int, error)
 		return 0, err
 	}
 
-	pending := make([]releasemonitoringdomain.Subscriber, 0, len(subscribers))
+	pending := make([]domain.Subscriber, 0, len(subscribers))
 	for _, subscriber := range subscribers {
 		if subscriber.LastSeenTag != nil && *subscriber.LastSeenTag == release.TagName {
 			continue
@@ -177,7 +177,7 @@ func (s *ScannerService) scanRepo(ctx context.Context, repo string) (int, error)
 	return len(pending), nil
 }
 
-func releaseDetectedSubscribers(subscribers []releasemonitoringdomain.Subscriber) []contractevents.Subscriber {
+func releaseDetectedSubscribers(subscribers []domain.Subscriber) []contractevents.Subscriber {
 	result := make([]contractevents.Subscriber, 0, len(subscribers))
 	for _, subscriber := range subscribers {
 		result = append(result, contractevents.Subscriber{

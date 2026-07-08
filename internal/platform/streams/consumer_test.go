@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	goredis "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -32,7 +32,7 @@ func init() {
 
 // ── shared redis setup ─────────────────────────────────────────────────────────
 
-func newRedisClient(t *testing.T) *goredis.Client {
+func newRedisClient(t *testing.T) *redis.Client {
 	t.Helper()
 	testcontainers.SkipIfProviderIsNotHealthy(t)
 
@@ -63,7 +63,7 @@ func newRedisClient(t *testing.T) *goredis.Client {
 		t.Fatalf("get container port: %v", err)
 	}
 
-	client := goredis.NewClient(&goredis.Options{
+	client := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", host, port.Port()),
 	})
 	t.Cleanup(func() { _ = client.Close() })
@@ -241,7 +241,7 @@ func TestConsumer_UnknownEventTypeIsAcked(t *testing.T) {
 	// An unknown event type must be ACKed so it doesn't block the PEL.
 	client := newRedisClient(t)
 
-	if err := client.XAdd(context.Background(), &goredis.XAddArgs{
+	if err := client.XAdd(context.Background(), &redis.XAddArgs{
 		Stream: "test-stream",
 		ID:     "*",
 		Values: map[string]any{

@@ -9,7 +9,7 @@ import (
 
 	"github.com/playwright-community/playwright-go"
 
-	servere2e "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/cmd/server/e2e"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/cmd/server/e2e"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
 )
 
@@ -52,7 +52,7 @@ func TestIndexPageSubscriptionFlow(t *testing.T) {
 		t.Fatalf("create page: %v", err)
 	}
 
-	index := servere2e.NewIndexPage(page, httpServer.URL)
+	index := e2e.NewIndexPage(page, httpServer.URL)
 	index.Open(t)
 
 	index.Subscribe(t, "E2E.User@Example.COM", "OWNER/Repo")

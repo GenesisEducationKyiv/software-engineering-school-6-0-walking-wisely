@@ -20,13 +20,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	subscriptionevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	subscriptionv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/http/middleware"
-	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
-	platformmigrations "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres/migrations"
+	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 )
@@ -87,7 +88,7 @@ func newGatewayTestDB(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("build postgres connection string: %v", err)
 	}
-	if err := platformmigrations.Run(databaseURL, platformlogger.NoopLogger{}); err != nil {
+	if err := migrations.Run(databaseURL, logger.NoopLogger{}); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 
@@ -109,32 +110,38 @@ func newGatewayTestServer(
 ) *httptest.Server {
 	t.Helper()
 
-	tokenRepo := postgres.NewTokenRepo(db, platformlogger.NoopLogger{})
-	readRepo := postgres.NewReadRepo(db, platformlogger.NoopLogger{})
+	tokenRepo := postgres.NewTokenRepo(db, logger.NoopLogger{})
+	readRepo := postgres.NewReadRepo(db, logger.NoopLogger{})
 	bus := events.NewBus()
-	bus.Subscribe(subscriptionevents.SubscriptionRequested{}.EventName(), func(_ context.Context, ev events.Event) error {
-		req, ok := ev.(subscriptionevents.SubscriptionRequested)
+	bus.Subscribe(commands.SendConfirmationEmail{}.EventName(), func(_ context.Context, ev events.Event) error {
+		cmd, ok := ev.(commands.SendConfirmationEmail)
 		if !ok {
 			return nil
 		}
 		select {
 		case emailChan <- mail.Message{
-			To:      req.Email,
-			Subject: "Confirm your subscription to " + req.Repo + " releases",
-			HTML:    baseURL + "/api/confirm/" + req.ConfirmToken + " " + baseURL + "/api/unsubscribe/" + req.UnsubToken,
+			To:      cmd.Email,
+			Subject: "Confirm your subscription to " + cmd.Repo + " releases",
+			HTML:    baseURL + "/api/confirm/" + cmd.ConfirmToken + " " + baseURL + "/api/unsubscribe/" + cmd.UnsubToken,
 		}:
 		default:
 		}
 		return nil
+	})
+	orchestrator := subscriptionapp.NewSagaOrchestrator(&subscriptionapp.SagaOrchestratorDeps{
+		SagaRepo:  postgres.NewSagaRepository(db),
+		SubRepo:   tokenRepo,
+		TxManager: tokenRepo,
+		Publisher: bus,
 	})
 	service := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      tokenRepo,
 		ReadRepo:       readRepo,
 		TxManager:      tokenRepo,
 		Github:         gatewayTestGitHub{},
-		Publisher:      bus,
+		Orchestrator:   orchestrator,
 		EmailSecretKey: "test-secret",
-		Log:            platformlogger.NoopLogger{},
+		Log:            logger.NoopLogger{},
 	})
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -143,7 +150,7 @@ func newGatewayTestServer(
 	}
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterSubscribeServiceServer(grpcServer, service)
+	subscriptionv1.RegisterSubscribeServiceServer(grpcServer, service)
 	t.Cleanup(grpcServer.Stop)
 
 	serveErr := make(chan error, 1)
@@ -164,7 +171,7 @@ func newGatewayTestServer(
 	if err := registerGatewayRoutes(gwMux); err != nil {
 		t.Fatalf("register gateway routes: %v", err)
 	}
-	if err := pb.RegisterSubscribeServiceHandlerFromEndpoint(
+	if err := subscriptionv1.RegisterSubscribeServiceHandlerFromEndpoint(
 		ctx,
 		gwMux,
 		lis.Addr().String(),
@@ -177,7 +184,7 @@ func newGatewayTestServer(
 		gwMux,
 		http.NotFoundHandler(),
 		gatewayTestMetricsRecorder{},
-		platformlogger.NoopLogger{},
+		logger.NoopLogger{},
 	))
 	t.Cleanup(server.Close)
 

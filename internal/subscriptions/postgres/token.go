@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 // Subscribe creates a new subscription or refreshes the confirm token for an
@@ -18,9 +18,9 @@ import (
 func (r *TokenRepo) Subscribe(
 	ctx context.Context,
 	email, repo, confirmToken, unsubToken string,
-) (result subscriptionsdomain.SubscribeResult, err error) {
-	err = platformpostgres.WithinTransaction(ctx, r.db, func(ctx context.Context) error {
-		exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+) (result domain.SubscribeResult, err error) {
+	err = postgres.WithinTransaction(ctx, r.db, func(ctx context.Context) error {
+		exec := postgres.ExecutorFromContext(ctx, r.db)
 
 		var id string
 		var confirmed bool
@@ -32,7 +32,7 @@ func (r *TokenRepo) Subscribe(
 
 		switch {
 		case err == nil && confirmed:
-			return subscriptionsdomain.ErrAlreadySubscribed
+			return domain.ErrAlreadySubscribed
 
 		case err == nil && !confirmed:
 			if _, err = exec.Exec(
@@ -42,9 +42,9 @@ func (r *TokenRepo) Subscribe(
 			); err != nil {
 				return fmt.Errorf("refresh confirm token: %w", err)
 			}
-			result = subscriptionsdomain.SubscribeResult{
+			result = domain.SubscribeResult{
 				SubscriptionID: id,
-				Action:         subscriptionsdomain.SubscribeActionConfirmationRefreshed,
+				Action:         domain.SubscribeActionConfirmationRefreshed,
 			}
 
 		case errors.Is(err, pgx.ErrNoRows):
@@ -58,9 +58,9 @@ func (r *TokenRepo) Subscribe(
 			if err != nil {
 				return fmt.Errorf("insert subscription: %w", err)
 			}
-			result = subscriptionsdomain.SubscribeResult{
+			result = domain.SubscribeResult{
 				SubscriptionID: id,
-				Action:         subscriptionsdomain.SubscribeActionCreated,
+				Action:         domain.SubscribeActionCreated,
 			}
 
 		default:
@@ -75,7 +75,7 @@ func (r *TokenRepo) Subscribe(
 // confirmation email. Uses SELECT FOR UPDATE to guard against concurrent calls.
 // Returns the subscription ID on success for logging (never the email).
 func (r *TokenRepo) ConfirmByToken(ctx context.Context, token string) (id string, err error) {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 
 	err = exec.QueryRow(
 		ctx,
@@ -83,7 +83,7 @@ func (r *TokenRepo) ConfirmByToken(ctx context.Context, token string) (id string
 		token,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", subscriptionsdomain.ErrTokenNotFound
+		return "", domain.ErrTokenNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("lock confirm token row: %w", err)
@@ -99,6 +99,20 @@ func (r *TokenRepo) ConfirmByToken(ctx context.Context, token string) (id string
 	return id, nil
 }
 
+// DeleteSubscription deletes a subscription by ID. Used by the saga orchestrator
+// to compensate a failed confirmation email dispatch.
+func (r *TokenRepo) DeleteSubscription(ctx context.Context, id string) error {
+	exec := postgres.ExecutorFromContext(ctx, r.db)
+	if _, err := exec.Exec(
+		ctx,
+		`DELETE FROM subscriptions WHERE id = $1::uuid`,
+		id,
+	); err != nil {
+		return fmt.Errorf("delete subscription %s: %w", id, err)
+	}
+	return nil
+}
+
 // UnsubscribeByToken deletes a subscription using the token embedded in every
 // notification email. Returns the subscription ID on success for logging.
 func (r *TokenRepo) UnsubscribeByToken(ctx context.Context, token string) (string, error) {
@@ -109,7 +123,7 @@ func (r *TokenRepo) UnsubscribeByToken(ctx context.Context, token string) (strin
 		token,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", subscriptionsdomain.ErrTokenNotFound
+		return "", domain.ErrTokenNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("delete subscription: %w", err)
