@@ -1,27 +1,28 @@
 package architecture
 
 import (
-	"encoding/json"
-	"os/exec"
 	"strings"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 func TestArchitectureDependencies(t *testing.T) {
-	modPath := modulePath(t)
-	root := moduleRoot(t)
+	modPath, modDir := moduleInfo(t)
 
-	allDeps := listAllDeps(t, root)
+	byPath := loadPackages(t, modDir)
 
 	for _, rule := range Rules {
 		t.Run(rule.Name, func(t *testing.T) {
-			deps, ok := allDeps[rule.Package]
+			pkg, ok := byPath[rule.Package]
 			if !ok {
-				t.Fatalf("package %s not found in go list output", rule.Package)
+				t.Fatalf("package %s not found in loaded packages", rule.Package)
 			}
 
+			deps := transitiveDeps(pkg)
+
 			var violations []string
-			for _, dep := range deps {
+			for dep := range deps {
 				if dep == rule.Package {
 					continue
 				}
@@ -48,53 +49,69 @@ func TestArchitectureDependencies(t *testing.T) {
 	}
 }
 
-type pkgJSON struct {
-	ImportPath string   `json:"ImportPath"`
-	Deps       []string `json:"Deps"`
-}
-
-func listAllDeps(t *testing.T, root string) map[string][]string {
+// moduleInfo resolves the main module's import path and root directory without
+// shelling out to `go list -m`, using the same packages.Load driver as the rest
+// of this file so behavior stays consistent across Go versions/environments.
+func moduleInfo(t *testing.T) (path, dir string) {
 	t.Helper()
 
-	cmd := exec.Command("go", "list", "-json", "./internal/...", "./gen/...")
-	cmd.Dir = root
-	out, err := cmd.Output()
+	pkgs, err := packages.Load(&packages.Config{Mode: packages.NeedModule}, ".")
 	if err != nil {
-		t.Fatalf("go list -json failed: %v", err)
+		t.Fatalf("failed to resolve module: %v", err)
+	}
+	if len(pkgs) == 0 || pkgs[0].Module == nil {
+		t.Fatalf("failed to resolve module: no module info returned")
+	}
+	return pkgs[0].Module.Path, pkgs[0].Module.Dir
+}
+
+// loadPackages loads the full import graph under internal/ and gen/ and returns
+// a map keyed by package import path. Errors from the load itself (missing
+// packages, e.g. gen/ not yet generated via `make generate`, or broken imports)
+// are surfaced as clear test failures instead of an opaque process exit code.
+func loadPackages(t *testing.T, modDir string) map[string]*packages.Package {
+	t.Helper()
+
+	cfg := &packages.Config{
+		Dir:  modDir,
+		Mode: packages.NeedName | packages.NeedImports | packages.NeedDeps,
+	}
+	pkgs, err := packages.Load(cfg, "./internal/...", "./gen/...")
+	if err != nil {
+		t.Fatalf("failed to load packages: %v", err)
 	}
 
-	result := make(map[string][]string)
-	dec := json.NewDecoder(strings.NewReader(string(out)))
-	for dec.More() {
-		var pkg pkgJSON
-		if err := dec.Decode(&pkg); err != nil {
-			t.Fatalf("failed to decode go list output: %v", err)
+	if errCount := packages.PrintErrors(pkgs); errCount > 0 {
+		t.Fatalf("go/packages reported %d error(s) while loading ./internal/... and ./gen/...; "+
+			"if this mentions missing gen/ packages, run `make generate` first", errCount)
+	}
+
+	byPath := make(map[string]*packages.Package)
+	for _, pkg := range pkgs {
+		byPath[pkg.PkgPath] = pkg
+	}
+	return byPath
+}
+
+// transitiveDeps walks the import graph reachable from root and returns the
+// set of all transitively imported package paths, mirroring what `go list
+// -json`'s flattened .Deps field provides directly.
+func transitiveDeps(root *packages.Package) map[string]bool {
+	seen := make(map[string]bool)
+
+	var walk func(p *packages.Package)
+	walk = func(p *packages.Package) {
+		for path, imp := range p.Imports {
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			walk(imp)
 		}
-		result[pkg.ImportPath] = pkg.Deps
 	}
-	return result
-}
+	walk(root)
 
-func moduleRoot(t *testing.T) string {
-	t.Helper()
-
-	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("go list -m failed: %v", err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func modulePath(t *testing.T) string {
-	t.Helper()
-
-	cmd := exec.Command("go", "list", "-m")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("go list -m failed: %v", err)
-	}
-	return strings.TrimSpace(string(out))
+	return seen
 }
 
 func isInternal(dep, modPath string) bool {
