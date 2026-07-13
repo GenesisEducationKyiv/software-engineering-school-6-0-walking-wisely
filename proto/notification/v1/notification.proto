@@ -1,0 +1,21 @@
+syntax = "proto3";
+package notification.v1;
+
+option go_package = "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/notification/v1;notificationv1";
+
+message SendConfirmationRequest {
+    string saga_id          = 1;
+    string subscription_id  = 2;
+    string email            = 3;
+    string repo             = 4;
+    string confirm_token    = 5;
+    string unsub_token      = 6;
+    string event_id         = 7;
+    string idempotency_key  = 8;
+}
+
+message Ack {}
+
+service NotificationService {
+    rpc SendConfirmation (SendConfirmationRequest) returns (Ack);
+}

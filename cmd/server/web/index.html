@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitHub Release Notifications</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 16px 80px;
+    }
+
+    .logo {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #f0f6fc;
+      text-align: center;
+    }
+
+    .subtitle {
+      margin-top: 8px;
+      font-size: 0.95rem;
+      color: #8b949e;
+      text-align: center;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 28px 32px;
+      width: 100%;
+      max-width: 480px;
+      margin-top: 32px;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #f0f6fc;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: #8b949e;
+      margin-bottom: 6px;
+      margin-top: 16px;
+    }
+
+    label:first-of-type { margin-top: 0; }
+
+    input {
+      width: 100%;
+      padding: 9px 12px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #f0f6fc;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus { border-color: #388bfd; }
+    input::placeholder { color: #484f58; }
+
+    button {
+      margin-top: 20px;
+      width: 100%;
+      padding: 10px;
+      background: #238636;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button:hover:not(:disabled) { background: #2ea043; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      margin-top: 12px;
+    }
+
+    .btn-secondary:hover:not(:disabled) { background: #30363d; }
+
+    .alert {
+      margin-top: 16px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      display: none;
+    }
+
+    .alert.success { background: #0d4429; border: 1px solid #238636; color: #3fb950; display: block; }
+    .alert.error   { background: #490202; border: 1px solid #f85149; color: #f85149; display: block; }
+    .alert.info    { background: #0c2d6b; border: 1px solid #388bfd; color: #79c0ff; display: block; }
+
+    .sub-list { list-style: none; margin-top: 12px; }
+
+    .sub-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      gap: 12px;
+    }
+
+    .sub-item-info { flex: 1; min-width: 0; }
+    .sub-item-repo { font-weight: 600; color: #58a6ff; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sub-item-meta { font-size: 0.78rem; color: #8b949e; margin-top: 2px; }
+
+    .badge {
+      font-size: 0.7rem;
+      padding: 2px 7px;
+      border-radius: 20px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .badge-confirmed   { background: #0d4429; color: #3fb950; border: 1px solid #238636; }
+    .badge-unconfirmed { background: #3d2900; color: #d29922; border: 1px solid #9e6a03; }
+
+    .divider { border: none; border-top: 1px solid #21262d; margin: 24px 0; }
+
+    .empty { font-size: 0.88rem; color: #8b949e; text-align: center; padding: 16px; }
+
+    footer {
+      margin-top: 48px;
+      font-size: 0.8rem;
+      color: #484f58;
+      text-align: center;
+    }
+
+    footer a { color: #58a6ff; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <div class="logo">&#128276;</div>
+  <h1>GitHub Release Notifications</h1>
+  <p class="subtitle">Get email alerts when a repository ships a new release.</p>
+
+  <!-- Subscribe card -->
+  <div class="card">
+    <h2>&#9993;&#65039; Subscribe</h2>
+
+    <label for="sub-email">Email address</label>
+    <input id="sub-email" type="email" placeholder="you@example.com" autocomplete="email" />
+
+    <label for="sub-repo">GitHub repository</label>
+    <input id="sub-repo" type="text" placeholder="owner/repo  (e.g. golang/go)" autocomplete="off" />
+
+    <button id="sub-btn" onclick="subscribe()">Subscribe</button>
+
+    <div id="sub-alert" class="alert"></div>
+  </div>
+
+  <!-- My subscriptions card -->
+  <div class="card">
+    <h2>&#128203; My Subscriptions</h2>
+
+    <label for="lookup-email">Email address</label>
+    <input id="lookup-email" type="email" placeholder="you@example.com" autocomplete="email" />
+
+    <button id="lookup-btn" class="btn-secondary" onclick="lookup()">Look up subscriptions</button>
+
+    <div id="lookup-alert" class="alert"></div>
+    <ul id="sub-list" class="sub-list"></ul>
+  </div>
+
+  <footer>
+    Built with Go &middot; <a href="/swagger.json" target="_blank">API spec</a>
+  </footer>
+
+  <script>
+    function setAlert(id, type, msg) {
+      const el = document.getElementById(id);
+      el.className = 'alert ' + type;
+      el.textContent = msg;
+    }
+
+    function clearAlert(id) {
+      const el = document.getElementById(id);
+      el.className = 'alert';
+      el.textContent = '';
+    }
+
+    async function subscribe() {
+      const email = document.getElementById('sub-email').value.trim();
+      const repo  = document.getElementById('sub-repo').value.trim();
+      const btn   = document.getElementById('sub-btn');
+
+      clearAlert('sub-alert');
+
+      if (!email || !repo) {
+        setAlert('sub-alert', 'error', 'Both fields are required.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Subscribing...';
+
+      try {
+        const res = await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, repo }),
+        });
+
+        if (res.ok) {
+          setAlert('sub-alert', 'success', 'Check your inbox — a confirmation email is on its way!');
+          document.getElementById('sub-email').value = '';
+          document.getElementById('sub-repo').value  = '';
+        } else if (res.status === 409) {
+          setAlert('sub-alert', 'info', 'You are already subscribed to this repository.');
+        } else if (res.status === 404) {
+          setAlert('sub-alert', 'error', 'Repository not found on GitHub. Double-check the owner/repo format.');
+        } else if (res.status === 400) {
+          const body = await res.json().catch(() => ({}));
+          setAlert('sub-alert', 'error', body.message || 'Invalid input. Use the format owner/repo.');
+        } else if (res.status === 503) {
+          setAlert('sub-alert', 'error', 'GitHub rate limit reached. Please try again in a minute.');
+        } else {
+          setAlert('sub-alert', 'error', 'Something went wrong. Please try again.');
+        }
+      } catch (_) {
+        setAlert('sub-alert', 'error', 'Network error. Please check your connection and retry.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Subscribe';
+      }
+    }
+
+    async function lookup() {
+      const email = document.getElementById('lookup-email').value.trim();
+      const btn   = document.getElementById('lookup-btn');
+      const list  = document.getElementById('sub-list');
+
+      clearAlert('lookup-alert');
+      list.innerHTML = '';
+
+      if (!email) {
+        setAlert('lookup-alert', 'error', 'Enter your email address first.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+
+      try {
+        const res = await fetch('/api/subscriptions?email=' + encodeURIComponent(email));
+
+        if (res.status === 400) {
+          setAlert('lookup-alert', 'error', 'Invalid email address.');
+          return;
+        }
+
+        if (!res.ok) {
+          setAlert('lookup-alert', 'error', 'Failed to load subscriptions.');
+          return;
+        }
+
+        const data = await res.json();
+        const subs = Array.isArray(data) ? data : (data.subscriptions || []);
+
+        if (subs.length === 0) {
+          list.innerHTML = '<li class="empty">No subscriptions found for this email.</li>';
+          return;
+        }
+
+        subs.forEach(s => {
+          const li = document.createElement('li');
+          li.className = 'sub-item';
+
+          const tag = s.last_seen_tag
+            ? 'Last release: ' + s.last_seen_tag
+            : 'No releases seen yet';
+
+          li.innerHTML = `
+            <div class="sub-item-info">
+              <div class="sub-item-repo">${escHtml(s.repo)}</div>
+              <div class="sub-item-meta">${escHtml(tag)}</div>
+            </div>
+            <span class="badge ${s.confirmed ? 'badge-confirmed' : 'badge-unconfirmed'}">
+              ${s.confirmed ? 'Active' : 'Pending'}
+            </span>`;
+
+          list.appendChild(li);
+        });
+      } catch (_) {
+        setAlert('lookup-alert', 'error', 'Network error. Please check your connection and retry.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Look up subscriptions';
+      }
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Allow Enter key to trigger forms
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      const active = document.activeElement;
+      if (active && active.closest) {
+        const card = active.closest('.card');
+        if (!card) return;
+        const btn = card.querySelector('button');
+        if (btn && !btn.disabled) btn.click();
+      }
+    });
+  </script>
+</body>
+</html>
