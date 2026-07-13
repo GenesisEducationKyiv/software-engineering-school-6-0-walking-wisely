@@ -8,8 +8,8 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/moby/moby/client v0.4.0
+	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/nats-io/nats.go v1.47.0
-	github.com/playwright-community/playwright-go v0.6000.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5

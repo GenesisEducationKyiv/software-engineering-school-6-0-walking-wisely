@@ -11,6 +11,10 @@
 # Test binary, built with `go test -c`
 *.test
 
+# Compiled service binaries (e.g. `go build -o notifications ./cmd/notifications`)
+/notifications
+/server
+
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*

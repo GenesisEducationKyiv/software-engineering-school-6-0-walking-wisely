@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // IndexPage models the browser-visible release notification page.

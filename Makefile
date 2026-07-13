@@ -1,5 +1,5 @@
 BUF_VERSION ?= v1.65.0
-PLAYWRIGHT_GO_VERSION ?= v0.6000.0
+PLAYWRIGHT_GO_VERSION ?= v0.6100.0
 
 .PHONY: setup generate playwright-install playwright-install-ci test test-all test-unit test-unit-strict test-unit-ci test-integration test-e2e
 
@@ -35,10 +35,10 @@ generate:
 	go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) generate
 
 playwright-install:
-	go run github.com/playwright-community/playwright-go/cmd/playwright@$(PLAYWRIGHT_GO_VERSION) install chromium
+	go run github.com/mxschmitt/playwright-go/cmd/playwright@$(PLAYWRIGHT_GO_VERSION) install chromium
 
 playwright-install-ci:
-	go run github.com/playwright-community/playwright-go/cmd/playwright@$(PLAYWRIGHT_GO_VERSION) install --with-deps chromium
+	go run github.com/mxschmitt/playwright-go/cmd/playwright@$(PLAYWRIGHT_GO_VERSION) install --with-deps chromium
 
 test: test-unit
 
