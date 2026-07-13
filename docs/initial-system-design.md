@@ -95,7 +95,7 @@ Confirmation та unsubscribe flow працюють як link-based сценар
 
 # 3. C4 Component Diagram
 
-![Component Diagram](github-releases.arch.drawio.svg)
+![Component Diagram](initial-arch.svg)
 
 # 4. Детальний дизайн компонентів
 

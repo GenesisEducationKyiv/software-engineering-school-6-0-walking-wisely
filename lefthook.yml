@@ -2,6 +2,10 @@ colors: false
 pre-commit:
   parallel: true
   commands:
+    markdown-links:
+      glob: "*.md"
+      run: npm run test-markdown-links -- {staged_files}
+
     fmt:
       glob: "*.go"
       run: goimports -w {staged_files} && gofumpt -w {staged_files} && git add {staged_files}

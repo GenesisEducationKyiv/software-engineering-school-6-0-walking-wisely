@@ -38,5 +38,8 @@ gen/
 # Temporary files
 tmp/
 
+# Local Node.js dependencies for markdown tooling
+node_modules/
+
 # Local planning notes for future architecture
 docs/target-state.todo.md
