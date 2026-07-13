@@ -117,8 +117,9 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD:-genesis}@postgres:5432/${POSTGRES_DB:-genesis}?sslmode=disable
       NATS_URL: ${NATS_URL:-nats://nats:4222}
-      RESEND_API_KEY: ${RESEND_API_KEY}
-      FROM_EMAIL: ${FROM_EMAIL}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      FROM_EMAIL: ${FROM_EMAIL:-}
+      EMAIL_SINK: ${EMAIL_SINK:-}
       BASE_URL: ${BASE_URL}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       SERVICE_NAME: notifications

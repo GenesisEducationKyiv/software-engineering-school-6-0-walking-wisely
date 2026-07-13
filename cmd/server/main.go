@@ -39,8 +39,10 @@ import (
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/worker"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/notify"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
 
+	notificationv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/notification/v1"
 	subscriptionv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 )
 
@@ -142,6 +144,32 @@ func run(appLogger logger.Logger) error {
 		return fmt.Errorf("init jetstream publisher: %w", err)
 	}
 
+	sagaMetrics, err := notify.NewSagaMetrics(
+		meterProvider.Meter("github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/subscriptions/saga"),
+	)
+	if err != nil {
+		return fmt.Errorf("init saga metrics: %w", err)
+	}
+
+	// When SAGA_TRANSPORT=grpc the outbox dispatcher calls the Notifications gRPC
+	// server directly for SendConfirmationEmail commands. All other events still go
+	// through NATS. The outbox provides at-least-once delivery for both paths.
+	// Both transports are wrapped with per-transport metrics instrumentation.
+	instrumentedNATS := notify.NewInstrumentedPublisher(eventPublisher, "nats", sagaMetrics)
+	var dispatchPublisher platformevents.Publisher = instrumentedNATS
+	if cfg.SagaTransport == "grpc" {
+		notifConn, err := grpc.NewClient(cfg.NotificationsGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return fmt.Errorf("connect to notifications grpc at %s: %w", cfg.NotificationsGRPCAddr, err)
+		}
+		defer func() { _ = notifConn.Close() }()
+		notifGRPCClient := notificationv1.NewNotificationServiceClient(notifConn)
+		grpcPub := notify.NewGRPCPublisher(notifGRPCClient, 32)
+		instrumentedGRPC := notify.NewInstrumentedPublisher(grpcPub, "grpc", sagaMetrics)
+		dispatchPublisher = notify.NewRoutingPublisher(instrumentedGRPC, instrumentedNATS)
+		appLogger.Info("saga transport: grpc", "addr", cfg.NotificationsGRPCAddr)
+	}
+
 	if err := metricsRecorder.RegisterOutboxMetrics(func(ctx context.Context) (int64, float64, int64, int64, error) {
 		snapshot, err := outboxRepo.Metrics(ctx)
 		if err != nil {
@@ -192,7 +220,7 @@ func run(appLogger logger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		outbox.StartDispatcher(ctx, outboxRepo, eventPublisher, 200*time.Millisecond, 32, 5, appLogger)
+		outbox.StartDispatcher(ctx, outboxRepo, dispatchPublisher, 200*time.Millisecond, 32, 5, appLogger)
 	}()
 
 	wg.Add(1)
@@ -253,11 +281,17 @@ func run(appLogger logger.Logger) error {
 		}
 	}()
 
+	var repoValidator subscriptionapp.GithubRepoValidator = githubClient
+	if cfg.GithubSkipRepoValidation {
+		appLogger.Info("GitHub repo validation disabled (GITHUB_SKIP_REPO_VALIDATION=true)")
+		repoValidator = github.NoopRepoValidator{}
+	}
+
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
 		TokenRepo:      subTokenRepo,
 		TxManager:      subTokenRepo,
 		ReadRepo:       subReadRepo,
-		Github:         githubClient,
+		Github:         repoValidator,
 		Orchestrator:   sagaOrchestrator,
 		EmailSecretKey: cfg.EmailSecretKey,
 		Log:            appLogger,

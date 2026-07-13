@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,10 +12,16 @@ import (
 	"syscall"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
+	notificationv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/notification/v1"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/integrations/resend"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
+	notificationgrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/grpc"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
@@ -80,7 +88,14 @@ func run(log logger.Logger) error {
 	}
 
 	notificationJobRepo := notificationpostgres.NewRepository(db, notificationsOutboxRepo, cfg.Job.InsertBatchSize)
-	resendClient := resend.NewClient(cfg.Resend.APIKey, cfg.Resend.From, log)
+
+	var emailSender mail.Sender
+	if cfg.EmailSink == "noop" {
+		log.Info("email sink is noop — emails will be discarded")
+		emailSender = mail.NoopSender{}
+	} else {
+		emailSender = resend.NewClient(cfg.Resend.APIKey, cfg.Resend.From, log)
+	}
 
 	bus := events.NewBus()
 	notificationHandlers := notificationapp.NewEventHandlers(notificationJobRepo, cfg.Resend.BaseURL, log)
@@ -117,7 +132,7 @@ func run(log logger.Logger) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.StartSender(ctx, resendClient, notificationJobRepo, cfg.Resend.MaxWait, log)
+		worker.StartSender(ctx, emailSender, notificationJobRepo, cfg.Resend.MaxWait, log)
 	}()
 
 	wg.Add(1)
@@ -138,6 +153,27 @@ func run(log logger.Logger) error {
 	go func() {
 		defer wg.Done()
 		outbox.StartCleanup(ctx, notificationsOutboxRepo, cfg.Outbox.CleanupInterval, cfg.Outbox.Retention, log)
+	}()
+
+	// Internal gRPC server — accepts SendConfirmation calls from the subscriptions
+	// service when SAGA_TRANSPORT=grpc is set on that side.
+	grpcSrv := grpc.NewServer()
+	notificationv1.RegisterNotificationServiceServer(grpcSrv, notificationgrpc.NewServer(notificationHandlers))
+	reflection.Register(grpcSrv)
+
+	grpcLis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+	if err != nil {
+		return err
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		log.Info("notifications gRPC server listening", "port", cfg.GRPCPort)
+		if err := grpcSrv.Serve(grpcLis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			log.Error("notifications gRPC server error", "err", err)
+			cancel()
+		}
 	}()
 
 	// Minimal health endpoint for container orchestration readiness probes.
@@ -167,6 +203,8 @@ func run(log logger.Logger) error {
 
 	log.Info("shutdown signal received")
 	cancel()
+
+	grpcSrv.GracefulStop()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
