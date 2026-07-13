@@ -81,8 +81,13 @@ func newNATSPublisher(b *testing.B) (platformevents.Publisher, func()) {
 		b.Skip("set BENCHMARK_NATS_URL or NATS_URL to run NATS benchmarks")
 	}
 
-	contractevents.RegisterTypes(func(e contractevents.Event) { platformevents.RegisterType(e) })
-	commands.RegisterTypes(func(e contractevents.Event) { platformevents.RegisterType(e) })
+	platformevents.RegisterTypes(
+		contractevents.SubscriptionRequested{},
+		contractevents.ReleaseDetected{},
+		commands.SendConfirmationEmail{},
+		commands.ConfirmationEmailSent{},
+		commands.ConfirmationEmailFailed{},
+	)
 
 	nc, err := platformnats.NewClient(url, "bench", nil)
 	if err != nil {

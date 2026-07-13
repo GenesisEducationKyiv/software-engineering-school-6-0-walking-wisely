@@ -8,8 +8,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	subscriptionv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 func strPtr(s string) *string { return &s }
@@ -23,7 +23,7 @@ func TestGetSubscriptions_EmailValidation(t *testing.T) {
 	svc := newService(&fakeGithubClient{}, repo, repo)
 
 	t.Run("invalid email rejected", func(t *testing.T) {
-		_, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
+		_, err := svc.GetSubscriptions(context.Background(), &subscriptionv1.GetSubscriptionsRequest{
 			Email: "not-an-email",
 		})
 		if got := status.Code(err); got != codes.InvalidArgument {
@@ -32,7 +32,7 @@ func TestGetSubscriptions_EmailValidation(t *testing.T) {
 	})
 
 	t.Run("valid email proceeds", func(t *testing.T) {
-		_, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
+		_, err := svc.GetSubscriptions(context.Background(), &subscriptionv1.GetSubscriptionsRequest{
 			Email: validEmail,
 		})
 		if got := status.Code(err); got != codes.OK {
@@ -51,7 +51,7 @@ func TestGetSubscriptions_RepoError(t *testing.T) {
 	}
 	svc := newService(&fakeGithubClient{}, repo, repo)
 
-	_, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
+	_, err := svc.GetSubscriptions(context.Background(), &subscriptionv1.GetSubscriptionsRequest{
 		Email: validEmail,
 	})
 	if got := status.Code(err); got != codes.Internal {
@@ -67,7 +67,7 @@ func TestGetSubscriptions_NoSubscriptions(t *testing.T) {
 	repo := &fakeSubscriptionRepo{}
 	svc := newService(&fakeGithubClient{}, repo, repo)
 
-	resp, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
+	resp, err := svc.GetSubscriptions(context.Background(), &subscriptionv1.GetSubscriptionsRequest{
 		Email: validEmail,
 	})
 	if err != nil {
@@ -83,14 +83,14 @@ func TestGetSubscriptions_NoSubscriptions(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGetSubscriptions_ResponseMapping(t *testing.T) {
-	subs := []subscriptionsdomain.Subscription{
+	subs := []domain.Subscription{
 		{Email: validEmail, Repo: "owner/alpha", Confirmed: true, LastSeenTag: strPtr("v1.2.3")},
 		{Email: validEmail, Repo: "owner/beta", Confirmed: false, LastSeenTag: strPtr("v0.1.0")},
 	}
 	repo := &fakeSubscriptionRepo{listByEmailResult: subs}
 	svc := newService(&fakeGithubClient{}, repo, repo)
 
-	resp, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
+	resp, err := svc.GetSubscriptions(context.Background(), &subscriptionv1.GetSubscriptionsRequest{
 		Email: validEmail,
 	})
 	if err != nil {
@@ -121,13 +121,13 @@ func TestGetSubscriptions_NilLastSeenTag(t *testing.T) {
 		}
 	}()
 
-	subs := []subscriptionsdomain.Subscription{
+	subs := []domain.Subscription{
 		{Email: validEmail, Repo: validRepo, Confirmed: false, LastSeenTag: nil},
 	}
 	repo := &fakeSubscriptionRepo{listByEmailResult: subs}
 	svc := newService(&fakeGithubClient{}, repo, repo)
 
-	resp, err := svc.GetSubscriptions(context.Background(), &pb.GetSubscriptionsRequest{
+	resp, err := svc.GetSubscriptions(context.Background(), &subscriptionv1.GetSubscriptionsRequest{
 		Email: validEmail,
 	})
 	if err != nil {

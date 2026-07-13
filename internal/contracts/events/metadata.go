@@ -19,9 +19,3 @@ func (m Metadata) EventID() string        { return m.ID }
 func (m Metadata) OccurredAt() time.Time  { return m.At }
 func (m Metadata) Version() int           { return m.V }
 func (m Metadata) IdempotencyKey() string { return m.IdKey }
-
-// RegisterTypes registers all concrete event contracts with the caller's codec.
-func RegisterTypes(register func(Event)) {
-	register(SubscriptionRequested{})
-	register(ReleaseDetected{})
-}

@@ -16,8 +16,9 @@ type OutboxConfig struct {
 
 // SagaConfig holds saga orchestrator configuration.
 type SagaConfig struct {
-	SweepInterval time.Duration
-	StuckAfter    time.Duration
+	SweepInterval      time.Duration
+	StuckAfter         time.Duration
+	StuckAwaitingAfter time.Duration
 }
 
 // AppConfig holds all environment-driven configuration for the API service.
@@ -68,8 +69,9 @@ func LoadAppConfig() (*AppConfig, error) {
 			Retention:       parseDurationOrDefault("OUTBOX_RETENTION", 7*24*time.Hour),
 		},
 		Saga: SagaConfig{
-			SweepInterval: parseDurationOrDefault("SAGA_SWEEP_INTERVAL", 5*time.Minute),
-			StuckAfter:    parseDurationOrDefault("SAGA_STUCK_AFTER", 10*time.Minute),
+			SweepInterval:      parseDurationOrDefault("SAGA_SWEEP_INTERVAL", 5*time.Minute),
+			StuckAfter:         parseDurationOrDefault("SAGA_STUCK_AFTER", 10*time.Minute),
+			StuckAwaitingAfter: parseDurationOrDefault("SAGA_STUCK_AWAITING_AFTER", 30*time.Minute),
 		},
 		SagaTransport:            envOrDefault("SAGA_TRANSPORT", "nats"),
 		NotificationsGRPCAddr:    envOrDefault("NOTIFICATIONS_GRPC_ADDR", "localhost:9091"),

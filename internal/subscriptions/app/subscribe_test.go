@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 
 type fakeSubscriptionRepo struct {
 	subscribeErr error
-	result       subscriptionsdomain.SubscribeResult
+	result       domain.SubscribeResult
 	calls        int
 	ctx          context.Context
 	email        string
@@ -29,7 +29,7 @@ type fakeSubscriptionRepo struct {
 func (f *fakeSubscriptionRepo) Subscribe(
 	ctx context.Context,
 	email, repo, confirmToken, unsubToken string,
-) (subscriptionsdomain.SubscribeResult, error) {
+) (domain.SubscribeResult, error) {
 	f.calls++
 	f.ctx = ctx
 	f.email = email
@@ -37,9 +37,9 @@ func (f *fakeSubscriptionRepo) Subscribe(
 	f.confirmToken = confirmToken
 	f.unsubToken = unsubToken
 	if f.result.SubscriptionID == "" {
-		f.result = subscriptionsdomain.SubscribeResult{
+		f.result = domain.SubscribeResult{
 			SubscriptionID: "sub-1",
-			Action:         subscriptionsdomain.SubscribeActionCreated,
+			Action:         domain.SubscribeActionCreated,
 		}
 	}
 	return f.result, f.subscribeErr
@@ -112,7 +112,7 @@ func TestSubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.SubscriptionID != "sub-1" || result.Action != subscriptionsdomain.SubscribeActionCreated {
+	if result.SubscriptionID != "sub-1" || result.Action != domain.SubscribeActionCreated {
 		t.Fatalf("result = %+v, want created sub-1", result)
 	}
 
@@ -166,12 +166,12 @@ func TestSubscribe_EmailValidation(t *testing.T) {
 		email   string
 		wantErr error
 	}{
-		{"empty string", "", subscriptionsdomain.ErrInvalidEmail},
-		{"no at-sign", "notanemail", subscriptionsdomain.ErrInvalidEmail},
-		{"multiple at-signs", "a@b@c.com", subscriptionsdomain.ErrInvalidEmail},
-		{"empty local part", "@subscriptions.com", subscriptionsdomain.ErrInvalidEmail},
-		{"domain without dot", "user@domain", subscriptionsdomain.ErrInvalidEmail},
-		{"empty domain", "user@", subscriptionsdomain.ErrInvalidEmail},
+		{"empty string", "", domain.ErrInvalidEmail},
+		{"no at-sign", "notanemail", domain.ErrInvalidEmail},
+		{"multiple at-signs", "a@b@c.com", domain.ErrInvalidEmail},
+		{"empty local part", "@subscriptions.com", domain.ErrInvalidEmail},
+		{"domain without dot", "user@domain", domain.ErrInvalidEmail},
+		{"empty domain", "user@", domain.ErrInvalidEmail},
 		{"valid", validEmail, nil},
 		{"trims whitespace", "  user@example.com  ", nil},
 		{"lowercases uppercase", "User@Example.COM", nil},
@@ -210,13 +210,13 @@ func TestSubscribe_RepoValidation(t *testing.T) {
 		repo    string
 		wantErr error
 	}{
-		{"empty string", "", subscriptionsdomain.ErrInvalidRepo},
-		{"no slash", "owneronly", subscriptionsdomain.ErrInvalidRepo},
-		{"slash only", "/", subscriptionsdomain.ErrInvalidRepo},
-		{"empty owner", "/repo", subscriptionsdomain.ErrInvalidRepo},
-		{"empty name", "owner/", subscriptionsdomain.ErrInvalidRepo},
-		{"space in name", "owner/repo name", subscriptionsdomain.ErrInvalidRepo},
-		{"too many slashes", "owner/repo/extra", subscriptionsdomain.ErrInvalidRepo},
+		{"empty string", "", domain.ErrInvalidRepo},
+		{"no slash", "owneronly", domain.ErrInvalidRepo},
+		{"slash only", "/", domain.ErrInvalidRepo},
+		{"empty owner", "/repo", domain.ErrInvalidRepo},
+		{"empty name", "owner/", domain.ErrInvalidRepo},
+		{"space in name", "owner/repo name", domain.ErrInvalidRepo},
+		{"too many slashes", "owner/repo/extra", domain.ErrInvalidRepo},
 		{"trims whitespace", "  owner/repo  ", nil},
 		{"allows dots hyphens underscores", "my.org/my-repo_v2", nil},
 	}
@@ -288,7 +288,7 @@ func TestSubscribe_TokenRepoErrors(t *testing.T) {
 		name         string
 		tokenRepoErr error
 	}{
-		{"already subscribed", subscriptionsdomain.ErrAlreadySubscribed},
+		{"already subscribed", domain.ErrAlreadySubscribed},
 		{"unexpected db error", errors.New("connection reset by peer")},
 	}
 

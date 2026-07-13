@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	platformpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/postgres"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 )
 
@@ -32,7 +32,7 @@ func (r *SagaRepository) CreateSaga(ctx context.Context, sagaID, subscriptionID 
 	if err != nil {
 		return fmt.Errorf("parse subscription id: %w", err)
 	}
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	if _, err := exec.Exec(
 		ctx,
 		`INSERT INTO subscription_sagas (saga_id, subscription_id, step)
@@ -49,7 +49,7 @@ func (r *SagaRepository) CreateSaga(ctx context.Context, sagaID, subscriptionID 
 // SetStep unconditionally updates step + last_error. Must be called within a transaction
 // that holds a FOR UPDATE lock on the row (via GetForUpdate).
 func (r *SagaRepository) SetStep(ctx context.Context, sagaID, step string, lastErr *string) error {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	if _, err := exec.Exec(
 		ctx,
 		`UPDATE subscription_sagas
@@ -67,7 +67,7 @@ func (r *SagaRepository) SetStep(ctx context.Context, sagaID, step string, lastE
 // SetCompensateOutcome updates step, compensate_attempts and last_error together. Must be
 // called within a transaction that holds a FOR UPDATE lock on the row (via GetForUpdate).
 func (r *SagaRepository) SetCompensateOutcome(ctx context.Context, sagaID, step string, attempts int, lastErr *string) error {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	if _, err := exec.Exec(
 		ctx,
 		`UPDATE subscription_sagas
@@ -85,7 +85,7 @@ func (r *SagaRepository) SetCompensateOutcome(ctx context.Context, sagaID, step 
 
 // Get returns (subscriptionID, step, lastError) for the given sagaID (read-only).
 func (r *SagaRepository) Get(ctx context.Context, sagaID string) (subscriptionID, step string, lastErr *string, err error) {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	err = exec.QueryRow(
 		ctx,
 		`SELECT subscription_id::text, step, last_error
@@ -102,7 +102,7 @@ func (r *SagaRepository) Get(ctx context.Context, sagaID string) (subscriptionID
 // GetForUpdate locks the saga row (SELECT ... FOR UPDATE) and returns its current
 // state. Must be called inside an active transaction — use within WithinTransaction.
 func (r *SagaRepository) GetForUpdate(ctx context.Context, sagaID string) (subscriptionapp.SagaState, error) {
-	exec := platformpostgres.ExecutorFromContext(ctx, r.db)
+	exec := postgres.ExecutorFromContext(ctx, r.db)
 	var state subscriptionapp.SagaState
 	err := exec.QueryRow(
 		ctx,
@@ -118,15 +118,18 @@ func (r *SagaRepository) GetForUpdate(ctx context.Context, sagaID string) (subsc
 	return state, nil
 }
 
-// StuckSagas returns sagas in non-terminal steps whose updated_at is older than olderThan.
-func (r *SagaRepository) StuckSagas(ctx context.Context, olderThan time.Duration) ([]subscriptionapp.SagaRow, error) {
+// StuckSagas returns sagas stuck in non-terminal steps:
+//   - COMPENSATING: stuck longer than compensatingStuckAfter
+//   - AWAITING_EMAIL: stuck longer than awaitingStuckAfter (low-cadence cleanup)
+func (r *SagaRepository) StuckSagas(ctx context.Context, compensatingStuckAfter, awaitingStuckAfter time.Duration) ([]subscriptionapp.SagaRow, error) {
 	rows, err := r.db.Query(
 		ctx,
-		`SELECT saga_id::text, subscription_id::text, step
+		`SELECT saga_id::text, subscription_id::text, step, compensate_attempts
 		 FROM subscription_sagas
-		 WHERE step IN ('AWAITING_EMAIL', 'COMPENSATING')
-		   AND updated_at < NOW() - make_interval(secs => $1)`,
-		int64(olderThan.Seconds()),
+		 WHERE (step = 'COMPENSATING' AND updated_at < NOW() - make_interval(secs => $1))
+		    OR (step = 'AWAITING_EMAIL' AND updated_at < NOW() - make_interval(secs => $2))`,
+		int64(compensatingStuckAfter.Seconds()),
+		int64(awaitingStuckAfter.Seconds()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query stuck sagas: %w", err)
@@ -136,7 +139,7 @@ func (r *SagaRepository) StuckSagas(ctx context.Context, olderThan time.Duration
 	var result []subscriptionapp.SagaRow
 	for rows.Next() {
 		var s subscriptionapp.SagaRow
-		if err := rows.Scan(&s.SagaID, &s.SubscriptionID, &s.Step); err != nil {
+		if err := rows.Scan(&s.SagaID, &s.SubscriptionID, &s.Step, &s.CompensateAttempts); err != nil {
 			return nil, fmt.Errorf("scan saga row: %w", err)
 		}
 		result = append(result, s)

@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	subscriptioncmds "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
 )
 
@@ -45,7 +45,7 @@ func assertOutboxCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ev
 	}
 }
 
-func loadSendConfirmationEmailCommand(t *testing.T, ctx context.Context, pool *pgxpool.Pool) subscriptioncmds.SendConfirmationEmail {
+func loadSendConfirmationEmailCommand(t *testing.T, ctx context.Context, pool *pgxpool.Pool) commands.SendConfirmationEmail {
 	t.Helper()
 
 	var payload []byte
@@ -53,7 +53,7 @@ func loadSendConfirmationEmailCommand(t *testing.T, ctx context.Context, pool *p
 		t.Fatalf("select send_confirmation_email payload: %v", err)
 	}
 
-	var cmd subscriptioncmds.SendConfirmationEmail
+	var cmd commands.SendConfirmationEmail
 	if err := json.Unmarshal(payload, &cmd); err != nil {
 		t.Fatalf("unmarshal send_confirmation_email payload: %v", err)
 	}

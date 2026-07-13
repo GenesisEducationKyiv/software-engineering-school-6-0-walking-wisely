@@ -10,7 +10,7 @@ import (
 
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
-	subscriptionsdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/domain"
 )
 
 func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
@@ -42,8 +42,8 @@ func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Subscribe returned error: %v", err)
 		}
-		if result.Action != subscriptionsdomain.SubscribeActionCreated {
-			t.Fatalf("action = %q, want %q", result.Action, subscriptionsdomain.SubscribeActionCreated)
+		if result.Action != domain.SubscribeActionCreated {
+			t.Fatalf("action = %q, want %q", result.Action, domain.SubscribeActionCreated)
 		}
 
 		assertSubscriptionCount(t, ctx, repos.pool, "user@example.com", "owner/repo", 1)
@@ -120,8 +120,8 @@ func TestIntegration_SubscribeTransactionalOutbox(t *testing.T) {
 			t.Fatalf("second Subscribe returned error: %v", err)
 		}
 
-		if second.Action != subscriptionsdomain.SubscribeActionConfirmationRefreshed {
-			t.Fatalf("second action = %q, want %q", second.Action, subscriptionsdomain.SubscribeActionConfirmationRefreshed)
+		if second.Action != domain.SubscribeActionConfirmationRefreshed {
+			t.Fatalf("second action = %q, want %q", second.Action, domain.SubscribeActionConfirmationRefreshed)
 		}
 		if second.SubscriptionID != first.SubscriptionID {
 			t.Fatalf("subscription_id = %q, want %q", second.SubscriptionID, first.SubscriptionID)

@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	notificationdomain "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/domain"
 )
 
 // ── shared setup ──────────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ func TestIntegration_RecordReleaseNotificationsHappyPath(t *testing.T) {
 	sub1 := insertSubscription(t, ctx, pool)
 	sub2 := insertSubscription(t, ctx, pool)
 	eventID := uuid.NewString()
-	jobs := []notificationdomain.ReleaseNotificationJob{
+	jobs := []domain.ReleaseNotificationJob{
 		{SubscriptionID: sub1, To: "a@example.com", Subject: "Release v1", HTML: "<p>v1</p>"},
 		{SubscriptionID: sub2, To: "b@example.com", Subject: "Release v1", HTML: "<p>v1</p>"},
 	}
@@ -225,10 +225,10 @@ func TestIntegration_RecordReleaseNotificationsInsertsAcrossBatchBoundary(t *tes
 	truncateNotificationTables(t, ctx, pool)
 
 	eventID := uuid.NewString()
-	jobs := make([]notificationdomain.ReleaseNotificationJob, 0, 5)
+	jobs := make([]domain.ReleaseNotificationJob, 0, 5)
 	for i := 0; i < 5; i++ {
 		subID := insertSubscription(t, ctx, pool)
-		jobs = append(jobs, notificationdomain.ReleaseNotificationJob{
+		jobs = append(jobs, domain.ReleaseNotificationJob{
 			SubscriptionID: subID,
 			To:             "subscriber@example.com",
 			Subject:        "Release v2",
@@ -258,7 +258,7 @@ func TestIntegration_RecordReleaseNotificationsIdempotent(t *testing.T) {
 	truncateNotificationTables(t, ctx, pool)
 	subID := insertSubscription(t, ctx, pool)
 	eventID := uuid.NewString()
-	jobs := []notificationdomain.ReleaseNotificationJob{
+	jobs := []domain.ReleaseNotificationJob{
 		{SubscriptionID: subID, To: "a@example.com", Subject: "Release", HTML: "<p>html</p>"},
 	}
 

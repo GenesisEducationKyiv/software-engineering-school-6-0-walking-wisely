@@ -8,19 +8,19 @@ import (
 
 	gonats "github.com/nats-io/nats.go"
 
-	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 )
 
 // NewClient connects to NATS with the standard infrastructure retry policy.
 func NewClient(natsURL, clientName string, log logger.Logger) (*gonats.Conn, error) {
-	return NewClientWithRetry(natsURL, clientName, platformconfig.NATSRetryConfigFromEnv(), log)
+	return NewClientWithRetry(natsURL, clientName, config.NATSRetryConfigFromEnv(), log)
 }
 
 // NewClientWithRetry connects to NATS with bounded startup retries.
 func NewClientWithRetry(
 	natsURL, clientName string,
-	retry platformconfig.RetryConfig,
+	retry config.RetryConfig,
 	log logger.Logger,
 ) (*gonats.Conn, error) {
 	if natsURL == "" {
@@ -81,7 +81,7 @@ func connectOptions(log logger.Logger) []gonats.Option {
 	}
 }
 
-func validateRetry(retry platformconfig.RetryConfig) error {
+func validateRetry(retry config.RetryConfig) error {
 	if retry.MaxAttempts < 1 {
 		return errors.New("nats retry max attempts must be positive")
 	}

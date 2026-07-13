@@ -21,35 +21,33 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
+	subscriptionv1 "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/gen/subscription/v1"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts"
-	contractcommands "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/commands"
 	contractevents "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/events"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/contracts/mail"
 	notificationapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/app"
 	notificationpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/postgres"
-	notificationworker "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/notifications/worker"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/events"
-	platformlogger "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/logger"
 	platformnats "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/nats"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/outbox"
-	releasemonitoringapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/app"
 	releasemonitoringpostgres "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/postgres"
 	subscriptionapp "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/app"
 	subscriptiongrpc "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/grpc"
 	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/subscriptions/postgres"
-
-	// Register event types so the outbox decoder and JetStream consumer can decode them.
-	_ "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/release_monitoring/domain"
 )
 
 func init() {
-	contractevents.RegisterTypes(func(event contractevents.Event) {
-		events.RegisterType(event)
-	})
-	contractcommands.RegisterTypes(func(event contractevents.Event) {
-		events.RegisterType(event)
-	})
+	events.RegisterTypes(
+		contractevents.SubscriptionRequested{},
+		contractevents.ReleaseDetected{},
+		commands.SendConfirmationEmail{},
+		commands.ConfirmationEmailSent{},
+		commands.ConfirmationEmailFailed{},
+	)
 }
 
 // ── fake email sender ──────────────────────────────────────────────────────────
@@ -167,7 +165,7 @@ func buildCrossServiceStack(
 	ctx context.Context,
 	gh crossServiceFakeGitHub,
 	subjectPrefix string,
-) (httpServer *httptest.Server, sender *crossServiceFakeSender, scanner *releasemonitoringapp.ScannerService) {
+) (httpServer *httptest.Server, sender *crossServiceFakeSender, scanner *app.ScannerService) {
 	t.Helper()
 
 	db := newGatewayTestDB(t, ctx)
@@ -187,17 +185,17 @@ func buildCrossServiceStack(
 	}
 
 	// API — subscription service uses the saga orchestrator.
-	tokenRepo := postgres.NewTokenRepo(db, platformlogger.NoopLogger{})
+	tokenRepo := postgres.NewTokenRepo(db, logger.NoopLogger{})
 	sagaRepo := postgres.NewSagaRepository(db)
-	readRepo := postgres.NewReadRepo(db, platformlogger.NoopLogger{})
-	releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(db, platformlogger.NoopLogger{})
+	readRepo := postgres.NewReadRepo(db, logger.NoopLogger{})
+	releaseScanRepo := releasemonitoringpostgres.NewReleaseScanRepo(db, logger.NoopLogger{})
 
 	sagaOrch := subscriptionapp.NewSagaOrchestrator(&subscriptionapp.SagaOrchestratorDeps{
 		SagaRepo:  sagaRepo,
 		SubRepo:   tokenRepo,
 		TxManager: tokenRepo,
 		Publisher: outboxPub,
-		Log:       platformlogger.NoopLogger{},
+		Log:       logger.NoopLogger{},
 	})
 
 	subService := subscriptiongrpc.NewSubscriptionService(&subscriptiongrpc.ServiceDeps{
@@ -207,19 +205,19 @@ func buildCrossServiceStack(
 		Github:         gh,
 		Orchestrator:   sagaOrch,
 		EmailSecretKey: "e2e-test-secret",
-		Log:            platformlogger.NoopLogger{},
+		Log:            logger.NoopLogger{},
 	})
 
-	scannerSvc := releasemonitoringapp.NewScannerService(&releasemonitoringapp.ScannerDeps{
+	scannerSvc := app.NewScannerService(&app.ScannerDeps{
 		Repo:      releaseScanRepo,
 		GitHub:    gh,
 		TxManager: releaseScanRepo,
 		Publisher: outboxPub,
-		Log:       platformlogger.NoopLogger{},
+		Log:       logger.NoopLogger{},
 	})
 
 	// Outbox dispatcher runs continuously, forwarding DB records to JetStream.
-	go outbox.StartDispatcher(ctx, outboxRepo, eventPub, 50*time.Millisecond, 32, 5, platformlogger.NoopLogger{})
+	go outbox.StartDispatcher(ctx, outboxRepo, eventPub, 50*time.Millisecond, 32, 5, logger.NoopLogger{})
 
 	// Wire gRPC + HTTP gateway.
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -227,7 +225,7 @@ func buildCrossServiceStack(
 		t.Fatalf("listen gRPC: %v", err)
 	}
 	grpcSrv := grpc.NewServer()
-	pb.RegisterSubscribeServiceServer(grpcSrv, subService)
+	subscriptionv1.RegisterSubscribeServiceServer(grpcSrv, subService)
 	t.Cleanup(grpcSrv.Stop)
 	go func() { _ = grpcSrv.Serve(lis) }()
 
@@ -235,13 +233,13 @@ func buildCrossServiceStack(
 	if err := registerGatewayRoutes(gwMux); err != nil {
 		t.Fatalf("register gateway routes: %v", err)
 	}
-	if err := pb.RegisterSubscribeServiceHandlerFromEndpoint(
+	if err := subscriptionv1.RegisterSubscribeServiceHandlerFromEndpoint(
 		ctx, gwMux, lis.Addr().String(),
 		[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())},
 	); err != nil {
 		t.Fatalf("register gateway handler: %v", err)
 	}
-	srv := httptest.NewServer(newHTTPHandler(gwMux, http.NotFoundHandler(), gatewayTestMetricsRecorder{}, platformlogger.NoopLogger{}))
+	srv := httptest.NewServer(newHTTPHandler(gwMux, http.NotFoundHandler(), gatewayTestMetricsRecorder{}, logger.NoopLogger{}))
 	t.Cleanup(srv.Close)
 
 	// Notifications service reads from JetStream, records jobs, and sends emails.
@@ -249,10 +247,10 @@ func buildCrossServiceStack(
 	fakeSender := &crossServiceFakeSender{}
 	notifJobRepo := notificationpostgres.NewRepository(db, nil)
 	bus := events.NewBus()
-	notificationapp.NewEventHandlers(notifJobRepo, baseURL, platformlogger.NoopLogger{}).Register(bus)
+	notificationapp.NewEventHandlers(notifJobRepo, baseURL, logger.NoopLogger{}).Register(bus)
 
 	consumer, err := platformnats.NewConsumer(
-		natsClient, platformlogger.NoopLogger{},
+		natsClient, logger.NoopLogger{},
 		platformnats.WithStreamName(streamName),
 		platformnats.WithSubjectPrefix(subjectPrefix),
 		platformnats.WithConsumerName("notifications"),
@@ -266,7 +264,7 @@ func buildCrossServiceStack(
 	}
 	go func() { _ = consumer.Run(ctx, bus) }()
 
-	go notificationworker.StartSender(ctx, fakeSender, notifJobRepo, 50*time.Millisecond, platformlogger.NoopLogger{})
+	go worker.StartSender(ctx, fakeSender, notifJobRepo, 50*time.Millisecond, logger.NoopLogger{})
 
 	return srv, fakeSender, scannerSvc
 }

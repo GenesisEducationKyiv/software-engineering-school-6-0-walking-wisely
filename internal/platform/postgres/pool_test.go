@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	platformconfig "github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
+	"github.com/GenesisEducationKyiv/software-engineering-school-6-0-walking-wisely/internal/platform/config"
 )
 
 type recordingLogger struct {
@@ -29,7 +29,7 @@ func (l *recordingLogger) Error(string, ...any) {}
 func (l *recordingLogger) ErrorContext(context.Context, string, ...any) {}
 
 func TestNewDBWithRetry_RejectsNonPositiveMaxAttempts(t *testing.T) {
-	_, err := NewDBWithRetry("postgres://app:secret@127.0.0.1:5432/app?sslmode=disable", platformconfig.RetryConfig{
+	_, err := NewDBWithRetry("postgres://app:secret@127.0.0.1:5432/app?sslmode=disable", config.RetryConfig{
 		MaxAttempts: 0,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -45,12 +45,12 @@ func TestNewDBWithRetry_RejectsNonPositiveMaxAttempts(t *testing.T) {
 func TestNewDBWithRetry_RejectsNonPositiveWaits(t *testing.T) {
 	tests := []struct {
 		name string
-		cfg  platformconfig.RetryConfig
+		cfg  config.RetryConfig
 		want string
 	}{
 		{
 			name: "initial wait",
-			cfg: platformconfig.RetryConfig{
+			cfg: config.RetryConfig{
 				MaxAttempts: 1,
 				InitialWait: 0,
 				MaxWait:     time.Millisecond,
@@ -59,7 +59,7 @@ func TestNewDBWithRetry_RejectsNonPositiveWaits(t *testing.T) {
 		},
 		{
 			name: "max wait",
-			cfg: platformconfig.RetryConfig{
+			cfg: config.RetryConfig{
 				MaxAttempts: 1,
 				InitialWait: time.Millisecond,
 				MaxWait:     0,
@@ -84,7 +84,7 @@ func TestNewDBWithRetry_RejectsNonPositiveWaits(t *testing.T) {
 func TestNewDBWithRetry_InvalidDatabaseURLDoesNotRetry(t *testing.T) {
 	log := &recordingLogger{}
 
-	_, err := NewDBWithRetry("not a postgres url", platformconfig.RetryConfig{
+	_, err := NewDBWithRetry("not a postgres url", config.RetryConfig{
 		MaxAttempts: 3,
 		InitialWait: time.Millisecond,
 		MaxWait:     time.Millisecond,
@@ -105,7 +105,7 @@ func TestNewDBPoolWithRetry_SucceedsWithoutRetry(t *testing.T) {
 	var attempts int
 	var sleeps []time.Duration
 
-	pool, err := newDBPoolWithRetry(platformconfig.RetryConfig{
+	pool, err := newDBPoolWithRetry(config.RetryConfig{
 		MaxAttempts: 3,
 		InitialWait: 10 * time.Millisecond,
 		MaxWait:     50 * time.Millisecond,
@@ -138,7 +138,7 @@ func TestNewDBPoolWithRetry_ExhaustsAttemptsAndCapsBackoff(t *testing.T) {
 	var attempts int
 	var sleeps []time.Duration
 
-	_, err := newDBPoolWithRetry(platformconfig.RetryConfig{
+	_, err := newDBPoolWithRetry(config.RetryConfig{
 		MaxAttempts: 4,
 		InitialWait: 10 * time.Millisecond,
 		MaxWait:     25 * time.Millisecond,
@@ -183,7 +183,7 @@ func TestNewDBPoolWithRetry_SucceedsAfterRetry(t *testing.T) {
 	var attempts int
 	var sleeps []time.Duration
 
-	pool, err := newDBPoolWithRetry(platformconfig.RetryConfig{
+	pool, err := newDBPoolWithRetry(config.RetryConfig{
 		MaxAttempts: 3,
 		InitialWait: 10 * time.Millisecond,
 		MaxWait:     50 * time.Millisecond,
